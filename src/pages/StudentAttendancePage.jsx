@@ -4,6 +4,7 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import Table from '../components/ui/Table.jsx'
 import { studentEvents } from '../data/studentEvents.js'
+import { findStudentEvent } from '../data/officerStudentEvent.js'
 
 const attendanceTone = {
   ATTENDED: 'success',
@@ -12,12 +13,12 @@ const attendanceTone = {
 }
 
 export default function StudentAttendancePage() {
-  const { studentRegistrations } = useOutletContext()
+  const { officerEvents, studentRegistrations } = useOutletContext()
   const attendanceRecords = studentRegistrations
     .filter((registration) => registration.status !== 'CANCELLED')
     .map((registration) => ({
       ...registration,
-      event: studentEvents.find((event) => event.id === registration.eventId),
+      event: findStudentEvent(registration.eventId, officerEvents, studentEvents),
     }))
     .filter((registration) => registration.event)
     .sort((a, b) => new Date(b.event.date) - new Date(a.event.date))

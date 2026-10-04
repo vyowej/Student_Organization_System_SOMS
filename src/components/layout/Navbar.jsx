@@ -24,8 +24,9 @@ export default function Navbar({
   notificationLink,
   profileLink,
   onMenuClick,
+  isMenuOpen,
 }) {
-  const { currentUser, logout } = useAuth()
+  const { currentUser, logout, setActiveRole } = useAuth()
   const navigate = useNavigate()
   const [logoutOpen, setLogoutOpen] = useState(false)
   const roleLabel = role === 'Student'
@@ -35,23 +36,36 @@ export default function Navbar({
       : role === 'Organization Adviser'
         ? 'UNIDOS Adviser Portal'
         : 'UNIDOS Admin'
+  const canReturnToStudentPortal = role === 'Organization Officer'
+    && currentUser?.roles?.includes('STUDENT')
+
+  function returnToStudentPortal() {
+    if (setActiveRole('STUDENT')) navigate('/student/dashboard', { replace: true })
+  }
 
   return (
     <header className="topbar">
       <div className="topbar-start">
         <button
-          aria-label="Open navigation menu"
+          aria-controls="portal-sidebar"
+          aria-expanded={isMenuOpen}
+          aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
           className="icon-button mobile-menu-button"
           onClick={onMenuClick}
           type="button"
         >
-          ☰
+          {isMenuOpen ? '×' : '☰'}
         </button>
         <Brand />
         <span className="topbar-role">{roleLabel}</span>
       </div>
       <div className="topbar-actions">
         <span className="topbar-user-name">{formatDisplayName(currentUser)}</span>
+        {canReturnToStudentPortal && (
+          <button className="portal-switcher" onClick={returnToStudentPortal} type="button">
+            Student portal
+          </button>
+        )}
         <Link aria-label="Open notifications" className="icon-button" to={notificationLink} title="Notifications">
           <svg aria-hidden="true" className="topbar-icon" viewBox="0 0 24 24">
             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />

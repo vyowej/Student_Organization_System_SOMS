@@ -4,6 +4,7 @@ import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { studentEvents } from '../data/studentEvents.js'
+import { findStudentEvent } from '../data/officerStudentEvent.js'
 
 const tabs = ['Upcoming', 'Past', 'Cancelled']
 
@@ -12,13 +13,13 @@ function isPastEvent(event) {
 }
 
 export default function StudentRegistrationsPage() {
-  const { studentRegistrations } = useOutletContext()
+  const { officerEvents, studentRegistrations } = useOutletContext()
   const [activeTab, setActiveTab] = useState('Upcoming')
 
   const registrations = studentRegistrations
     .map((registration) => ({
       ...registration,
-      event: studentEvents.find((event) => event.id === registration.eventId),
+      event: findStudentEvent(registration.eventId, officerEvents, studentEvents),
     }))
     .filter((registration) => registration.event)
     .filter((registration) => {

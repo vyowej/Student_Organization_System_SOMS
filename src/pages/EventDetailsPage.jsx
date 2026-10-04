@@ -58,7 +58,11 @@ export default function EventDetailsPage() {
 
   function confirmRegistration() {
     if (!canRegister) return
-    registerForEvent(event.id)
+    const registrationResult = registerForEvent(event.id)
+    if (!registrationResult) {
+      showToast('Unable to complete registration. Please refresh the event and try again.', 'error')
+      return
+    }
     setRegistrationDialogOpen(false)
     showToast('You are registered for this event.', 'success')
   }

@@ -160,6 +160,14 @@ export const studentOrganizations = [
 export const initialStudentMemberships = [
   {
     studentId: 'WMSU-2026-0142',
+    organizationId: 'computer-society',
+    status: 'ACTIVE',
+    position: 'President',
+    applicationDate: 'August 15, 2026',
+    approvedDate: 'August 15, 2026',
+  },
+  {
+    studentId: 'WMSU-2026-0142',
     organizationId: 'student-council',
     status: 'ACTIVE',
     position: 'Committee Volunteer',

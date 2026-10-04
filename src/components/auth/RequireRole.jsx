@@ -6,7 +6,8 @@ export default function RequireRole({ role }) {
   const { currentUser } = useAuth()
   const location = useLocation()
   if (!currentUser) return <Navigate replace state={{ from: location.pathname }} to="/login" />
-  if (currentUser.role !== role) return <Navigate replace to="/access-denied" />
+  const availableRoles = currentUser.roles ?? [currentUser.role]
+  if (!availableRoles.includes(role)) return <Navigate replace to="/access-denied" />
   return <Outlet />
 }
 

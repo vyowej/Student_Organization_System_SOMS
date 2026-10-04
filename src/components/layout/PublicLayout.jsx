@@ -17,6 +17,20 @@ export default function PublicLayout() {
   const [activeSection, setActiveSection] = useState('')
 
   useEffect(() => {
+    if (location.pathname !== '/') return undefined
+    if (!location.hash) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return undefined
+    }
+
+    const targetId = decodeURIComponent(location.hash.slice(1))
+    const frameId = window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [location.hash, location.pathname])
+
+  useEffect(() => {
     function updateScrollState() {
       setIsScrolled(window.scrollY > 8)
       if (window.scrollY < 100) setActiveSection('')
@@ -61,6 +75,7 @@ export default function PublicLayout() {
         </Link>
         <button
           aria-expanded={menuOpen}
+          aria-controls="public-navigation"
           aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
           className="public-menu-toggle"
           onClick={() => setMenuOpen((open) => !open)}
@@ -68,18 +83,24 @@ export default function PublicLayout() {
         >
           {menuOpen ? '×' : '☰'}
         </button>
-        <nav aria-label="Main navigation" className={`public-links${menuOpen ? ' public-links-open' : ''}`}>
-          {publicLinks.map((item, index) => (
-            <Link
-              aria-current={activeSection === item.to.split('#')[1] || (!activeSection && index === 0) ? 'location' : undefined}
-              className={activeSection === item.to.split('#')[1] || (!activeSection && index === 0) ? 'active' : ''}
-              key={item.label}
-              onClick={() => setMenuOpen(false)}
-              to={item.to}
-            >
-              {item.label}
-            </Link>
-          ))}
+        <nav aria-label="Main navigation" className={`public-links${menuOpen ? ' public-links-open' : ''}`} id="public-navigation">
+          {publicLinks.map((item, index) => {
+            const sectionId = item.to.split('#')[1]
+            const isHome = !sectionId && index === 0 && location.pathname === '/' && !location.hash
+            const isActive = sectionId ? activeSection === sectionId : isHome
+
+            return (
+              <Link
+                aria-current={isActive ? 'location' : undefined}
+                className={isActive ? 'active' : ''}
+                key={item.label}
+                onClick={() => setMenuOpen(false)}
+                to={item.to}
+              >
+                {item.label}
+              </Link>
+            )
+          })}
           <Link className="public-sign-in" onClick={() => setMenuOpen(false)} to="/login">Sign in</Link>
           <Link className="button button-primary public-get-started" onClick={() => setMenuOpen(false)} to="/register">Get Started</Link>
         </nav>

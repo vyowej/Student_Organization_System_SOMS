@@ -21,11 +21,11 @@ export default function PlaceholderPage({ page, role }) {
       />
       <div className="page-placeholder">
         <Card className="placeholder-main">
-          <Badge tone="crimson">Frontend preview</Badge>
+          <Badge tone="warning">Development preview · not yet functional</Badge>
           <h2>{page.title}{params.id ? ` · ${params.id}` : ''}</h2>
-          <p>
-            This page is part of the {role} workspace. Detailed tools and live records will be
-            added in a later implementation step.
+          <p role="note">
+            This screen is a development preview for the {role} workspace. Its tools and live
+            records are not available yet.
           </p>
           <nav aria-label="Relevant navigation" className="placeholder-nav">
             {relevantPages.map((item) => (
