@@ -6,6 +6,7 @@ import { formatDisplayName } from '../data/displayName.js'
 import { useOutletContext } from 'react-router-dom'
 import { studentEvents } from '../data/studentEvents.js'
 import { findStudentEvent } from '../data/officerStudentEvent.js'
+import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 
 export default function StudentEventPassPage() {
   const { registrationId } = useParams()
@@ -34,7 +35,7 @@ export default function StudentEventPassPage() {
       />
       <Card className="student-event-pass">
         <div className="event-pass-brand">
-          <span aria-hidden="true" className="event-pass-seal">WMSU</span>
+          <WmsuLogo className="event-pass-seal" />
           <span><strong>UNIDOS</strong><small>Student Organization Management System</small></span>
         </div>
         <div className="event-pass-heading">

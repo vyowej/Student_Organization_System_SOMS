@@ -8,6 +8,7 @@ import { useAuth } from '../context/useAuth.js'
 import { usePortalData } from '../context/usePortalData.js'
 import { dashboardByRole } from '../data/mockAuthUsers.js'
 import { isValidEmail, isWmsuEmail } from '../data/email.js'
+import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import LandingPage from './LandingPage.jsx'
 
 function PasswordVisibilityIcon({ visible }) {
@@ -137,7 +138,7 @@ function AuthenticationPage({ page }) {
   return (
     <Card className={`auth-card auth-card-${page}`}>
       <div className="auth-brand">
-        <span aria-hidden="true" className="brand-seal">WMSU</span>
+        <WmsuLogo className="brand-seal" />
         <div><strong>UNIDOS</strong><span>Student Organization Management System</span></div>
       </div>
       <h1>{title}</h1>

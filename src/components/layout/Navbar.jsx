@@ -3,12 +3,13 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/useAuth.js'
 import Button from '../ui/Button.jsx'
 import Modal from '../ui/Modal.jsx'
+import WmsuLogo from '../ui/WmsuLogo.jsx'
 import { formatDisplayName } from '../../data/displayName.js'
 
 function Brand() {
   return (
     <Link aria-label="UNIDOS home" className="brand" to="/">
-      <span aria-hidden="true" className="brand-seal">WMSU</span>
+      <WmsuLogo className="brand-seal" />
       <span className="brand-copy">
         <strong>UNIDOS</strong>
         <span>Student Organization Management System</span>

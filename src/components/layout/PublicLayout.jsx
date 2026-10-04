@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
+import WmsuLogo from '../ui/WmsuLogo.jsx'
 
 const publicLinks = [
   { label: 'Home', to: '/' },
@@ -67,7 +68,7 @@ export default function PublicLayout() {
     <div className="app-shell public-page">
       <header className={`public-navbar${isScrolled ? ' is-scrolled' : ''}`}>
         <Link aria-label="UNIDOS home" className="public-brand" to="/">
-          <span aria-hidden="true" className="brand-seal">WMSU</span>
+          <WmsuLogo className="brand-seal" />
           <span className="public-brand-copy">
             <strong>UNIDOS</strong>
             <span>WESTERN MINDANAO STATE UNIVERSITY · Student Organization Management System</span>
