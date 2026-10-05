@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import { EventCard, LeaderCard, OrganizationCard } from '../components/public/LandingCards.jsx'
 import AnimatedStatistic from '../components/public/AnimatedStatistic.jsx'
 import Reveal from '../components/public/Reveal.jsx'
@@ -59,7 +60,7 @@ function LandingPage() {
           <div className="hero-art-orbit orbit-one" />
           <div className="hero-art-orbit orbit-two" />
           <div className="hero-art-center">
-            <span className="hero-art-seal">WMSU</span>
+            <WmsuLogo className="hero-art-seal" />
             <span className="hero-art-center-label">One campus<br />many communities</span>
           </div>
           <div className="hero-float-card float-organizations"><span className="float-icon">✳</span><span><strong>50+</strong><small>Organizations</small></span></div>
@@ -212,7 +213,7 @@ function LandingPage() {
         <div className="footer-main">
           <div className="footer-school">
             <Link aria-label="UNIDOS home" className="public-brand footer-brand" to="/">
-              <span aria-hidden="true" className="brand-seal">WMSU</span>
+              <WmsuLogo className="brand-seal" />
               <span className="public-brand-copy"><strong>UNIDOS</strong><span>Student Organization Management System</span></span>
             </Link>
             <p className="footer-university">Western Mindanao State University</p>

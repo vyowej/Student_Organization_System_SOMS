@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
+import WmsuLogo from '../ui/WmsuLogo.jsx'
 
 const publicLinks = [
   { label: 'Home', to: '/' },
@@ -15,6 +16,20 @@ export default function PublicLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
   const [activeSection, setActiveSection] = useState('')
+
+  useEffect(() => {
+    if (location.pathname !== '/') return undefined
+    if (!location.hash) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return undefined
+    }
+
+    const targetId = decodeURIComponent(location.hash.slice(1))
+    const frameId = window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ block: 'start' })
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [location.hash, location.pathname])
 
   useEffect(() => {
     function updateScrollState() {
@@ -53,7 +68,7 @@ export default function PublicLayout() {
     <div className="app-shell public-page">
       <header className={`public-navbar${isScrolled ? ' is-scrolled' : ''}`}>
         <Link aria-label="UNIDOS home" className="public-brand" to="/">
-          <span aria-hidden="true" className="brand-seal">WMSU</span>
+          <WmsuLogo className="brand-seal" />
           <span className="public-brand-copy">
             <strong>UNIDOS</strong>
             <span>WESTERN MINDANAO STATE UNIVERSITY · Student Organization Management System</span>
@@ -61,6 +76,7 @@ export default function PublicLayout() {
         </Link>
         <button
           aria-expanded={menuOpen}
+          aria-controls="public-navigation"
           aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
           className="public-menu-toggle"
           onClick={() => setMenuOpen((open) => !open)}
@@ -68,18 +84,24 @@ export default function PublicLayout() {
         >
           {menuOpen ? '×' : '☰'}
         </button>
-        <nav aria-label="Main navigation" className={`public-links${menuOpen ? ' public-links-open' : ''}`}>
-          {publicLinks.map((item, index) => (
-            <Link
-              aria-current={activeSection === item.to.split('#')[1] || (!activeSection && index === 0) ? 'location' : undefined}
-              className={activeSection === item.to.split('#')[1] || (!activeSection && index === 0) ? 'active' : ''}
-              key={item.label}
-              onClick={() => setMenuOpen(false)}
-              to={item.to}
-            >
-              {item.label}
-            </Link>
-          ))}
+        <nav aria-label="Main navigation" className={`public-links${menuOpen ? ' public-links-open' : ''}`} id="public-navigation">
+          {publicLinks.map((item, index) => {
+            const sectionId = item.to.split('#')[1]
+            const isHome = !sectionId && index === 0 && location.pathname === '/' && !location.hash
+            const isActive = sectionId ? activeSection === sectionId : isHome
+
+            return (
+              <Link
+                aria-current={isActive ? 'location' : undefined}
+                className={isActive ? 'active' : ''}
+                key={item.label}
+                onClick={() => setMenuOpen(false)}
+                to={item.to}
+              >
+                {item.label}
+              </Link>
+            )
+          })}
           <Link className="public-sign-in" onClick={() => setMenuOpen(false)} to="/login">Sign in</Link>
           <Link className="button button-primary public-get-started" onClick={() => setMenuOpen(false)} to="/register">Get Started</Link>
         </nav>

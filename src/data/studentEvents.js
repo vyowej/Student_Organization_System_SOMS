@@ -247,6 +247,24 @@ export const initialStudentRegistrations = [
     attendanceStatus: 'PENDING',
     checkInTime: null,
   },
+  {
+    id: 'UNIDOS-REG-1006',
+    eventId: 'wcs-programming-competition',
+    studentId: 'WMSU-2026-0142',
+    registrationDate: 'October 2, 2026',
+    status: 'REGISTERED',
+    attendanceStatus: 'PENDING',
+    checkInTime: null,
+  },
+  {
+    id: 'UNIDOS-REG-1007',
+    eventId: 'wcs-programming-competition',
+    studentId: '2026-00123',
+    registrationDate: 'October 3, 2026',
+    status: 'REGISTERED',
+    attendanceStatus: 'PENDING',
+    checkInTime: null,
+  },
 ]
 
 export function isEventAlmostFull(event) {

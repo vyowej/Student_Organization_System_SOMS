@@ -14,3 +14,10 @@ export function officerEventToStudentEvent(event) {
     color: event.color ?? 'blue',
   }
 }
+
+export function findStudentEvent(eventId, officerEvents, events) {
+  return events.find((event) => event.id === eventId)
+    ?? officerEvents
+      .filter((event) => event.id === eventId)
+      .map(officerEventToStudentEvent)[0]
+}

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
 import { authSessionKey, mockAuthUsers, registeredUsersKey } from '../data/mockAuthUsers.js'
 import { formatDisplayName } from '../data/displayName.js'
+import { isWmsuEmail } from '../data/email.js'
 
 const AuthContext = createContext(null)
 
@@ -53,10 +54,15 @@ function readStoredSession() {
           ...parsed,
           ...mockUser,
           role: parsed.role,
+          roles: Array.isArray(parsed.roles) ? parsed.roles : mockUser.roles ?? [parsed.role],
+          organizationRoles: Array.isArray(parsed.organizationRoles) ? parsed.organizationRoles : mockUser.organizationRoles ?? [],
           status: parsed.status ?? mockUser.status,
           organizationId: parsed.organizationId ?? mockUser.organizationId,
         }
-      : addNameParts(parsed)
+      : addNameParts({
+          ...parsed,
+          roles: Array.isArray(parsed.roles) ? parsed.roles : [parsed.role],
+        })
     return safeUser(normalizedUser)
   } catch (error) {
     console.error('Unable to restore the UNIDOS mock authentication session.', error)
@@ -90,12 +96,19 @@ export function AuthProvider({ children }) {
 
   const login = useCallback((identifier, password, rememberMe = false) => {
     const normalizedIdentifier = identifier.trim().toLowerCase()
+    if (!isWmsuEmail(normalizedIdentifier)) {
+      return { ok: false, error: 'Enter your WMSU email address ending in @wmsu.edu.ph.' }
+    }
     const sourceUser = [...mockAuthUsers, ...registeredUsers].find((candidate) => (
       candidate.email.toLowerCase() === normalizedIdentifier
-      || candidate.studentId?.toLowerCase() === normalizedIdentifier
     ))
-    if (!sourceUser) return { ok: false, error: 'No account was found for that email or student ID.' }
-    const user = { ...sourceUser, ...accessOverrides[sourceUser.email.toLowerCase()] }
+    if (!sourceUser) return { ok: false, error: 'No account was found for that WMSU email address.' }
+    const accessOverride = accessOverrides[sourceUser.email.toLowerCase()]
+    const user = {
+      ...sourceUser,
+      ...accessOverride,
+      ...(accessOverride?.role ? { roles: [accessOverride.role] } : {}),
+    }
     if (user.status === 'INACTIVE') return { ok: false, error: 'This account is inactive. Contact Student Affairs for help.' }
     if (user.status === 'SUSPENDED') return { ok: false, error: 'This account is suspended. Contact Student Affairs for help.' }
     if (user.status !== 'ACTIVE') return { ok: false, error: 'This account is not available for sign in.' }
@@ -116,9 +129,22 @@ export function AuthProvider({ children }) {
     setCurrentUser(null)
   }, [])
 
+  const setActiveRole = useCallback((role, organizationId = null) => {
+    if (!currentUser?.roles?.includes(role)) return false
+    if (role === 'OFFICER' && !currentUser.organizationRoles?.some((assignment) => assignment.organizationId === organizationId)) return false
+    const updatedUser = safeUser({ ...currentUser, role, organizationId: role === 'OFFICER' ? organizationId : null })
+    const storage = window.localStorage.getItem(authSessionKey) !== null
+      ? window.localStorage
+      : window.sessionStorage
+    storage.setItem(authSessionKey, JSON.stringify(updatedUser))
+    setCurrentUser(updatedUser)
+    return true
+  }, [currentUser])
+
   const registerStudent = useCallback((student) => {
     const email = student.email.trim().toLowerCase()
     const studentId = student.studentId.trim().toLowerCase()
+    if (!isWmsuEmail(email)) return { ok: false, error: 'Use your WMSU email address ending in @wmsu.edu.ph.' }
     const exists = [...mockAuthUsers, ...registeredUsers].some((user) => (
       user.email.toLowerCase() === email || user.studentId?.toLowerCase() === studentId
     ))
@@ -134,6 +160,7 @@ export function AuthProvider({ children }) {
       program: student.program,
       yearLevel: student.yearLevel,
       role: 'STUDENT',
+      roles: ['STUDENT'],
       status: 'ACTIVE',
       organizationId: null,
     }
@@ -154,7 +181,18 @@ export function AuthProvider({ children }) {
       ...overrides,
       [normalizedEmail]: {
         ...overrides[normalizedEmail],
-        ...(role ? { role, ...(['OFFICER', 'ADVISER'].includes(role) ? { organizationId: 'computer-society' } : {}) } : {}),
+        ...(role ? {
+          role,
+          roles: role === 'OFFICER' ? ['STUDENT', 'OFFICER'] : [role],
+          ...(role === 'OFFICER' ? {
+            organizationRoles: [{
+              organizationId: 'computer-society',
+              organizationName: 'WMSU Computer Society',
+              positions: ['President'],
+            }],
+          } : {}),
+          ...(['OFFICER', 'ADVISER'].includes(role) ? { organizationId: 'computer-society' } : {}),
+        } : {}),
         ...(status ? { status } : {}),
       },
     }))
@@ -165,11 +203,12 @@ export function AuthProvider({ children }) {
     currentUser,
     isAuthenticated: Boolean(currentUser),
     role: currentUser?.role ?? null,
+    setActiveRole,
     login,
     logout,
     registerStudent,
     updateMockUserAccess,
-  }), [currentUser, login, logout, registerStudent, updateMockUserAccess])
+  }), [currentUser, login, logout, registerStudent, setActiveRole, updateMockUserAccess])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

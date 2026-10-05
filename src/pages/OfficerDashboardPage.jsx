@@ -135,7 +135,12 @@ export default function OfficerDashboardPage() {
               <span className="officer-panel-eyebrow">MEMBERSHIP</span>
               <h2>Recent Membership Requests</h2>
             </div>
-            <Link to="/officer/membership-requests">View all <span aria-hidden="true">→</span></Link>
+            <div className="officer-panel-heading-actions">
+              <Badge tone={pendingRequests.length ? 'warning' : 'success'}>
+                {pendingRequests.length} awaiting review
+              </Badge>
+              <Link to="/officer/membership-requests">View all <span aria-hidden="true">→</span></Link>
+            </div>
           </div>
           <div className="officer-request-list">
             {pendingRequests.slice(0, 4).map((request) => (
