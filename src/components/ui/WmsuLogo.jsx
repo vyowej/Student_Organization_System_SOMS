@@ -3,7 +3,7 @@ export default function WmsuLogo({ className }) {
     <img
       alt="Western Mindanao State University seal"
       className={className}
-      src="/wmsu-logo.jpg"
+      src="/Unidos.png"
     />
   )
 }

@@ -9306,7 +9306,88 @@
 .admin-analytics-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px 16px;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.admin-analytics-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  margin: 0;
+}
+
+.admin-analytics-card > h2 {
+  min-height: 2.5em;
+  line-height: 1.25;
+}
+
+.admin-analytics-chart {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.admin-analytics-chart-graphic {
+  display: block;
+  width: 100%;
+  height: 168px;
+  overflow: visible;
+}
+
+.admin-analytics-chart-gridline {
+  stroke: #eee8eb;
+  stroke-width: 1;
+}
+
+.admin-analytics-chart-tick {
+  fill: #5f5960;
+  font-size: 17px;
+  
+}
+
+.admin-analytics-chart-line {
+  fill: none;
+  stroke: #9c1c37;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.admin-analytics-chart-point {
+  fill: #fff;
+  stroke: #9c1c37;
+  stroke-width: 3;
+}
+
+.admin-analytics-chart-bar {
+  fill: #9c1c37;
+}
+
+.admin-analytics-chart-labels {
+  display: grid;
+  gap: 3px;
+  margin: 0 3.3333% 0 11.6667%;
+}
+
+.admin-analytics-chart-label {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: #5f5960;
+  font-size: 10px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.admin-analytics-chart-label span {
+  overflow-wrap: anywhere;
+}
+
+.admin-analytics-chart-label strong {
+  color: #39343b;
+  font-size: 12px;
 }
 
 .admin-category-row,
@@ -9326,36 +9407,100 @@
   flex: 1;
 }
 
-.admin-chart-row {
-  display: grid;
-  grid-template-columns: 100px 1fr 28px;
+.admin-standing-content {
+  display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 16px;
+  justify-content: center;
+  gap: clamp(20px, 6vw, 56px);
+  min-height: 220px;
+  padding: 8px 12px;
+}
+
+.admin-standing-donut {
+  display: block;
+  width: min(180px, 44%);
+  flex: 0 1 180px;
+  overflow: visible;
+}
+
+.admin-standing-donut-track,
+.admin-standing-donut-segment {
+  fill: none;
+  stroke-width: 16;
+}
+
+.admin-standing-donut-track {
+  stroke: #f0ecef;
+}
+
+.admin-standing-donut-segment {
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dasharray 250ms ease, stroke-dashoffset 250ms ease;
+}
+
+.admin-standing-active {
+  stroke: #3b8c68;
+}
+
+.admin-standing-inactive {
+  stroke: #d39b3b;
+}
+
+.admin-standing-suspended {
+  stroke: #bb5262;
+}
+
+.admin-standing-total {
+  fill: #28252a;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.admin-standing-caption {
+  fill: #77717a;
+  font-size: 9px;
+}
+
+.admin-standing-legend {
+  display: grid;
+  width: min(220px, 48%);
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-standing-legend li {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
   color: #5f5960;
   font-size: 12px;
 }
 
-.admin-chart-track {
+.admin-standing-swatch {
+  width: 10px;
   height: 10px;
-  overflow: hidden;
-  border-radius: 99px;
-  background: #f2edf0;
+  border-radius: 50%;
 }
 
-.admin-chart-fill {
-  height: 100%;
-  border-radius: inherit;
-  background: #9c1c37;
-  transition: width 250ms ease;
+.admin-standing-swatch.admin-standing-active {
+  background: #3b8c68;
 }
 
-.admin-chart-fill.status-suspended {
-  background: #b33b4f;
+.admin-standing-swatch.admin-standing-inactive {
+  background: #d39b3b;
 }
 
-.admin-chart-fill.status-inactive {
-  background: #aaa3aa;
+.admin-standing-swatch.admin-standing-suspended {
+  background: #bb5262;
+}
+
+.admin-standing-legend strong {
+  color: #28252a;
+  font-size: 13px;
 }
 
 .admin-checkbox-row {
@@ -9413,6 +9558,27 @@
 
   .admin-section-card {
     padding: 14px;
+  }
+
+  .admin-standing-content {
+    gap: 14px;
+    min-height: 190px;
+    padding: 8px 0;
+  }
+
+  .admin-standing-donut {
+    width: min(150px, 45%);
+    flex-basis: 150px;
+  }
+
+  .admin-standing-legend {
+    width: 50%;
+    gap: 12px;
+  }
+
+  .admin-standing-legend li {
+    gap: 7px;
+    font-size: 11px;
   }
 
   .admin-section-heading,
