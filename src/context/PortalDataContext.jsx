@@ -7,6 +7,7 @@ import {
   officerOrganization,
 } from '../data/officerPortal.js'
 import { initialAdviserActivity, initialAdviserDocuments, initialAdviserReports } from '../data/adviserPortal.js'
+import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
 import {
   initialAdminAuditLogs,
   initialAdminNotifications,
@@ -15,12 +16,13 @@ import {
   initialAdminUsers,
   initialOrganizationApplications,
 } from '../data/adminPortal.js'
+import { initialStudentRegistrations, studentEvents } from '../data/studentEvents.js'
 import PortalDataContext from './PortalData.js'
 import { useAuth } from './useAuth.js'
 import { formatDisplayName } from '../data/displayName.js'
 
 const exclusiveOfficerPositions = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor', 'PIO']
-const officerStudentId = 'WMSU-OFFICER-0142'
+const legacyOfficerStudentId = 'WMSU-OFFICER-0142'
 const membershipSessionKey = 'unidos-membership-state'
 
 function normalizeLegacyDemoNames(value, parentKey = '') {
@@ -32,16 +34,16 @@ function normalizeLegacyDemoNames(value, parentKey = '') {
   const id = typeof value.id === 'string' ? value.id : ''
   const userId = typeof value.userId === 'string' ? value.userId : ''
   const studentId = typeof value.studentId === 'string' ? value.studentId : ''
-  const demoPerson = email === 'student@unidos.test' || userId === 'WMSU-2026-0142'
-    ? { firstName: 'Juan', middleName: '', lastName: 'Dela Cruz', name: 'Dela Cruz, Juan', displayName: 'Dela Cruz, Juan', email: 'student@unidos.test' }
-    : email === 'officer@unidos.test' || userId === 'WMSU-OFFICER-0142' || studentId === officerStudentId || id === 'wcs-member-president'
+  const demoPerson = ['student@unidos.test', 'student@wmsu.edu.ph'].includes(email) || userId === 'WMSU-2026-0142' || id === 'wcs-member-president'
+    ? { firstName: 'Juan', middleName: '', lastName: 'Dela Cruz', name: 'Dela Cruz, Juan', displayName: 'Dela Cruz, Juan', email: 'student@wmsu.edu.ph' }
+    : email === 'officer@unidos.test' || userId === legacyOfficerStudentId || studentId === legacyOfficerStudentId
       ? { firstName: 'Maria', middleName: '', lastName: 'Santos', name: 'Santos, Maria', displayName: 'Santos, Maria', studentName: 'Santos, Maria', email: email === 'officer@unidos.test' || userId === 'WMSU-OFFICER-0142' ? 'officer@unidos.test' : 'maria.santos@wmsu.edu.ph' }
       : studentId === '2026-00123' || userId === '2026-00123'
         ? { firstName: 'Elena', middleName: '', lastName: 'Cruz', name: 'Cruz, Elena', displayName: 'Cruz, Elena', studentName: 'Cruz, Elena', email: 'elena.cruz@student.wmsu.edu.ph' }
-      : email === 'adviser@unidos.test' || userId === 'WMSU-EMP-0314'
-        ? { firstName: 'Ana', middleName: '', lastName: 'Reyes', name: 'Reyes, Ana', displayName: 'Reyes, Ana', email: 'adviser@unidos.test' }
-        : email === 'admin@unidos.test' || userId === 'WMSU-ADMIN-0001' || id === 'admin-root'
-          ? { firstName: 'John', middleName: '', lastName: 'Garcia', name: 'Garcia, John', displayName: 'Garcia, John', email: 'admin@unidos.test' }
+      : ['adviser@unidos.test', 'adviser@wmsu.edu.ph'].includes(email) || userId === 'WMSU-EMP-0314'
+        ? { firstName: 'Ana', middleName: '', lastName: 'Reyes', name: 'Reyes, Ana', displayName: 'Reyes, Ana', email: 'adviser@wmsu.edu.ph' }
+        : ['admin@unidos.test', 'admin@wmsu.edu.ph'].includes(email) || userId === 'WMSU-ADMIN-0001' || id === 'admin-root'
+          ? { firstName: 'John', middleName: '', lastName: 'Garcia', name: 'Garcia, John', displayName: 'Garcia, John', email: 'admin@wmsu.edu.ph' }
           : null
   const submittedByOfficer = ['officerEvents', 'adviserDocuments', 'adviserReports'].includes(parentKey)
   const legacyAuditActor = parentKey === 'adminAuditLogs' && ['audit-seed-2', 'audit-seed-3'].includes(id)
@@ -77,6 +79,7 @@ function readMembershipSession() {
       || !Array.isArray(parsedState.officerMembershipRequests)
       || !Array.isArray(parsedState.officerMembers)
       || !Number.isFinite(parsedState.officerMemberCount)
+      || (parsedState.studentRegistrations !== undefined && !Array.isArray(parsedState.studentRegistrations))
       || (parsedState.officerEvents !== undefined && !Array.isArray(parsedState.officerEvents))
       || (parsedState.adviserDocuments !== undefined && !Array.isArray(parsedState.adviserDocuments))
       || (parsedState.adviserReports !== undefined && !Array.isArray(parsedState.adviserReports))
@@ -93,7 +96,17 @@ function readMembershipSession() {
     ) {
       throw new Error('Saved membership state has an invalid structure.')
     }
-    return normalizeLegacyDemoNames(parsedState)
+    const normalizedState = normalizeLegacyDemoNames(parsedState)
+    const missingSeededMemberships = initialStudentMemberships.filter((seededMembership) => (
+      !normalizedState.studentMemberships.some((membership) => (
+        membership.studentId === seededMembership.studentId
+        && membership.organizationId === seededMembership.organizationId
+      ))
+    ))
+    return {
+      ...normalizedState,
+      studentMemberships: [...normalizedState.studentMemberships, ...missingSeededMemberships],
+    }
   } catch (error) {
     console.error('Unable to restore UNIDOS membership session state.', error)
     window.sessionStorage.removeItem(membershipSessionKey)
@@ -121,6 +134,14 @@ export function PortalDataProvider({ children }) {
   const [officerMembers, setOfficerMembers] = useState(initialMembershipState?.officerMembers ?? initialOfficerMembers)
   const [officerMemberCount, setOfficerMemberCount] = useState(initialMembershipState?.officerMemberCount ?? officerOrganization.activeMembers)
   const [officerEvents, setOfficerEvents] = useState(initialMembershipState?.officerEvents ?? initialOfficerEvents)
+  const [studentRegistrations, setStudentRegistrations] = useState(() => {
+    const savedRegistrations = initialMembershipState?.studentRegistrations ?? []
+    const savedIds = new Set(savedRegistrations.map((registration) => registration.id))
+    return [
+      ...initialStudentRegistrations.filter((registration) => !savedIds.has(registration.id)),
+      ...savedRegistrations,
+    ]
+  })
   const [adviserDocuments, setAdviserDocuments] = useState(initialMembershipState?.adviserDocuments ?? initialAdviserDocuments)
   const [adviserReports, setAdviserReports] = useState(initialMembershipState?.adviserReports ?? initialAdviserReports)
   const [adviserActivity, setAdviserActivity] = useState(initialMembershipState?.adviserActivity ?? initialAdviserActivity)
@@ -128,7 +149,10 @@ export function PortalDataProvider({ children }) {
   const [adminOrganizations, setAdminOrganizations] = useState(initialMembershipState?.adminOrganizations ?? initialAdminOrganizations)
   const [organizationChangeRequests, setOrganizationChangeRequests] = useState(initialMembershipState?.organizationChangeRequests ?? [])
   const [organizationApplications, setOrganizationApplications] = useState(initialMembershipState?.organizationApplications ?? initialOrganizationApplications)
-  const [adminUsers, setAdminUsers] = useState(initialMembershipState?.adminUsers ?? initialAdminUsers)
+  const [adminUsers, setAdminUsers] = useState(() => (
+    (initialMembershipState?.adminUsers ?? initialAdminUsers)
+      .filter((user) => user.email !== 'officer@unidos.test')
+  ))
   const [adminAuditLogs, setAdminAuditLogs] = useState(initialMembershipState?.adminAuditLogs ?? initialAdminAuditLogs)
   const [adminSettings, setAdminSettings] = useState(initialMembershipState?.adminSettings ?? initialAdminSettings)
   const [studentNotifications, setStudentNotifications] = useState(initialMembershipState?.studentNotifications ?? [])
@@ -141,6 +165,7 @@ export function PortalDataProvider({ children }) {
       officerMembers,
       officerMemberCount,
       officerEvents,
+      studentRegistrations,
       adviserDocuments,
       adviserReports,
       adviserActivity,
@@ -154,7 +179,7 @@ export function PortalDataProvider({ children }) {
       studentNotifications,
       adminNotifications,
     }))
-  }, [studentMemberships, officerMembershipRequests, officerMembers, officerMemberCount, officerEvents, adviserDocuments, adviserReports, adviserActivity, officerNotifications, adminOrganizations, organizationChangeRequests, organizationApplications, adminUsers, adminAuditLogs, adminSettings, studentNotifications, adminNotifications])
+  }, [studentMemberships, officerMembershipRequests, officerMembers, officerMemberCount, officerEvents, studentRegistrations, adviserDocuments, adviserReports, adviserActivity, officerNotifications, adminOrganizations, organizationChangeRequests, organizationApplications, adminUsers, adminAuditLogs, adminSettings, studentNotifications, adminNotifications])
 
   function appendAudit(action, entityType, entityId, description) {
     const timestamp = new Intl.DateTimeFormat('en-US', {
@@ -215,6 +240,79 @@ export function PortalDataProvider({ children }) {
       { id: `officer-notification-${Date.now()}`, message, createdAt, read: false },
       ...notifications,
     ])
+  }
+
+  function registerStudentForEvent(eventId, registeredCount) {
+    if (currentUser?.role !== 'STUDENT') return null
+    const studentEvent = studentEvents.find((item) => item.id === eventId)
+    const officerEvent = officerEvents.find((item) => item.id === eventId && item.status === 'PUBLISHED')
+    const eventDetails = studentEvent ?? (officerEvent && officerEventToStudentEvent(officerEvent))
+    if (
+      !eventDetails
+      || eventDetails.status !== 'PUBLISHED'
+      || eventDetails.registrationStatus === 'CLOSED'
+      || (registeredCount ?? eventDetails.registeredCount) >= eventDetails.capacity
+    ) return null
+
+    const studentId = currentUser.studentId ?? currentUser.id
+    const existingRegistration = studentRegistrations.find((registration) => (
+      registration.eventId === eventId
+      && registration.studentId === studentId
+      && registration.status === 'REGISTERED'
+    ))
+    if (existingRegistration) return existingRegistration
+
+    const registration = {
+      id: `UNIDOS-REG-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      eventId,
+      studentId,
+      registrationDate: currentDate(),
+      status: 'REGISTERED',
+      attendanceStatus: 'PENDING',
+      checkInTime: null,
+    }
+    setStudentRegistrations((registrations) => [...registrations, registration])
+    return registration
+  }
+
+  function checkInStudent(eventId, registrationId) {
+    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) {
+      return { ok: false, message: 'Only this organization’s officer can record attendance.' }
+    }
+
+    const event = officerEvents.find((item) => (
+      item.id === eventId
+      && item.organizationId === currentUser.organizationId
+      && ['PUBLISHED', 'COMPLETED', 'ARCHIVED'].includes(item.status)
+    ))
+    if (!event) return { ok: false, message: 'This event is not available for attendance check-in.' }
+
+    const registration = studentRegistrations.find((item) => (
+      typeof item.id === 'string'
+      && typeof registrationId === 'string'
+      && item.id.toUpperCase() === registrationId.trim().toUpperCase()
+      && item.eventId === eventId
+      && item.status === 'REGISTERED'
+    ))
+    if (!registration) return { ok: false, message: 'No active registration matches that code for this event.' }
+    if (registration.attendanceStatus === 'ATTENDED') {
+      return { ok: false, message: `This student was already checked in at ${registration.checkInTime}.` }
+    }
+    if (registration.attendanceStatus === 'ABSENT') {
+      return { ok: false, message: 'Attendance has already been finalized for this registration.' }
+    }
+
+    const now = new Date()
+    const checkInTime = new Intl.DateTimeFormat('en-US', { timeStyle: 'short' }).format(now)
+    const checkedInBy = formatDisplayName(currentUser) || 'Organization Officer'
+    setStudentRegistrations((registrations) => registrations.map((item) => (
+      item.id === registration.id
+        ? { ...item, attendanceStatus: 'ATTENDED', checkInTime, checkedInAt: now.toISOString(), checkedInBy }
+        : item
+    )))
+    appendAudit('STUDENT_CHECKED_IN', 'EVENT_REGISTRATION', registration.id, `${registration.studentId} checked in for ${event.title}.`)
+    addOfficerNotification(`${registration.studentId} was checked in for "${event.title}".`)
+    return { ok: true, message: `Attendance recorded at ${checkInTime}.`, registrationId: registration.id }
   }
 
   function addAdviserActivity(message) {
@@ -770,7 +868,7 @@ export function PortalDataProvider({ children }) {
       item.id === requestId
       && item.organizationId === officerOrganization.id
       && item.status === 'PENDING'
-      && item.studentId !== (currentUser.studentId ?? officerStudentId)
+      && item.studentId !== (currentUser.studentId ?? 'WMSU-2026-0142')
     ))
     if (!request) return false
 
@@ -838,7 +936,7 @@ export function PortalDataProvider({ children }) {
       item.id === requestId
       && item.organizationId === officerOrganization.id
       && item.status === 'PENDING'
-      && item.studentId !== (currentUser.studentId ?? officerStudentId)
+      && item.studentId !== (currentUser.studentId ?? 'WMSU-2026-0142')
     ))
     if (!request) return false
 
@@ -1004,6 +1102,7 @@ export function PortalDataProvider({ children }) {
     adminOrganizations,
     adminSettings,
     adminUsers,
+    checkInStudent,
     addRegisteredStudent,
     markAdminNotificationRead,
     markStudentNotificationRead,
@@ -1019,6 +1118,7 @@ export function PortalDataProvider({ children }) {
     officerMembers: officerMembers.filter((member) => member.organizationId === officerOrganization.id),
     officerMembershipRequests: officerMembershipRequests.filter((request) => request.organizationId === officerOrganization.id),
     officerEvents: officerEvents.filter((event) => event.organizationId === officerOrganization.id),
+    studentRegistrations,
     rejectOfficerMembershipRequest,
     reviewAccomplishmentReport,
     reviewAdminDocument,
@@ -1045,6 +1145,7 @@ export function PortalDataProvider({ children }) {
     deleteOfficerAnnouncement,
     updateAdminUser,
     updateOfficerMemberStatus,
+    registerStudentForEvent,
   }
 
   return <PortalDataContext.Provider value={value}>{children}</PortalDataContext.Provider>

@@ -141,9 +141,137 @@ function OrganizationEditModal({ organization, onClose, onSave }) {
   )
 }
 
-function ChartRows({ title, rows }) {
+function AnalyticsChart({ title, rows, type, lineColor = '#9c1c37' }) {
+  const width = 360
+  const height = 168
+  const left = 42
+  const right = width - 12
+  const top = 12
+  const bottom = height - 20
+  const barColors = ['#9c1c37', '#d97742', '#457b9d', '#6b8e62', '#8b6da8', '#c49a35']
   const maxValue = Math.max(...rows.map((row) => row.value), 1)
-  return <Card className="admin-section-card"><h2>{title}</h2>{rows.map((row) => <div className="admin-chart-row" key={row.label}><span>{row.label}</span><div className="admin-chart-track"><div className="admin-chart-fill" style={{ width: `${(row.value / maxValue) * 100}%` }} /></div><strong>{row.value}</strong></div>)}</Card>
+  const slotWidth = (right - left) / Math.max(rows.length, 1)
+  const points = rows.map((row, index) => ({
+    x: left + (index + 0.5) * slotWidth,
+    y: bottom - (row.value / maxValue) * (bottom - top),
+  }))
+  const chartDescription = rows.map((row) => `${row.label}: ${row.value}`).join('; ')
+
+  return (
+    <Card className="admin-section-card admin-analytics-card">
+      <h2>{title}</h2>
+      <div className="admin-analytics-chart">
+        <svg
+          aria-label={`${title}. ${chartDescription}`}
+          className={`admin-analytics-chart-graphic admin-analytics-chart-${type}`}
+          role="img"
+          viewBox={`0 0 ${width} ${height}`}
+        >
+          {[0, 0.5, 1].map((fraction) => {
+            const y = bottom - fraction * (bottom - top)
+            return (
+              <g key={fraction}>
+                <line className="admin-analytics-chart-gridline" x1={left} x2={right} y1={y} y2={y} />
+                <text className="admin-analytics-chart-tick" textAnchor="end" x={left - 6} y={y + 4}>
+                  {Math.round(maxValue * fraction)}
+                </text>
+              </g>
+            )
+          })}
+          {type === 'line' ? (
+            <>
+              {points.length > 1 && (
+                <polyline
+                  className="admin-analytics-chart-line"
+                  points={points.map((point) => `${point.x},${point.y}`).join(' ')}
+                  style={{ stroke: lineColor }}
+                />
+              )}
+              {points.map((point, index) => (
+                <circle className="admin-analytics-chart-point" cx={point.x} cy={point.y} key={rows[index].label} r="4" style={{ stroke: lineColor }} />
+              ))}
+            </>
+          ) : (
+            rows.map((row, index) => {
+              const barWidth = Math.min(42, slotWidth * 0.56)
+              const barHeight = (row.value / maxValue) * (bottom - top)
+              return (
+                <rect
+                  className="admin-analytics-chart-bar"
+                  height={barHeight}
+                  key={row.label}
+                  rx="3"
+                  width={barWidth}
+                  x={points[index].x - barWidth / 2}
+                  y={bottom - barHeight}
+                  style={{ fill: barColors[index % barColors.length] }}
+                />
+              )
+            })
+          )}
+        </svg>
+        <div className="admin-analytics-chart-labels" style={{ gridTemplateColumns: `repeat(${Math.max(rows.length, 1)}, minmax(0, 1fr))` }}>
+          {rows.map((row) => (
+            <div className="admin-analytics-chart-label" key={row.label}>
+              <span>{row.label}</span>
+              <strong>{row.value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+function OrganizationStandingChart({ rows, total }) {
+  const radius = 52
+  const circumference = 2 * Math.PI * radius
+  const segments = rows.map((row) => ({
+    ...row,
+    length: total ? (row.value / total) * circumference : 0,
+  }))
+  const positionedSegments = segments.map((segment, index) => ({
+    ...segment,
+    offset: -segments.slice(0, index).reduce((sum, previous) => sum + previous.length, 0),
+  }))
+
+  return (
+    <Card className="admin-section-card admin-analytics-card admin-standing-card">
+      <h2>Organization standing</h2>
+      <div className="admin-standing-content">
+        <svg
+          aria-label={`Organization standing. ${rows.map((row) => `${row.label}: ${row.value}`).join('; ')}`}
+          className="admin-standing-donut"
+          role="img"
+          viewBox="0 0 140 140"
+        >
+          <circle className="admin-standing-donut-track" cx="70" cy="70" r={radius} />
+          {positionedSegments.map((segment) => (
+            <circle
+              className={`admin-standing-donut-segment admin-standing-${segment.label.toLowerCase()}`}
+              cx="70"
+              cy="70"
+              key={segment.label}
+              r={radius}
+              strokeDasharray={`${segment.length} ${circumference - segment.length}`}
+              strokeDashoffset={segment.offset}
+            />
+          ))}
+          <text className="admin-standing-total" textAnchor="middle" x="70" y="67">{total}</text>
+          <text className="admin-standing-caption" textAnchor="middle" x="70" y="84">organizations</text>
+        </svg>
+        <ul className="admin-standing-legend">
+          {segments.map((segment) => (
+            <li key={segment.label}>
+              <span className={`admin-standing-swatch admin-standing-${segment.label.toLowerCase()}`} />
+              <span>{segment.label}</span>
+              <strong>{segment.value}</strong>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Card>
+  )
 }
 
 function AdminDashboard({ data }) {
@@ -432,7 +560,23 @@ export default function AdminPortalPage() {
       { label: 'Pending applications', value: data.organizationApplications.filter((item) => item.status === 'PENDING').length, total: data.organizationApplications.length },
     ]
     const categories = [...new Set(data.adminOrganizations.map((organization) => organization.category))]
-    return <><PageHeader description="A live summary of organization, membership, event, and participation patterns." eyebrow="UNIDOS ADMINISTRATION" title="Analytics" /><div className="admin-metrics-grid">{stats.map((stat) => <Metric key={stat.label} label={stat.label} value={stat.value} detail={`of ${stat.total} total records`} />)}</div><div className="admin-analytics-grid"><ChartRows title="Organization category distribution" rows={categories.map((label) => ({ label, value: data.adminOrganizations.filter((organization) => organization.category === label).length }))} /><ChartRows title="Events per month" rows={[{ label: 'Aug', value: 4 }, { label: 'Sep', value: 7 }, { label: 'Oct', value: 9 }, { label: 'Nov', value: 5 }, { label: 'Dec', value: 3 }]} /><ChartRows title="Attendance trends" rows={[{ label: 'Aug', value: 66 }, { label: 'Sep', value: 74 }, { label: 'Oct', value: 82 }, { label: 'Nov', value: 79 }]} /><ChartRows title="Membership trends" rows={[{ label: 'Aug', value: 188 }, { label: 'Sep', value: 216 }, { label: 'Oct', value: 243 }, { label: 'Nov', value: 278 }]} /></div><Card className="admin-section-card"><h2>Organization standing</h2>{['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((status) => { const count = data.adminOrganizations.filter((item) => item.status === status).length; return <div className="admin-chart-row" key={status}><span>{status}</span><div className="admin-chart-track"><div className={`admin-chart-fill status-${status.toLowerCase()}`} style={{ width: `${orgTotal ? (count / orgTotal) * 100 : 0}%` }} /></div><strong>{count}</strong></div> })}</Card></>
+    const organizationStanding = ['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((status) => ({
+      label: status,
+      value: data.adminOrganizations.filter((organization) => organization.status === status).length,
+    }))
+    return (
+      <>
+        <PageHeader description="A live summary of organization, membership, event, and participation patterns." eyebrow="UNIDOS ADMINISTRATION" title="Analytics" />
+        <div className="admin-metrics-grid">{stats.map((stat) => <Metric key={stat.label} label={stat.label} value={stat.value} detail={`of ${stat.total} total records`} />)}</div>
+        <div className="admin-analytics-grid">
+          <AnalyticsChart title="Organization category distribution" type="bar" rows={categories.map((label) => ({ label, value: data.adminOrganizations.filter((organization) => organization.category === label).length }))} />
+          <AnalyticsChart title="Events per month" type="bar" rows={[{ label: 'Aug', value: 4 }, { label: 'Sep', value: 7 }, { label: 'Oct', value: 9 }, { label: 'Nov', value: 5 }, { label: 'Dec', value: 3 }]} />
+          <AnalyticsChart title="Attendance trends" type="line" lineColor="#2563eb" rows={[{ label: 'Aug', value: 66 }, { label: 'Sep', value: 74 }, { label: 'Oct', value: 82 }, { label: 'Nov', value: 79 }]} />
+          <AnalyticsChart title="Membership trends" type="line" lineColor="#d97706" rows={[{ label: 'Aug', value: 188 }, { label: 'Sep', value: 216 }, { label: 'Oct', value: 243 }, { label: 'Nov', value: 278 }]} />
+        </div>
+        <OrganizationStandingChart rows={organizationStanding} total={orgTotal} />
+      </>
+    )
   }
 
   if (pathname.endsWith('/audit-logs')) {
