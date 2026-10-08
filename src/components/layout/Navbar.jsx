@@ -55,7 +55,9 @@ export default function Navbar({
           onClick={onMenuClick}
           type="button"
         >
-          {isMenuOpen ? '×' : '☰'}
+          <svg aria-hidden="true" className="topbar-icon" viewBox="0 0 24 24">
+            {isMenuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+          </svg>
         </button>
         <Brand />
         <span className="topbar-role">{roleLabel}</span>

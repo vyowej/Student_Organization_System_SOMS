@@ -7,7 +7,7 @@ import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { useToast } from '../components/ui/useToast.js'
 import { officerActivity, officerEventStatuses } from '../data/officerPortal.js'
-import { formatDisplayName } from '../data/displayName.js'
+import { formatDisplayName, formatGreetingName, getTimeGreeting } from '../data/displayName.js'
 
 const metricItems = [
   { key: 'members', label: 'Total Members', tone: 'crimson', icon: '♧' },
@@ -103,7 +103,7 @@ export default function OfficerDashboardPage() {
       <PageHeader
         description="Manage your organization, members, activities, and submissions."
         eyebrow="Organization Officer"
-        title={`Good morning, ${formatDisplayName(currentUser)}!`}
+        title={`${getTimeGreeting()}, ${formatGreetingName(currentUser)}!`}
       />
 
       <section aria-label="Your organization" className="officer-welcome">

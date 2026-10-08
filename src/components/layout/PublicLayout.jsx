@@ -82,7 +82,9 @@ export default function PublicLayout() {
           onClick={() => setMenuOpen((open) => !open)}
           type="button"
         >
-          {menuOpen ? '×' : '☰'}
+          <svg aria-hidden="true" className="menu-toggle-icon" viewBox="0 0 24 24">
+            {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+          </svg>
         </button>
         <nav aria-label="Main navigation" className={`public-links${menuOpen ? ' public-links-open' : ''}`} id="public-navigation">
           {publicLinks.map((item, index) => {

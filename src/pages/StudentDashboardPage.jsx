@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { formatDisplayName } from '../data/displayName.js'
+import { formatGreetingName, getTimeGreeting } from '../data/displayName.js'
 import Badge from '../components/ui/Badge.jsx'
 import {
   studentDashboardEvents,
@@ -66,7 +66,7 @@ export default function StudentDashboardPage() {
       <section aria-labelledby="student-welcome-title" className="student-welcome dashboard-enter">
         <div>
           <span className="student-dashboard-eyebrow">UNIDOS Student Portal</span>
-          <h1 id="student-welcome-title">Good morning, {formatDisplayName(currentUser)}!</h1>
+          <h1 id="student-welcome-title">{getTimeGreeting()}, {formatGreetingName(currentUser)}!</h1>
           <p>Stay connected with your organizations, events, and campus activities.</p>
         </div>
         <div aria-hidden="true" className="student-welcome-mark">W</div>

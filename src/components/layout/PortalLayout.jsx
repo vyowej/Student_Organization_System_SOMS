@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { roleNavigation } from '../../data/navigation.js'
 import { studentDashboardNotifications } from '../../data/studentDashboard.js'
@@ -23,6 +23,19 @@ export default function PortalLayout({ role }) {
     ? sharedPortalData.studentRegistrations.filter((registration) => registration.studentId === studentId)
     : sharedPortalData.studentRegistrations
   const navigation = roleNavigation[role]
+
+  // While the mobile drawer is open: lock page scroll and let Escape close it.
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setMenuOpen(false) }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [menuOpen])
 
   function markNotificationRead(id) {
     setReadNotificationIds((currentIds) => (

@@ -183,8 +183,8 @@ export default function OfficerMembersPage() {
                   <td data-label="Date Joined">{member.dateJoined}</td>
                   <td className="officer-member-row-actions" data-label="Actions">
                     <Button onClick={() => setViewingMember(member)} variant="secondary">View</Button>
-                    <Button disabled={member.status !== 'ACTIVE'} onClick={() => startEdit(member)} variant="outline">Edit</Button>
-                    <Button onClick={() => { setStatusTarget(member); setNextStatus(member.status) }} variant="primary">Manage Status</Button>
+                    <Button disabled={member.status !== 'ACTIVE'} onClick={() => startEdit(member)} variant="secondary">Edit</Button>
+                    <Button onClick={() => { setStatusTarget(member); setNextStatus(member.status) }} variant="outline">Manage status</Button>
                   </td>
                 </tr>
               ))}

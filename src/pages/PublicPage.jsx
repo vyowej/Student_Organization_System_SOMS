@@ -169,9 +169,15 @@ function AuthenticationPage({ page }) {
       {page === 'register' && (
         <form className="auth-form auth-register-form" noValidate onSubmit={handleRegister}>
           <div aria-label={`Registration step ${registrationStep} of 2`} className="auth-registration-progress">
-            <span className={registrationStep === 1 ? 'is-current' : 'is-complete'}>1/2 <span>Student details</span></span>
-            <i aria-hidden="true" />
-            <span className={registrationStep === 2 ? 'is-current' : ''}>2/2 <span>Account security</span></span>
+            <span aria-current={registrationStep === 1 ? 'step' : undefined} className={registrationStep === 1 ? 'is-current' : 'is-complete'}>
+              <b aria-hidden="true">{registrationStep === 1 ? '1' : '✓'}</b>
+              <span>Student details</span>
+            </span>
+            <i aria-hidden="true" className={registrationStep === 2 ? 'is-complete' : ''} />
+            <span aria-current={registrationStep === 2 ? 'step' : undefined} className={registrationStep === 2 ? 'is-current' : ''}>
+              <b aria-hidden="true">2</b>
+              <span>Account security</span>
+            </span>
           </div>
           {registrationStep === 1 ? (
             <>
@@ -179,7 +185,7 @@ function AuthenticationPage({ page }) {
               <Input autoComplete="additional-name" id="register-middle-name" label="Middle Name (optional)" onChange={(event) => setForm((current) => ({ ...current, middleName: event.target.value }))} value={form.middleName} />
               <Input autoComplete="family-name" id="register-last-name" label="Last Name" onChange={(event) => setForm((current) => ({ ...current, lastName: event.target.value }))} value={form.lastName} />
               <Input autoComplete="off" id="register-student-id" label="Student ID" onChange={(event) => setForm((current) => ({ ...current, studentId: event.target.value }))} value={form.studentId} />
-              <Input aria-describedby="register-email-hint" autoComplete="email" id="register-email" label="WMSU Email" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="name@wmsu.edu.ph" type="email" value={form.email} />
+              <Input aria-describedby="register-email-hint" autoComplete="email" fieldClassName="auth-field-full" id="register-email" label="WMSU Email" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="name@wmsu.edu.ph" type="email" value={form.email} />
               <p className="auth-registration-hint" id="register-email-hint">Use your university email ending in @wmsu.edu.ph.</p>
             </>
           ) : (

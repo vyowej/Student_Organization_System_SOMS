@@ -22,8 +22,26 @@ function toneFor(status = '') {
   return 'neutral'
 }
 
+// "RETURNED_FOR_REVISION" -> "Returned for revision". Keeps status labels in sentence case
+// so they sit consistently next to role names like "Organization Officer".
+function humanize(value) {
+  const text = String(value ?? '—').replaceAll('_', ' ').toLowerCase()
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
 function Status({ value }) {
-  return <Badge tone={toneFor(value)}>{String(value ?? '—').replaceAll('_', ' ')}</Badge>
+  return <Badge tone={toneFor(value)}>{humanize(value)}</Badge>
+}
+
+function FilterSelect({ label, onChange, options, value }) {
+  return (
+    <label className="admin-filter-field">
+      <span>{label}</span>
+      <select onChange={(event) => onChange(event.target.value)} value={value}>
+        {options.map((option) => <option key={option} value={option}>{option === 'All' ? 'All' : humanize(option)}</option>)}
+      </select>
+    </label>
+  )
 }
 
 function Metric({ label, value, detail }) {
@@ -33,7 +51,10 @@ function Metric({ label, value, detail }) {
 function FilterBar({ search, setSearch, children }) {
   return (
     <div className="admin-filter-bar">
-      <input aria-label="Search records" onChange={(event) => setSearch(event.target.value)} placeholder="Search..." type="search" value={search} />
+      <label className="admin-filter-field admin-filter-search">
+        <span>Search</span>
+        <input onChange={(event) => setSearch(event.target.value)} placeholder="Search records" type="search" value={search} />
+      </label>
       {children}
     </div>
   )
@@ -377,11 +398,11 @@ export default function AdminPortalPage() {
       <>
         <PageHeader description={isStudents ? 'Browse student directory records and academic information.' : 'Manage account access while protecting administrator safeguards.'} eyebrow="UNIDOS ADMINISTRATION" title={isStudents ? 'Student Directory' : 'User Management'} />
         <FilterBar search={search} setSearch={setSearch}>
-          {!isStudents && <select aria-label="Filter by account status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((value) => <option key={value}>{value}</option>)}</select>}
+          {!isStudents && <FilterSelect label="Account status" onChange={setStatusFilter} options={['All', ...['ACTIVE', 'INACTIVE', 'SUSPENDED']]} value={statusFilter} />}
           {isStudents && <>
-            <select aria-label="Filter by program" onChange={(event) => setProgramFilter(event.target.value)} value={programFilter}>{adminPrograms.map((value) => <option key={value}>{value}</option>)}</select>
-            <select aria-label="Filter by year" onChange={(event) => setYearFilter(event.target.value)} value={yearFilter}>{adminYears.map((value) => <option key={value}>{value}</option>)}</select>
-            <select aria-label="Filter student status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((value) => <option key={value}>{value}</option>)}</select>
+            <label className="admin-filter-field"><span>Program</span><select onChange={(event) => setProgramFilter(event.target.value)} value={programFilter}>{adminPrograms.map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label className="admin-filter-field"><span>Year level</span><select onChange={(event) => setYearFilter(event.target.value)} value={yearFilter}>{adminYears.map((value) => <option key={value}>{value}</option>)}</select></label>
+            <FilterSelect label="Account status" onChange={setStatusFilter} options={['All', ...['ACTIVE', 'INACTIVE', 'SUSPENDED']]} value={statusFilter} />
           </>}
         </FilterBar>
         <Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[
@@ -399,7 +420,7 @@ export default function AdminPortalPage() {
             })} variant="secondary">View profile</Button> },
           ] : [
             { key: 'role', label: 'Role', render: (value, row) => <select aria-label={`Role for ${formatDisplayName(row)}`} disabled={row.id === 'admin-root'} onChange={(event) => setUserChange({ user: row, changes: { role: event.target.value } })} value={value}>{roleOptions.map((role) => <option key={role}>{role}</option>)}</select> },
-            { key: 'status', label: 'Status', render: (value, row) => <select aria-label={`Status for ${formatDisplayName(row)}`} disabled={row.id === 'admin-root'} onChange={(event) => setUserChange({ user: row, changes: { status: event.target.value } })} value={value}>{['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((status) => <option key={status}>{status}</option>)}</select> },
+            { key: 'status', label: 'Status', render: (value, row) => <select aria-label={`Status for ${formatDisplayName(row)}`} disabled={row.id === 'admin-root'} onChange={(event) => setUserChange({ user: row, changes: { status: event.target.value } })} value={value}>{['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((status) => <option key={status} value={status}>{humanize(status)}</option>)}</select> },
             { key: 'organization', label: 'Organization' },
           ]),
           { key: 'lastActivity', label: 'Last Activity' },
@@ -416,7 +437,7 @@ export default function AdminPortalPage() {
     return (
       <>
         <PageHeader description="Monitor accreditation and institutional standing for recognized organizations." eyebrow="UNIDOS ADMINISTRATION" title="Organizations" />
-        <FilterBar search={search} setSearch={setSearch}><select aria-label="Filter organization status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((value) => <option key={value}>{value}</option>)}</select></FilterBar>
+        <FilterBar search={search} setSearch={setSearch}><FilterSelect label="Status" onChange={setStatusFilter} options={['All', ...['ACTIVE', 'INACTIVE', 'SUSPENDED']]} value={statusFilter} /></FilterBar>
         <Card className="admin-section-card">{data.adminOrganizations.filter((item) => matches(item, ['name', 'acronym', 'category', 'adviser', 'status'])).length ? <Table useDataTable columns={[
           { key: 'name', label: 'Organization' }, { key: 'acronym', label: 'Acronym' }, { key: 'category', label: 'Category' },
           { key: 'adviser', label: 'Adviser' }, { key: 'memberCount', label: 'Members' }, { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
@@ -446,7 +467,7 @@ export default function AdminPortalPage() {
     return (
       <>
         <PageHeader description="Review recognition submissions and required supporting documents." eyebrow="UNIDOS ADMINISTRATION" title="Organization Applications" />
-        <FilterBar search={search} setSearch={setSearch}><select aria-label="Filter application status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['PENDING', 'APPROVED', 'RETURNED', 'REJECTED'].map((value) => <option key={value}>{value}</option>)}</select></FilterBar>
+        <FilterBar search={search} setSearch={setSearch}><FilterSelect label="Status" onChange={setStatusFilter} options={['All', 'PENDING', 'APPROVED', 'RETURNED', 'REJECTED']} value={statusFilter} /></FilterBar>
         <Card className="admin-section-card">{filteredApplications.length ? <Table useDataTable columns={[
           { key: 'name', label: 'Organization' }, { key: 'acronym', label: 'Acronym' }, { key: 'submittedBy', label: 'Submitted by' }, { key: 'submittedDate', label: 'Date submitted' },
           { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
@@ -462,7 +483,7 @@ export default function AdminPortalPage() {
     return (
       <>
         <PageHeader description="Oversee proposals across campus. Publishing is available only after both adviser and Student Affairs approval." eyebrow="UNIDOS ADMINISTRATION" title="Campus Events" />
-        <FilterBar search={search} setSearch={setSearch}><select aria-label="Filter event status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PUBLISHED', 'ONGOING', 'COMPLETED', 'ARCHIVED', 'RETURNED_FOR_REVISION', 'REJECTED'].map((value) => <option key={value}>{value}</option>)}</select></FilterBar>
+        <FilterBar search={search} setSearch={setSearch}><FilterSelect label="Status" onChange={setStatusFilter} options={['All', 'DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PUBLISHED', 'ONGOING', 'COMPLETED', 'ARCHIVED', 'RETURNED_FOR_REVISION', 'REJECTED']} value={statusFilter} /></FilterBar>
         <Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[
           { key: 'title', label: 'Event' }, { key: 'organizationName', label: 'Organization' }, { key: 'date', label: 'Date' }, { key: 'location', label: 'Venue' },
           { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },

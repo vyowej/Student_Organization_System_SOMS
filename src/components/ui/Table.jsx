@@ -48,7 +48,11 @@ function TableInner({ columns, rows, getRowKey = (row, index) => row.id ?? index
           {rows.map((row, rowIndex) => (
             <tr key={getRowKey(row, rowIndex)}>
               {columns.map((column) => (
-                <td key={column.key}>
+                <td
+                  className={column.nowrap || ['id', 'userId', 'studentId'].includes(column.key) ? 'cell-nowrap' : undefined}
+                  data-label={column.label}
+                  key={column.key}
+                >
                   {column.render ? column.render(row[column.key], row) : row[column.key]}
                 </td>
               ))}
