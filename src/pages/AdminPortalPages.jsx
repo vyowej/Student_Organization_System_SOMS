@@ -296,7 +296,7 @@ function AdminDashboard({ data }) {
       </div>
       <Card className="admin-section-card">
         <div className="admin-section-heading"><div><h2>Work requiring attention</h2><p>Review pending requests across campus.</p></div><Link className="button button-secondary" to="/admin/approvals">Open Approval Center</Link></div>
-        {pending.length ? <Table columns={[
+        {pending.length ? <Table useDataTable columns={[
           { key: 'title', label: 'Item' }, { key: 'type', label: 'Type' },
           { key: 'organizationName', label: 'Organization', render: (value, row) => value ?? row.name },
           { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
@@ -309,7 +309,7 @@ function AdminDashboard({ data }) {
         <div className="admin-section-heading"><div><h2>Recent system activity</h2><p>Latest administrative and workflow updates.</p></div><Link to="/admin/audit-logs">View audit log</Link></div>
         {data.adminAuditLogs.slice(0, 4).map((log) => <div className="admin-activity-row" key={log.id}><strong>{log.action.replaceAll('_', ' ')}</strong><span>{log.description}</span><small>{log.timestamp}</small></div>)}
       </Card>
-      <Card className="admin-section-card"><h2>Upcoming and approved events</h2>{upcomingEvents.length ? <Table columns={[{ key: 'title', label: 'Event' }, { key: 'organizationName', label: 'Organization' }, { key: 'date', label: 'Date' }, { key: 'startTime', label: 'Time' }, { key: 'location', label: 'Venue' }, { key: 'status', label: 'Status', render: (value) => <Status value={value} /> }]} rows={upcomingEvents} /> : <EmptyState title="No scheduled events" />}</Card>
+      <Card className="admin-section-card"><h2>Upcoming and approved events</h2>{upcomingEvents.length ? <Table useDataTable columns={[{ key: 'title', label: 'Event' }, { key: 'organizationName', label: 'Organization' }, { key: 'date', label: 'Date' }, { key: 'startTime', label: 'Time' }, { key: 'location', label: 'Venue' }, { key: 'status', label: 'Status', render: (value) => <Status value={value} /> }]} rows={upcomingEvents} /> : <EmptyState title="No scheduled events" />}</Card>
     </>
   )
 }
@@ -384,7 +384,7 @@ export default function AdminPortalPage() {
             <select aria-label="Filter student status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((value) => <option key={value}>{value}</option>)}</select>
           </>}
         </FilterBar>
-        <Card className="admin-section-card">{rows.length ? <Table columns={[
+        <Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[
           { key: 'name', label: 'Name', render: (value, row) => isStudents ? formatDisplayName(row) : value }, { key: 'userId', label: 'ID' }, { key: 'email', label: 'Email' },
           ...(isStudents ? [
             { key: 'program', label: 'Program' }, { key: 'yearLevel', label: 'Year' },
@@ -417,7 +417,7 @@ export default function AdminPortalPage() {
       <>
         <PageHeader description="Monitor accreditation and institutional standing for recognized organizations." eyebrow="UNIDOS ADMINISTRATION" title="Organizations" />
         <FilterBar search={search} setSearch={setSearch}><select aria-label="Filter organization status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((value) => <option key={value}>{value}</option>)}</select></FilterBar>
-        <Card className="admin-section-card">{data.adminOrganizations.filter((item) => matches(item, ['name', 'acronym', 'category', 'adviser', 'status'])).length ? <Table columns={[
+        <Card className="admin-section-card">{data.adminOrganizations.filter((item) => matches(item, ['name', 'acronym', 'category', 'adviser', 'status'])).length ? <Table useDataTable columns={[
           { key: 'name', label: 'Organization' }, { key: 'acronym', label: 'Acronym' }, { key: 'category', label: 'Category' },
           { key: 'adviser', label: 'Adviser' }, { key: 'memberCount', label: 'Members' }, { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
           { key: 'accreditationStatus', label: 'Accreditation' },
@@ -447,7 +447,7 @@ export default function AdminPortalPage() {
       <>
         <PageHeader description="Review recognition submissions and required supporting documents." eyebrow="UNIDOS ADMINISTRATION" title="Organization Applications" />
         <FilterBar search={search} setSearch={setSearch}><select aria-label="Filter application status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['PENDING', 'APPROVED', 'RETURNED', 'REJECTED'].map((value) => <option key={value}>{value}</option>)}</select></FilterBar>
-        <Card className="admin-section-card">{filteredApplications.length ? <Table columns={[
+        <Card className="admin-section-card">{filteredApplications.length ? <Table useDataTable columns={[
           { key: 'name', label: 'Organization' }, { key: 'acronym', label: 'Acronym' }, { key: 'submittedBy', label: 'Submitted by' }, { key: 'submittedDate', label: 'Date submitted' },
           { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
           { key: 'actions', label: 'Actions', render: (_, item) => <div className="admin-row-actions"><Button onClick={() => setSelected({ ...item, title: item.name })} variant="secondary">View</Button>{item.status === 'PENDING' && <Button onClick={() => setSelected({ ...item, title: item.name, __application: true })}>Review</Button>}</div> },
@@ -463,7 +463,7 @@ export default function AdminPortalPage() {
       <>
         <PageHeader description="Oversee proposals across campus. Publishing is available only after both adviser and Student Affairs approval." eyebrow="UNIDOS ADMINISTRATION" title="Campus Events" />
         <FilterBar search={search} setSearch={setSearch}><select aria-label="Filter event status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PUBLISHED', 'ONGOING', 'COMPLETED', 'ARCHIVED', 'RETURNED_FOR_REVISION', 'REJECTED'].map((value) => <option key={value}>{value}</option>)}</select></FilterBar>
-        <Card className="admin-section-card">{rows.length ? <Table columns={[
+        <Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[
           { key: 'title', label: 'Event' }, { key: 'organizationName', label: 'Organization' }, { key: 'date', label: 'Date' }, { key: 'location', label: 'Venue' },
           { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
           { key: 'actions', label: 'Actions', render: (_, item) => <div className="admin-row-actions"><Button onClick={() => setSelected(item)} variant="secondary">View</Button>{pendingAdminEvents.some((event) => event.id === item.id) && <Button onClick={() => setSelected({ ...item, __event: true })}>Review</Button>}{item.adminApprovedAt && item.status === 'APPROVED' && <Button onClick={() => { const ok = data.publishAdminEvent(item.id); showToast(ok ? 'Event published and visible to students.' : 'Event cannot be published yet.', ok ? 'success' : 'error') }}>Publish</Button>}</div> },
@@ -491,9 +491,12 @@ export default function AdminPortalPage() {
     return (
       <>
         <PageHeader description="A single queue for cross-campus applications, adviser-approved events, and documents." eyebrow="UNIDOS ADMINISTRATION" title="Approval Center" />
-        <FilterBar search={search} setSearch={setSearch} />
-        <div aria-label="Filter approvals by status" className="admin-approval-tabs" role="group">{['All', 'PENDING', 'APPROVED', 'RETURNED', 'REJECTED'].map((value) => <button aria-pressed={statusFilter === value} className={statusFilter === value ? 'is-active' : ''} key={value} onClick={() => setStatusFilter(value)} type="button">{value === 'All' ? value : value.replace('_', ' ')}</button>)}</div>
-        <Card className="admin-section-card">{approvals.length ? <Table columns={[
+        <FilterBar search={search} setSearch={setSearch}>
+          <select aria-label="Filter approvals by status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
+            {['All', 'PENDING', 'APPROVED', 'RETURNED', 'REJECTED'].map((value) => <option value={value} key={value}>{value === 'All' ? value : value.replace('_', ' ')}</option>)}
+          </select>
+        </FilterBar>
+        <Card className="admin-section-card">{approvals.length ? <Table useDataTable columns={[
           { key: 'title', label: 'Request' }, { key: 'type', label: 'Type' }, { key: 'organizationName', label: 'Organization', render: (value, row) => value ?? row.name },
           { key: 'submittedBy', label: 'Submitted by', render: (value, row) => value ?? row.submittedBy ?? 'Organization officer' },
           { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
@@ -513,7 +516,7 @@ export default function AdminPortalPage() {
       <>
         <PageHeader description="Review organization documents after the adviser has completed their review." eyebrow="UNIDOS ADMINISTRATION" title="Documents" />
         <FilterBar search={search} setSearch={setSearch}><select aria-label="Filter document status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['PENDING', 'APPROVED', 'RETURNED', 'REJECTED'].map((value) => <option key={value}>{value}</option>)}</select></FilterBar>
-        <Card className="admin-section-card">{rows.length ? <Table columns={[
+        <Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[
           { key: 'title', label: 'Document' }, { key: 'type', label: 'Type' }, { key: 'organizationName', label: 'Organization' }, { key: 'submittedDate', label: 'Submitted' },
           { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
           { key: 'actions', label: 'Actions', render: (_, item) => <div className="admin-row-actions"><Button onClick={() => setSelected(item)} variant="secondary">View</Button>{item.status === 'APPROVED' && <Button onClick={() => setSelected({ ...item, __document: true })}>Review</Button>}</div> },
@@ -525,11 +528,12 @@ export default function AdminPortalPage() {
 
   if (pathname.endsWith('/reports')) {
     const organizationById = (id) => data.adminOrganizations.find((organization) => organization.id === id)
-    const reportRows = [
+    const allReportRows = [
       ...data.adminOrganizations.map((item) => ({ type: 'Organization', name: item.name, status: item.status, count: item.memberCount, organizationId: item.id, category: item.category, college: item.college })),
       ...orgEvents.map((item) => ({ type: 'Event', name: item.title, status: item.status, count: item.registeredCount ?? 0, organizationId: item.organizationId, category: organizationById(item.organizationId)?.category, college: organizationById(item.organizationId)?.college, eventCategory: item.category })),
       ...data.adviserReports.map((item) => ({ type: 'Accomplishment report', name: item.eventTitle, status: item.status, count: item.attendance, organizationId: item.organizationId, category: organizationById(item.organizationId)?.category, college: organizationById(item.organizationId)?.college })),
-    ].filter((item) => matches(item, ['type', 'name', 'status'])
+    ]
+    const reportRows = allReportRows.filter((item) => matches(item, ['type', 'name', 'status'])
       && (reportFilters.category === 'All Categories' || item.category === reportFilters.category)
       && (reportFilters.college === 'All Colleges' || item.college === reportFilters.college)
       && (reportFilters.eventType === 'All Event Types' || item.eventCategory === reportFilters.eventType))
@@ -542,10 +546,20 @@ export default function AdminPortalPage() {
           <Metric label="Total Events Held" value="213" />
           <Metric label="Unique Student Participants" value="1,842" />
         </div>
-        <Card className="admin-section-card"><h2>Organization activity sample</h2><p>Active Members: 128 · Events Conducted: 14 · Activities Completed: 12 · Average Event Attendance: 82%</p></Card>
+
         <div className="admin-report-actions"><Button onClick={() => showToast(downloadCsv('unidos-campus-report.csv', reportRows) ? 'CSV report downloaded.' : 'There is no report data to export.', reportRows.length ? 'success' : 'error')}>Download CSV</Button><Button onClick={() => showToast(downloadExcel('unidos-campus-report.xls', reportRows) ? 'Excel-compatible report downloaded.' : 'There is no report data to export.', reportRows.length ? 'success' : 'error')} variant="secondary">Download Excel</Button><Button onClick={() => window.print()} variant="secondary">Print / Save as PDF</Button></div>
-        <FilterBar search={search} setSearch={setSearch}><select aria-label="Filter report status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['ACTIVE', 'PUBLISHED', 'APPROVED', 'PENDING', 'VERIFIED', 'RETURNED', 'REJECTED', 'SUSPENDED'].map((value) => <option key={value}>{value}</option>)}</select><select aria-label="Filter academic year"><option>{data.adminSettings.academicYear}</option></select><select aria-label="Filter semester"><option>{data.adminSettings.semester}</option></select><select aria-label="Filter college" onChange={(event) => setReportFilters((current) => ({ ...current, college: event.target.value }))} value={reportFilters.college}>{['All Colleges', 'College of Computing Studies', 'College of Arts and Sciences'].map((value) => <option key={value}>{value}</option>)}</select><select aria-label="Filter organization category" onChange={(event) => setReportFilters((current) => ({ ...current, category: event.target.value }))} value={reportFilters.category}>{['All Categories', ...new Set(data.adminOrganizations.map((organization) => organization.category))].map((value) => <option key={value}>{value}</option>)}</select><select aria-label="Filter event type" onChange={(event) => setReportFilters((current) => ({ ...current, eventType: event.target.value }))} value={reportFilters.eventType}>{['All Event Types', ...new Set(orgEvents.map((event) => event.category).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></FilterBar>
-        <Card className="admin-section-card">{reportRows.length ? <Table columns={[{ key: 'type', label: 'Record type' }, { key: 'name', label: 'Name' }, { key: 'status', label: 'Status', render: (value) => <Status value={value} /> }, { key: 'count', label: 'Members / attendance' }]} rows={reportRows} /> : <EmptyState title="No report records" />}</Card>
+        <FilterBar search={search} setSearch={setSearch}>
+          <select aria-label="Filter report status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
+            <option>All</option>
+            {[...new Set(allReportRows.map(row => row.status).filter(Boolean))].map((value) => <option value={value} key={value}>{value.replace(/_/g, ' ')}</option>)}
+          </select>
+          <select aria-label="Filter academic year"><option>{data.adminSettings.academicYear}</option></select>
+          <select aria-label="Filter semester"><option>{data.adminSettings.semester}</option></select>
+          <select aria-label="Filter college" onChange={(event) => setReportFilters((current) => ({ ...current, college: event.target.value }))} value={reportFilters.college}>{['All Colleges', 'College of Computing Studies', 'College of Arts and Sciences'].map((value) => <option key={value}>{value}</option>)}</select>
+          <select aria-label="Filter organization category" onChange={(event) => setReportFilters((current) => ({ ...current, category: event.target.value }))} value={reportFilters.category}>{['All Categories', ...new Set(data.adminOrganizations.map((organization) => organization.category))].map((value) => <option key={value}>{value}</option>)}</select>
+          <select aria-label="Filter event type" onChange={(event) => setReportFilters((current) => ({ ...current, eventType: event.target.value }))} value={reportFilters.eventType}>{['All Event Types', ...new Set(orgEvents.map((event) => event.category).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select>
+        </FilterBar>
+        <Card className="admin-section-card">{reportRows.length ? <Table useDataTable columns={[{ key: 'type', label: 'Record type' }, { key: 'name', label: 'Name' }, { key: 'status', label: 'Status', render: (value) => <Status value={value} /> }, { key: 'count', label: 'Members / attendance' }]} rows={reportRows} /> : <EmptyState title="No report records" />}</Card>
       </>
     )
   }
@@ -586,7 +600,7 @@ export default function AdminPortalPage() {
       && (actionFilter === 'All' || item.action === actionFilter)
       && (!query || ['actor', 'action', 'entityType', 'entityId', 'description', 'timestamp'].some((key) => String(item[key] ?? '').toLowerCase().includes(query)))
     ))
-    return <><PageHeader description="Search the recorded history of significant system and approval actions." eyebrow="UNIDOS ADMINISTRATION" title="Audit Logs" /><FilterBar search={search} setSearch={setSearch}><select aria-label="Filter audit entity" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{[...new Set(data.adminAuditLogs.map((log) => log.entityType))].map((type) => <option key={type}>{type}</option>)}</select><select aria-label="Filter audit action" onChange={(event) => setActionFilter(event.target.value)} value={actionFilter}><option>All</option>{[...new Set(data.adminAuditLogs.map((log) => log.action))].map((action) => <option key={action}>{action}</option>)}</select></FilterBar><Card className="admin-section-card">{rows.length ? <Table columns={[{ key: 'timestamp', label: 'Date / time' }, { key: 'actor', label: 'Actor' }, { key: 'action', label: 'Action' }, { key: 'entityType', label: 'Entity' }, { key: 'entityId', label: 'Record ID' }, { key: 'description', label: 'Details' }]} rows={rows} /> : <EmptyState title="No audit entries found" />}</Card></>
+    return <><PageHeader description="Search the recorded history of significant system and approval actions." eyebrow="UNIDOS ADMINISTRATION" title="Audit Logs" /><FilterBar search={search} setSearch={setSearch}><select aria-label="Filter audit entity" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{[...new Set(data.adminAuditLogs.map((log) => log.entityType))].map((type) => <option key={type}>{type}</option>)}</select><select aria-label="Filter audit action" onChange={(event) => setActionFilter(event.target.value)} value={actionFilter}><option>All</option>{[...new Set(data.adminAuditLogs.map((log) => log.action))].map((action) => <option key={action}>{action}</option>)}</select></FilterBar><Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[{ key: 'timestamp', label: 'Date / time' }, { key: 'actor', label: 'Actor' }, { key: 'action', label: 'Action' }, { key: 'entityType', label: 'Entity' }, { key: 'entityId', label: 'Record ID' }, { key: 'description', label: 'Details' }]} rows={rows} /> : <EmptyState title="No audit entries found" />}</Card></>
   }
 
   if (pathname.endsWith('/settings')) {

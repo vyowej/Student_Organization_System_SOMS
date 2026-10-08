@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
+import DataTable from 'datatables.net-dt'
+import 'datatables.net-dt/css/dataTables.dataTables.min.css'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
@@ -36,6 +38,7 @@ export default function OfficerMembersPage() {
   const [positionTarget, setPositionTarget] = useState(null)
   const [assignedMemberId, setAssignedMemberId] = useState('')
   const [assignedPosition, setAssignedPosition] = useState('')
+  const tableRef = useRef(null)
 
   const filteredMembers = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
@@ -47,6 +50,30 @@ export default function OfficerMembersPage() {
       return matchesSearch && matchesStatus && matchesPosition
     })
   }, [officerMembers, positionFilter, search, statusFilter])
+
+  useEffect(() => {
+    if (tableRef.current) {
+      const dt = new DataTable(tableRef.current, {
+        destroy: true,
+        paging: true,
+        searching: false,
+        ordering: true,
+        info: true,
+        layout: {
+          topStart: null,
+          topEnd: null,
+          bottomStart: ['pageLength', 'info'],
+          bottomEnd: 'paging'
+        },
+        columnDefs: [
+          { orderable: false, targets: -1 }
+        ],
+      })
+      return () => {
+        dt.destroy()
+      }
+    }
+  }, [filteredMembers])
 
   function startEdit(member) {
     setEditingMember(member)
@@ -132,8 +159,8 @@ export default function OfficerMembersPage() {
           </label>
         </div>
 
-        <div className="officer-member-table-wrap">
-          <table className="officer-member-table">
+        <div className="officer-member-table-wrap using-datatables" key={filteredMembers.length + '-' + filteredMembers.map(m => m.id).join('-').slice(0, 50)}>
+          <table className="officer-member-table" ref={tableRef}>
             <thead>
               <tr>
                 <th>Student</th>
@@ -155,9 +182,9 @@ export default function OfficerMembersPage() {
                   <td data-label="Membership Status"><Badge tone={statusTones[member.status]}>{formatStatus(member.status)}</Badge></td>
                   <td data-label="Date Joined">{member.dateJoined}</td>
                   <td className="officer-member-row-actions" data-label="Actions">
-                    <Button onClick={() => setViewingMember(member)} variant="ghost">View</Button>
-                    <Button disabled={member.status !== 'ACTIVE'} onClick={() => startEdit(member)} variant="ghost">Edit</Button>
-                    <Button onClick={() => { setStatusTarget(member); setNextStatus(member.status) }} variant="ghost">Manage Status</Button>
+                    <Button onClick={() => setViewingMember(member)} variant="secondary">View</Button>
+                    <Button disabled={member.status !== 'ACTIVE'} onClick={() => startEdit(member)} variant="outline">Edit</Button>
+                    <Button onClick={() => { setStatusTarget(member); setNextStatus(member.status) }} variant="primary">Manage Status</Button>
                   </td>
                 </tr>
               ))}

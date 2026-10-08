@@ -1,7 +1,44 @@
-export default function Table({ columns, rows, getRowKey = (row, index) => row.id ?? index }) {
+import { useEffect, useRef } from 'react'
+import DataTable from 'datatables.net-dt'
+import 'datatables.net-dt/css/dataTables.dataTables.min.css'
+
+export default function Table(props) {
+  const { rows, getRowKey = (row, index) => row.id ?? index } = props
+  const tableKey = rows.length + '-' + rows.map((r, i) => getRowKey(r, i)).join('-').slice(0, 100)
+  return <TableInner key={tableKey} {...props} />
+}
+
+function TableInner({ columns, rows, getRowKey = (row, index) => row.id ?? index, useDataTable = false }) {
+  const tableRef = useRef(null)
+
+  useEffect(() => {
+    if (useDataTable && tableRef.current) {
+      const dt = new DataTable(tableRef.current, {
+        destroy: true,
+        paging: true,
+        searching: false,
+        ordering: true,
+        info: true,
+        layout: {
+          topStart: null,
+          topEnd: null,
+          bottomStart: ['pageLength', 'info'],
+          bottomEnd: 'paging'
+        },
+        columnDefs: columns.map((col, idx) => ({
+          targets: idx,
+          orderable: col.key !== 'actions'
+        })),
+      })
+      return () => {
+        dt.destroy()
+      }
+    }
+  }, [useDataTable, rows, columns])
+
   return (
-    <div className="data-table-wrap">
-      <table className="data-table">
+    <div className={`data-table-wrap ${useDataTable ? 'using-datatables' : ''}`}>
+      <table className="data-table" ref={tableRef}>
         <thead>
           <tr>
             {columns.map((column) => <th key={column.key}>{column.label}</th>)}

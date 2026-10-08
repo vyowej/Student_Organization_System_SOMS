@@ -33,7 +33,7 @@ export default function OfficerEventsPage() {
           <div><h2>Organization events</h2><p>Only events belonging to WMSU Computer Society are shown.</p></div>
           <Link className="button button-primary" to="/officer/events/create">Create Event</Link>
         </div>
-        <Table columns={columns} rows={officerEvents} />
+        <Table useDataTable columns={columns} rows={officerEvents} />
         <p className="officer-permission-note">Event proposals cannot be approved by an organization officer. Approval is reserved for the Organization Adviser and Student Affairs Admin.</p>
       </Card>
     </>
