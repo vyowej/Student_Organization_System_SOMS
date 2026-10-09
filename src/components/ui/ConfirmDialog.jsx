@@ -14,16 +14,17 @@ export default function ConfirmDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   tone = 'primary',
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }) {
   return (
     <Modal onClose={onCancel} open={open} title={title}>
-      <p>{message}</p>
+      {message && <p>{message}</p>}
       {details}
       <div className="auth-dialog-actions">
         <Button onClick={onCancel} variant="secondary">{cancelLabel}</Button>
-        <Button onClick={onConfirm} variant={tone}>{confirmLabel}</Button>
+        <Button disabled={confirmDisabled} onClick={onConfirm} variant={tone}>{confirmLabel}</Button>
       </div>
     </Modal>
   )

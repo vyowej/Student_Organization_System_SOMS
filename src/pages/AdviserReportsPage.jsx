@@ -85,9 +85,10 @@ export default function AdviserReportsPage() {
     const undo = captureUndo()
     const saved = reviewAccomplishmentReport(selected.id, decision, comment)
     if (saved) showToast(decision === 'VERIFIED'
-      ? `${selected.eventTitle} report verified.`
+      ? 'Accomplishment report verified successfully.'
       : `${selected.eventTitle} report returned for revision.`, 'success', undoAction(undo))
     else showToast('The report decision could not be saved.', 'error')
+    return saved
   }
 
   const summaries = [

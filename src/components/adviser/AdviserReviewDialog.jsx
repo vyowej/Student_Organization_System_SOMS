@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Badge from '../ui/Badge.jsx'
 import Button from '../ui/Button.jsx'
+import ConfirmDialog from '../ui/ConfirmDialog.jsx'
 import Modal from '../ui/Modal.jsx'
 
 const statusTone = {
@@ -19,11 +20,15 @@ export default function AdviserReviewDialog({ item, onClose, onDecision, report 
   const [decision, setDecision] = useState(initialDecision)
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
+  const [verificationConfirmationOpen, setVerificationConfirmationOpen] = useState(false)
+  const [verificationProcessing, setVerificationProcessing] = useState(false)
 
   function close() {
     setDecision('')
     setComment('')
     setError('')
+    setVerificationConfirmationOpen(false)
+    setVerificationProcessing(false)
     onClose()
   }
 
@@ -34,14 +39,27 @@ export default function AdviserReviewDialog({ item, onClose, onDecision, report 
         return
       }
     }
+    if (decision === 'VERIFIED') {
+      setVerificationConfirmationOpen(true)
+      return
+    }
     onDecision(decision, comment)
     close()
   }
 
+  function confirmVerification() {
+    if (verificationProcessing) return
+    setVerificationProcessing(true)
+    const saved = onDecision('VERIFIED', comment)
+    if (saved) close()
+    else setVerificationProcessing(false)
+  }
+
   return (
-    <Modal onClose={close} open={Boolean(item)} title={report ? 'Accomplishment Report' : 'Submission Review'}>
-      {item && (
-        <div className={`adviser-review-dialog${report ? ' adviser-review-dialog--report' : ''}`}>
+    <>
+      <Modal onClose={close} open={Boolean(item)} title={report ? 'Accomplishment Report' : 'Submission Review'}>
+        {item && (
+          <div className={`adviser-review-dialog${report ? ' adviser-review-dialog--report' : ''}`}>
           <div className="adviser-review-summary">
             <div>
               <span className="adviser-muted-label">{item.organizationName}</span>
@@ -178,8 +196,26 @@ export default function AdviserReviewDialog({ item, onClose, onDecision, report 
           ) : (
             <div className="adviser-review-actions"><Button onClick={close} variant="secondary">Close</Button></div>
           )}
-        </div>
-      )}
-    </Modal>
+          </div>
+        )}
+      </Modal>
+      <ConfirmDialog
+        confirmDisabled={verificationProcessing}
+        confirmLabel={verificationProcessing ? 'Verifying…' : 'Yes, Verify Report'}
+        details={(
+          <div className="adviser-verification-confirmation">
+            <span aria-hidden="true" className="adviser-verification-confirmation-icon">!</span>
+            <p>Are you sure you want to verify this accomplishment report? Please make sure you have reviewed all the report details and supporting documents before proceeding.</p>
+          </div>
+        )}
+        message=""
+        onCancel={() => {
+          if (!verificationProcessing) setVerificationConfirmationOpen(false)
+        }}
+        onConfirm={confirmVerification}
+        open={verificationConfirmationOpen}
+        title="Confirm Report Verification"
+      />
+    </>
   )
 }
