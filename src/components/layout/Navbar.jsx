@@ -4,6 +4,7 @@ import { useAuth } from '../../context/useAuth.js'
 import Button from '../ui/Button.jsx'
 import Modal from '../ui/Modal.jsx'
 import WmsuLogo from '../ui/WmsuLogo.jsx'
+import { useToast } from '../ui/useToast.js'
 import { formatDisplayName } from '../../data/displayName.js'
 
 function Brand() {
@@ -28,6 +29,7 @@ export default function Navbar({
   isMenuOpen,
 }) {
   const { currentUser, logout, setActiveRole } = useAuth()
+  const { clearLastAction } = useToast()
   const navigate = useNavigate()
   const [logoutOpen, setLogoutOpen] = useState(false)
   const roleLabel = role === 'Student'
@@ -87,7 +89,7 @@ export default function Navbar({
         <p>Are you sure you want to log out?</p>
         <div className="auth-dialog-actions">
           <Button onClick={() => setLogoutOpen(false)} variant="secondary">Cancel</Button>
-          <Button onClick={() => { logout(); setLogoutOpen(false); navigate('/login', { replace: true }) }}>Log out</Button>
+          <Button onClick={() => { clearLastAction(); logout(); setLogoutOpen(false); navigate('/login', { replace: true }) }}>Log out</Button>
         </div>
       </Modal>
     </header>

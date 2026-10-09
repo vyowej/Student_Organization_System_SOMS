@@ -7,6 +7,7 @@ import { usePortalData } from '../../context/usePortalData.js'
 import { useAuth } from '../../context/useAuth.js'
 import Navbar from './Navbar.jsx'
 import Sidebar from './Sidebar.jsx'
+import UndoBar from '../ui/UndoBar.jsx'
 
 export default function PortalLayout({ role }) {
   const sharedPortalData = usePortalData()
@@ -60,6 +61,27 @@ export default function PortalLayout({ role }) {
     return registration
   }
 
+  function cancelRegistration(registrationId) {
+    const cancelled = sharedPortalData.cancelStudentRegistration(registrationId)
+    if (cancelled) {
+      setEventRegisteredCounts((currentCounts) => ({
+        ...currentCounts,
+        [cancelled.eventId]: Math.max(0, (currentCounts[cancelled.eventId] ?? 1) - 1),
+      }))
+    }
+    return cancelled
+  }
+
+  // Undo must also restore the per-event registration counts kept in this layout.
+  function captureUndo() {
+    const restoreSharedData = sharedPortalData.captureUndo()
+    const countsSnapshot = eventRegisteredCounts
+    return function undo() {
+      restoreSharedData()
+      setEventRegisteredCounts(countsSnapshot)
+    }
+  }
+
   const outletContext = role === 'Student'
     ? {
       ...sharedPortalData,
@@ -68,19 +90,21 @@ export default function PortalLayout({ role }) {
       markStudentNotificationRead: sharedPortalData.markStudentNotificationRead,
       readNotificationIds,
       registerForEvent,
+      cancelRegistration,
       studentRegistrations,
       currentUser,
     }
     : role === 'Organization Officer'
       ? {
         ...sharedPortalData,
+        captureUndo,
         studentRegistrations,
-          currentUser,
-        }
+        currentUser,
+      }
       : role === 'Organization Adviser'
-          ? { ...sharedPortalData, currentUser }
+        ? { ...sharedPortalData, captureUndo, currentUser }
         : role === 'Student Affairs Admin'
-            ? { ...sharedPortalData, currentUser, studentRegistrations }
+          ? { ...sharedPortalData, captureUndo, currentUser, studentRegistrations }
           : undefined
 
   return (
@@ -103,6 +127,7 @@ export default function PortalLayout({ role }) {
         )}
         <Sidebar onNavigate={() => setMenuOpen(false)} pages={navigation.pages} role={role} />
         <main className="portal-main">
+          <UndoBar />
           <Outlet context={outletContext} />
         </main>
       </div>

@@ -8,9 +8,9 @@ function StatCard({ label, value, to }) {
   return (
     <Link className="adviser-stat-link" to={to}>
       <Card className="adviser-stat-card">
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <small>View details <span aria-hidden="true">→</span></small>
+        <span className="stat-label">{label}</span>
+        <strong className="stat-value">{value}</strong>
+        <small className="stat-note">View details <span aria-hidden="true">→</span></small>
       </Card>
     </Link>
   )
@@ -36,13 +36,14 @@ export default function AdviserDashboardPage() {
         description="Review proposals, support assigned organizations, and keep activities on track."
         eyebrow="UNIDOS · FACULTY ADVISER"
         title={`Welcome, ${adviserAssignedOrganizations[0].adviser}`}
-      />
-      <div className="adviser-stat-grid">
-        <StatCard label="Organizations Under Advisement" value={adviserAssignedOrganizations.length} to="/adviser/organizations" />
-        <StatCard label="Pending Approvals" value={approvalsCount} to="/adviser/approvals" />
-        <StatCard label="Scheduled Activities" value={upcomingEvents.length} to="/adviser/events" />
-        <StatCard label="Verified Accomplishment Reports" value={adviserReports.filter((report) => report.status === 'VERIFIED').length} to="/adviser/reports" />
-      </div>
+      >
+        <div className="adviser-stat-grid">
+          <StatCard label="Organizations Under Advisement" value={adviserAssignedOrganizations.length} to="/adviser/organizations" />
+          <StatCard label="Pending Approvals" value={approvalsCount} to="/adviser/approvals" />
+          <StatCard label="Scheduled Activities" value={upcomingEvents.length} to="/adviser/events" />
+          <StatCard label="Verified Accomplishment Reports" value={adviserReports.filter((report) => report.status === 'VERIFIED').length} to="/adviser/reports" />
+        </div>
+      </PageHeader>
 
       <div className="adviser-dashboard-columns">
         <Card className="adviser-panel">

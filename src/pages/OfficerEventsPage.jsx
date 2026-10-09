@@ -1,12 +1,16 @@
+import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Card from '../components/ui/Card.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
+import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import Table from '../components/ui/Table.jsx'
 import { officerEventStatuses } from '../data/officerPortal.js'
 
 export default function OfficerEventsPage() {
   const { officerEvents } = useOutletContext()
+  const [search, setSearch] = useState('')
+  const visibleEvents = officerEvents.filter((event) => matchesQuery(search, event.title, event.date, event.status, event.location))
   const columns = [
     { key: 'title', label: 'Event' },
     { key: 'date', label: 'Date' },
@@ -28,12 +32,13 @@ export default function OfficerEventsPage() {
         eyebrow="WMSU Computer Society"
         title="Events"
       />
+      <SearchBar label="Search events" onChange={setSearch} placeholder="Search events by title, date or status…" value={search} />
       <Card className="officer-page-card">
         <div className="officer-page-card-heading">
           <div><h2>Organization events</h2><p>Only events belonging to WMSU Computer Society are shown.</p></div>
           <Link className="button button-primary" to="/officer/events/create">Create Event</Link>
         </div>
-        <Table useDataTable columns={columns} rows={officerEvents} />
+        <Table useDataTable columns={columns} rows={visibleEvents} />
         <p className="officer-permission-note">Event proposals cannot be approved by an organization officer. Approval is reserved for the Organization Adviser and Student Affairs Admin.</p>
       </Card>
     </>

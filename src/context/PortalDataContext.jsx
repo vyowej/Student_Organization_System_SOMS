@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { initialStudentMemberships, studentOrganizations } from '../data/studentOrganizations.js'
 import {
   initialOfficerEvents,
@@ -40,11 +40,11 @@ function normalizeLegacyDemoNames(value, parentKey = '') {
       ? { firstName: 'Maria', middleName: '', lastName: 'Santos', name: 'Santos, Maria', displayName: 'Santos, Maria', studentName: 'Santos, Maria', email: email === 'officer@unidos.test' || userId === 'WMSU-OFFICER-0142' ? 'officer@unidos.test' : 'maria.santos@wmsu.edu.ph' }
       : studentId === '2026-00123' || userId === '2026-00123'
         ? { firstName: 'Elena', middleName: '', lastName: 'Cruz', name: 'Cruz, Elena', displayName: 'Cruz, Elena', studentName: 'Cruz, Elena', email: 'elena.cruz@student.wmsu.edu.ph' }
-      : ['adviser@unidos.test', 'adviser@wmsu.edu.ph'].includes(email) || userId === 'WMSU-EMP-0314'
-        ? { firstName: 'Ana', middleName: '', lastName: 'Reyes', name: 'Reyes, Ana', displayName: 'Reyes, Ana', email: 'adviser@wmsu.edu.ph' }
-        : ['admin@unidos.test', 'admin@wmsu.edu.ph'].includes(email) || userId === 'WMSU-ADMIN-0001' || id === 'admin-root'
-          ? { firstName: 'John', middleName: '', lastName: 'Garcia', name: 'Garcia, John', displayName: 'Garcia, John', email: 'admin@wmsu.edu.ph' }
-          : null
+        : ['adviser@unidos.test', 'adviser@wmsu.edu.ph'].includes(email) || userId === 'WMSU-EMP-0314'
+          ? { firstName: 'Ana', middleName: '', lastName: 'Reyes', name: 'Reyes, Ana', displayName: 'Reyes, Ana', email: 'adviser@wmsu.edu.ph' }
+          : ['admin@unidos.test', 'admin@wmsu.edu.ph'].includes(email) || userId === 'WMSU-ADMIN-0001' || id === 'admin-root'
+            ? { firstName: 'John', middleName: '', lastName: 'Garcia', name: 'Garcia, John', displayName: 'Garcia, John', email: 'admin@wmsu.edu.ph' }
+            : null
   const submittedByOfficer = ['officerEvents', 'adviserDocuments', 'adviserReports'].includes(parentKey)
   const legacyAuditActor = parentKey === 'adminAuditLogs' && ['audit-seed-2', 'audit-seed-3'].includes(id)
   return {
@@ -181,6 +181,41 @@ export function PortalDataProvider({ children }) {
     }))
   }, [studentMemberships, officerMembershipRequests, officerMembers, officerMemberCount, officerEvents, studentRegistrations, adviserDocuments, adviserReports, adviserActivity, officerNotifications, adminOrganizations, organizationChangeRequests, organizationApplications, adminUsers, adminAuditLogs, adminSettings, studentNotifications, adminNotifications])
 
+  // ---- Undo support -------------------------------------------------------
+  // Keep the latest state of every slice in a ref so an action can capture a
+  // snapshot *before* it runs, and hand back a function that restores it.
+  const latestState = useRef({})
+  latestState.current = {
+    studentMemberships, officerMembershipRequests, officerMembers, officerMemberCount, officerEvents,
+    studentRegistrations, adviserDocuments, adviserReports, adviserActivity, officerNotifications,
+    adminOrganizations, organizationChangeRequests, organizationApplications, adminUsers,
+    adminAuditLogs, adminSettings, studentNotifications, adminNotifications,
+  }
+
+  function captureUndo() {
+    const snapshot = latestState.current
+    return function undo() {
+      setStudentMemberships(snapshot.studentMemberships)
+      setOfficerMembershipRequests(snapshot.officerMembershipRequests)
+      setOfficerMembers(snapshot.officerMembers)
+      setOfficerMemberCount(snapshot.officerMemberCount)
+      setOfficerEvents(snapshot.officerEvents)
+      setStudentRegistrations(snapshot.studentRegistrations)
+      setAdviserDocuments(snapshot.adviserDocuments)
+      setAdviserReports(snapshot.adviserReports)
+      setAdviserActivity(snapshot.adviserActivity)
+      setOfficerNotifications(snapshot.officerNotifications)
+      setAdminOrganizations(snapshot.adminOrganizations)
+      setOrganizationChangeRequests(snapshot.organizationChangeRequests)
+      setOrganizationApplications(snapshot.organizationApplications)
+      setAdminUsers(snapshot.adminUsers)
+      setAdminAuditLogs(snapshot.adminAuditLogs)
+      setAdminSettings(snapshot.adminSettings)
+      setStudentNotifications(snapshot.studentNotifications)
+      setAdminNotifications(snapshot.adminNotifications)
+    }
+  }
+
   function appendAudit(action, entityType, entityId, description) {
     const timestamp = new Intl.DateTimeFormat('en-US', {
       dateStyle: 'medium',
@@ -273,6 +308,22 @@ export function PortalDataProvider({ children }) {
     }
     setStudentRegistrations((registrations) => [...registrations, registration])
     return registration
+  }
+
+  function cancelStudentRegistration(registrationId) {
+    if (currentUser?.role !== 'STUDENT') return null
+    const studentId = currentUser.studentId ?? currentUser.id
+    const target = studentRegistrations.find((registration) => (
+      registration.id === registrationId
+      && registration.studentId === studentId
+      && registration.status === 'REGISTERED'
+      && registration.attendanceStatus !== 'ATTENDED'
+    ))
+    if (!target) return null
+    setStudentRegistrations((registrations) => registrations.map((registration) => (
+      registration.id === registrationId ? { ...registration, status: 'CANCELLED' } : registration
+    )))
+    return target
   }
 
   function checkInStudent(eventId, registrationId) {
@@ -560,9 +611,11 @@ export function PortalDataProvider({ children }) {
       status,
     }
     setAdminOrganizations((organizations) => organizations.map((item) => item.id === organization.id
-      ? { ...item, announcements: existing
-        ? (item.announcements ?? []).map((current) => current.id === existing.id ? announcement : current)
-        : [announcement, ...(item.announcements ?? [])] }
+      ? {
+        ...item, announcements: existing
+          ? (item.announcements ?? []).map((current) => current.id === existing.id ? announcement : current)
+          : [announcement, ...(item.announcements ?? [])]
+      }
       : item))
     const publishingDraft = existing?.status !== 'PUBLISHED' && status === 'PUBLISHED'
     const action = publishingDraft
@@ -1098,6 +1151,7 @@ export function PortalDataProvider({ children }) {
 
   const value = {
     adminAuditLogs,
+    captureUndo,
     adminNotifications,
     adminOrganizations,
     adminSettings,
@@ -1146,6 +1200,7 @@ export function PortalDataProvider({ children }) {
     updateAdminUser,
     updateOfficerMemberStatus,
     registerStudentForEvent,
+    cancelStudentRegistration,
   }
 
   return <PortalDataContext.Provider value={value}>{children}</PortalDataContext.Provider>

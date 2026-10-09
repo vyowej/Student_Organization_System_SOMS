@@ -6,7 +6,7 @@ import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { getOrganizationEvents, studentOrganizations } from '../data/studentOrganizations.js'
 import { formatDisplayName } from '../data/displayName.js'
 
@@ -30,7 +30,7 @@ function MembershipBadge({ status }) {
 
 export default function StudentOrganizationDetailsPage() {
   const { id } = useParams()
-  const { adminOrganizations = [], officerMembers, studentMemberships, submitMembershipApplication } = useOutletContext()
+  const { adminOrganizations = [], captureUndo, officerMembers, studentMemberships, submitMembershipApplication } = useOutletContext()
   const { showToast } = useToast()
   const [applicationOpen, setApplicationOpen] = useState(false)
   const managedOrganization = adminOrganizations.find((item) => item.id === id)
@@ -69,9 +69,10 @@ export default function StudentOrganizationDetailsPage() {
           : 'Join Organization'
 
   function confirmApplication() {
+    const undo = captureUndo()
     submitMembershipApplication(organization.id)
     setApplicationOpen(false)
-    showToast('Membership application submitted.', 'success')
+    showToast('Membership application submitted.', 'success', undoAction(undo))
   }
 
   return (

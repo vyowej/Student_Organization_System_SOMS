@@ -1,13 +1,24 @@
+import { useState } from 'react'
 import { Link, useParams, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
+import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import { adviserAssignedOrganizations } from '../data/adviserPortal.js'
 import { formatDisplayName } from '../data/displayName.js'
 
+function adviserInitials(name = '') {
+  const words = name.replace(/^(dr|prof|engr|mr|ms|mrs|atty)\.?\s+/i, '').split(/\s+/).filter(Boolean)
+  return words.slice(0, 2).map((word) => word[0]).join('').toUpperCase() || 'FA'
+}
+
 export function AdviserOrganizationsPage() {
   const { adminOrganizations, officerEvents, officerMemberCount } = useOutletContext()
+  const [search, setSearch] = useState('')
+  const assigned = adviserAssignedOrganizations
+    .map((item) => ({ ...item, ...adminOrganizations.find((entry) => entry.id === item.id) }))
+    .filter((item) => matchesQuery(search, item.name, item.acronym, item.category, item.adviser))
 
   return (
     <>
@@ -16,9 +27,10 @@ export function AdviserOrganizationsPage() {
         eyebrow="UNIDOS · FACULTY ADVISER"
         title="My Organizations"
       />
+      <SearchBar label="Search organizations" onChange={setSearch} placeholder="Search by name, acronym or category…" value={search} />
+      {assigned.length === 0 && <EmptyState description="No assigned organizations match your search." title="No organizations found" />}
       <div className="adviser-organization-grid">
-        {adviserAssignedOrganizations.map((assignedOrganization) => {
-          const organization = { ...assignedOrganization, ...adminOrganizations.find((item) => item.id === assignedOrganization.id) }
+        {assigned.map((organization) => {
           const events = officerEvents.filter((event) => event.organizationId === organization.id)
           return (
             <Card className="adviser-organization-card" key={organization.id}>
@@ -28,7 +40,11 @@ export function AdviserOrganizationsPage() {
               </div>
               <span className="adviser-muted-label">{organization.category}</span>
               <h2>{organization.name}</h2>
-              <p>{organization.acronym} · Faculty adviser: {organization.adviser}</p>
+              <p className="adviser-org-acronym">{organization.acronym}</p>
+              <div className="adviser-org-adviser">
+                <span aria-hidden="true">{adviserInitials(organization.adviser)}</span>
+                <div><small>Faculty adviser</small><strong>{organization.adviser}</strong></div>
+              </div>
               <div className="adviser-org-facts">
                 <span><strong>{officerMemberCount}</strong> Members</span>
                 <span><strong>{events.filter((event) => ['APPROVED', 'PUBLISHED'].includes(event.status)).length}</strong> Upcoming events</span>
@@ -74,13 +90,23 @@ export function AdviserOrganizationDetailsPage() {
       />
       <Card className="adviser-profile-card">
         <span className="adviser-org-logo">{organization.acronym}</span>
-        <div><Badge tone="success">{organization.status}</Badge><p>{organization.name} is assigned to you for faculty guidance and proposal review.</p></div>
-        <span className="adviser-profile-count"><strong>{officerMemberCount}</strong> active members</span>
+        <div>
+          <Badge tone="success">{organization.status}</Badge>
+          <p>{organization.name} is assigned to you for faculty guidance and proposal review.</p>
+        </div>
+        <div className="adviser-profile-meta">
+          <span className="adviser-profile-count"><strong>{officerMemberCount}</strong> active members</span>
+          <div className="adviser-org-adviser">
+            <span aria-hidden="true">{adviserInitials(organization.adviser)}</span>
+            <div><small>Faculty adviser</small><strong>{organization.adviser}</strong></div>
+          </div>
+        </div>
       </Card>
+      <section aria-label="Mission and vision" className="adviser-purpose-grid">
+        <Card className="adviser-purpose-card"><h2>Mission</h2><p>{organization.mission}</p></Card>
+        <Card className="adviser-purpose-card"><h2>Vision</h2><p>{organization.vision}</p></Card>
+      </section>
       <div className="adviser-detail-grid">
-        <Card className="adviser-panel"><h2>Mission</h2><p>{organization.mission}</p></Card>
-        <Card className="adviser-panel"><h2>Vision</h2><p>{organization.vision}</p></Card>
-        <Card className="adviser-panel"><h2>Faculty Adviser</h2><p>{organization.adviser}</p></Card>
         <Card className="adviser-panel adviser-detail-wide">
           <h2>Officers</h2>
           {officers.length ? <div className="adviser-people-list">{officers.map((member) => <div key={member.id}><strong>{formatDisplayName(member)}</strong><Badge tone="crimson">{member.position}</Badge></div>)}</div> : <p>No active officers are recorded.</p>}

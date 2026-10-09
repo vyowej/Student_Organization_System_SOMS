@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import FilterSelect from '../components/ui/FilterSelect.jsx'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import { EventCard, LeaderCard, OrganizationCard } from '../components/public/LandingCards.jsx'
 import AnimatedStatistic from '../components/public/AnimatedStatistic.jsx'
@@ -98,20 +99,13 @@ function LandingPage() {
           id="organizations-title"
           title="Student organizations"
         />
-        <div aria-label="Filter organizations by category" className="category-filters">
-          {organizationCategories.map((category) => (
-            <button
-              aria-controls="organization-results"
-              aria-pressed={activeCategory === category}
-              className={`category-filter${activeCategory === category ? ' selected' : ''}`}
-              key={category}
-              onClick={() => setActiveCategory(category)}
-              type="button"
-            >
-              {category}
-            </button>
-          ))}
-        </div>
+        <FilterSelect
+          className="landing-category-select"
+          label="Category"
+          onChange={setActiveCategory}
+          options={organizationCategories}
+          value={activeCategory}
+        />
         <div className="organization-grid" id="organization-results">
           {filteredOrganizations.map((organization) => (
             <OrganizationCard key={organization.id} organization={organization} />
@@ -225,6 +219,8 @@ function LandingPage() {
             <Link to="/student/organizations">Organizations</Link>
             <Link to="/student/events">Events</Link>
             <Link to="/#about">About</Link>
+            <Link to="/#community-feed">Community Feed</Link>
+            <Link to="/#leaderboard">Leaderboard</Link>
           </nav>
           <nav aria-label="Student links" className="footer-column">
             <strong>Student</strong>

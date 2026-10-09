@@ -4,9 +4,10 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { formatDisplayName } from '../data/displayName.js'
 
 const statusOptions = ['All', 'PUBLISHED', 'DRAFT', 'ARCHIVED']
@@ -27,6 +28,7 @@ function dateLabel(value) {
 export default function OfficerAnnouncementsPage() {
   const {
     adminOrganizations,
+    captureUndo,
     currentUser,
     saveOfficerAnnouncement,
     archiveOfficerAnnouncement,
@@ -42,6 +44,7 @@ export default function OfficerAnnouncementsPage() {
   const [editingAnnouncement, setEditingAnnouncement] = useState(null)
   const [viewingAnnouncement, setViewingAnnouncement] = useState(null)
   const [confirmAction, setConfirmAction] = useState(null)
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false)
   const [formError, setFormError] = useState('')
   const [form, setForm] = useState({ title: '', content: '' })
 
@@ -71,11 +74,17 @@ export default function OfficerAnnouncementsPage() {
     setEditorOpen(true)
   }
 
-  function save(status) {
+  function save(status, confirmed = false) {
     if (!form.title.trim() || !form.content.trim()) {
       setFormError('Title and content are required.')
       return
     }
+    if (status === 'PUBLISHED' && !confirmed) {
+      setPublishConfirmOpen(true)
+      return
+    }
+    setPublishConfirmOpen(false)
+    const undo = captureUndo()
     const saved = saveOfficerAnnouncement({
       id: editingAnnouncement?.id,
       title: form.title,
@@ -89,12 +98,13 @@ export default function OfficerAnnouncementsPage() {
     setEditorOpen(false)
     showToast(editingAnnouncement
       ? 'Announcement updated successfully.'
-      : status === 'DRAFT' ? 'Announcement saved as draft.' : 'Announcement published successfully.', 'success')
+      : status === 'DRAFT' ? 'Announcement saved as draft.' : 'Announcement published successfully.', 'success', undoAction(undo))
   }
 
   function performConfirmedAction() {
     if (!confirmAction) return
     const { action, announcement } = confirmAction
+    const undo = captureUndo()
     const completed = action === 'archive'
       ? archiveOfficerAnnouncement(announcement.id)
       : deleteOfficerAnnouncement(announcement.id)
@@ -102,7 +112,7 @@ export default function OfficerAnnouncementsPage() {
       showToast(`Unable to ${action} this announcement.`, 'error')
       return
     }
-    showToast(action === 'archive' ? 'Announcement archived.' : 'Announcement deleted.', 'success')
+    showToast(action === 'archive' ? 'Announcement archived.' : 'Announcement deleted.', 'success', undoAction(undo))
     if (viewingAnnouncement?.id === announcement.id) setViewingAnnouncement(null)
     setConfirmAction(null)
   }
@@ -170,7 +180,16 @@ export default function OfficerAnnouncementsPage() {
         </Card>
       )}
 
-      <Modal onClose={() => setEditorOpen(false)} open={editorOpen} title={editingAnnouncement ? 'Edit Announcement' : 'Create Announcement'}>
+      <ConfirmDialog
+        confirmLabel="Publish announcement"
+        message={`Are you sure you want to publish "${form.title.trim()}"? Members of your organization will be able to see it.`}
+        onCancel={() => setPublishConfirmOpen(false)}
+        onConfirm={() => save('PUBLISHED', true)}
+        open={editorOpen && publishConfirmOpen}
+        title="Publish announcement"
+      />
+
+      <Modal onClose={() => setEditorOpen(false)} open={editorOpen && !publishConfirmOpen} title={editingAnnouncement ? 'Edit Announcement' : 'Create Announcement'}>
         <form className="officer-announcement-form" onSubmit={(event) => { event.preventDefault(); save('PUBLISHED') }}>
           <label>Title<input autoFocus onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} required value={form.title} /></label>
           <label>Description / Content<textarea onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))} required rows="7" value={form.content} /></label>

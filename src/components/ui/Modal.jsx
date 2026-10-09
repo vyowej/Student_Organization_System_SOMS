@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import Button from './Button.jsx'
 
 const FOCUSABLE = [
@@ -74,7 +75,7 @@ export default function Modal({ open, title, onClose, children }) {
 
   if (!open) return null
 
-  return (
+  return createPortal(
     <div
       className="modal-backdrop"
       onMouseDown={(event) => {
@@ -99,6 +100,7 @@ export default function Modal({ open, title, onClose, children }) {
         </header>
         <div className="modal-content">{children}</div>
       </section>
-    </div>
+    </div>,
+    document.body,
   )
 }

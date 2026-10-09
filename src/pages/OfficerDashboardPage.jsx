@@ -5,7 +5,7 @@ import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { officerActivity, officerEventStatuses } from '../data/officerPortal.js'
 import { formatDisplayName, formatGreetingName, getTimeGreeting } from '../data/displayName.js'
 
@@ -57,6 +57,7 @@ export default function OfficerDashboardPage() {
   const {
     adminOrganizations,
     approveOfficerMembershipRequest,
+    captureUndo,
     officerEvents,
     officerMemberCount,
     officerMembershipRequests,
@@ -85,15 +86,17 @@ export default function OfficerDashboardPage() {
   function approve() {
     if (!requestToApprove) return
     const request = requestToApprove
+    const undo = captureUndo()
     if (!approveOfficerMembershipRequest(request.id)) return
-    showToast(`${formatDisplayName(request)} is now an active member.`, 'success')
+    showToast(`${formatDisplayName(request)} is now an active member.`, 'success', undoAction(undo))
     setRequestToApprove(null)
   }
 
   function reject() {
     if (!requestToReject) return
+    const undo = captureUndo()
     const rejected = rejectOfficerMembershipRequest(requestToReject.id, rejectionReason)
-    if (rejected) showToast(`${formatDisplayName(requestToReject)}'s application was rejected.`, 'success')
+    if (rejected) showToast(`${formatDisplayName(requestToReject)}'s application was rejected.`, 'success', undoAction(undo))
     setRequestToReject(null)
     setRejectionReason('')
   }
@@ -104,29 +107,26 @@ export default function OfficerDashboardPage() {
         description="Manage your organization, members, activities, and submissions."
         eyebrow="Organization Officer"
         title={`${getTimeGreeting()}, ${formatGreetingName(currentUser)}!`}
-      />
+      >
+        <section aria-label="Your organization" className="officer-welcome">
+          <div className="officer-org-mark" aria-hidden="true">{organization?.acronym ?? 'ORG'}</div>
+          <div className="officer-welcome-copy">
+            <span>YOUR ORGANIZATION</span>
+            <h2>{organization?.name ?? 'Your Organization'}</h2>
+            <p>Organization Officer <i aria-hidden="true">·</i> President</p>
+          </div>
+          <Link className="button button-secondary" to="/officer/organization">Manage organization</Link>
+        </section>
 
-      <section aria-label="Your organization" className="officer-welcome">
-        <div className="officer-org-mark" aria-hidden="true">{organization?.acronym ?? 'ORG'}</div>
-        <div className="officer-welcome-copy">
-          <span>YOUR ORGANIZATION</span>
-          <h2>{organization?.name ?? 'Your Organization'}</h2>
-          <p>Organization Officer <i aria-hidden="true">·</i> President</p>
-        </div>
-        <Link className="button button-secondary" to="/officer/organization">Manage organization</Link>
-      </section>
-
-      <section aria-label="Organization overview metrics" className="officer-metrics">
-        {metricItems.map((metric, index) => (
-          <Card className={`officer-metric officer-metric-${metric.tone}`} key={metric.key} style={{ '--officer-index': index }}>
-            <span aria-hidden="true" className="officer-metric-icon">{metric.icon}</span>
-            <div>
-              <strong>{counts[index]}</strong>
-              <span>{metric.label}</span>
-            </div>
-          </Card>
-        ))}
-      </section>
+        <section aria-label="Organization overview metrics" className="officer-metrics">
+          {metricItems.map((metric, index) => (
+            <Card className={`officer-metric officer-metric-${metric.tone}`} key={metric.key} style={{ '--officer-index': index }}>
+              <span className="stat-label">{metric.label}</span>
+              <strong className="stat-value">{counts[index]}</strong>
+            </Card>
+          ))}
+        </section>
+      </PageHeader>
 
       <div className="officer-dashboard-grid">
         <Card className="officer-panel officer-requests-panel">

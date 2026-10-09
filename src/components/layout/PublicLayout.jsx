@@ -7,8 +7,6 @@ const publicLinks = [
   { label: 'Organizations', to: '/#organizations' },
   { label: 'Events', to: '/#events' },
   { label: 'About', to: '/#about' },
-  { label: 'Community Feed', to: '/#community-feed' },
-  { label: 'Leaderboard', to: '/#leaderboard' },
 ]
 
 export default function PublicLayout() {
@@ -41,7 +39,7 @@ export default function PublicLayout() {
     window.addEventListener('scroll', updateScrollState, { passive: true })
 
     const sections = document.querySelectorAll(
-      '#organizations, #events, #about, #community-feed, #leaderboard',
+      '#organizations, #events, #about',
     )
     if (!('IntersectionObserver' in window) || sections.length === 0) {
       return () => window.removeEventListener('scroll', updateScrollState)
@@ -71,7 +69,7 @@ export default function PublicLayout() {
           <WmsuLogo className="brand-seal" />
           <span className="public-brand-copy">
             <strong>UNIDOS</strong>
-            <span>WESTERN MINDANAO STATE UNIVERSITY · Student Organization Management System</span>
+            <span>WMSU Student Organization Management System</span>
           </span>
         </Link>
         <button

@@ -6,7 +6,8 @@ import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 
 const filters = ['All', 'Pending Review', 'Approved', 'Returned', 'Rejected', 'Upcoming', 'Completed']
 const eventTone = { DRAFT: 'neutral', SUBMITTED: 'warning', UNDER_REVIEW: 'warning', APPROVED: 'success', PUBLISHED: 'success', RETURNED_FOR_REVISION: 'danger', REJECTED: 'danger', ONGOING: 'crimson', COMPLETED: 'neutral', ARCHIVED: 'neutral' }
@@ -22,20 +23,24 @@ function matchesEventFilter(event, filter) {
 }
 
 export default function AdviserEventsPage() {
-  const { officerEvents, reviewAdviserRequest } = useOutletContext()
+  const { captureUndo, officerEvents, reviewAdviserRequest } = useOutletContext()
   const { showToast } = useToast()
   const [filter, setFilter] = useState('All')
   const [selected, setSelected] = useState(null)
-  const visibleEvents = officerEvents.filter((event) => matchesEventFilter(event, filter))
+  const [search, setSearch] = useState('')
+  const visibleEvents = officerEvents
+    .filter((event) => matchesEventFilter(event, filter))
+    .filter((event) => matchesQuery(search, event.title, event.organizationName, event.date, event.location, event.category))
 
   function decide(decision, comment) {
     if (!selected) return
+    const undo = captureUndo()
     const saved = reviewAdviserRequest('EVENT', selected.id, decision, comment)
     if (saved) showToast(decision === 'APPROVED'
       ? `${selected.title} approved for Student Affairs review.`
       : decision === 'RETURNED'
         ? `${selected.title} returned to the officer for revision.`
-        : `${selected.title} proposal rejected.`, 'success')
+        : `${selected.title} proposal rejected.`, 'success', undoAction(undo))
     else showToast('The event decision could not be saved.', 'error')
   }
 
@@ -46,6 +51,7 @@ export default function AdviserEventsPage() {
         eyebrow="UNIDOS · FACULTY ADVISER"
         title="Organization Events"
       />
+      <SearchBar label="Search events" onChange={setSearch} placeholder="Search events by title, organization or date…" value={search} />
       <Card className="adviser-panel">
         <div className="adviser-filter-row" aria-label="Filter adviser events" role="group">
           {filters.map((item) => <button aria-pressed={filter === item} className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} type="button">{item}<span>{officerEvents.filter((event) => matchesEventFilter(event, item)).length}</span></button>)}

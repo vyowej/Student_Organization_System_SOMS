@@ -5,7 +5,7 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { useAuth } from '../context/useAuth.js'
 import { formatDisplayName } from '../data/displayName.js'
 
@@ -42,7 +42,7 @@ function getTurnout(report) {
 }
 
 export default function AdviserReportsPage() {
-  const { adviserReports, reviewAccomplishmentReport } = useOutletContext()
+  const { adviserReports, captureUndo, reviewAccomplishmentReport } = useOutletContext()
   const { currentUser } = useAuth()
   const { showToast } = useToast()
   const [selected, setSelected] = useState(null)
@@ -82,10 +82,11 @@ export default function AdviserReportsPage() {
 
   function decide(decision, comment) {
     if (!selected) return
+    const undo = captureUndo()
     const saved = reviewAccomplishmentReport(selected.id, decision, comment)
     if (saved) showToast(decision === 'VERIFIED'
       ? `${selected.eventTitle} report verified.`
-      : `${selected.eventTitle} report returned for revision.`, 'success')
+      : `${selected.eventTitle} report returned for revision.`, 'success', undoAction(undo))
     else showToast('The report decision could not be saved.', 'error')
   }
 
@@ -102,15 +103,17 @@ export default function AdviserReportsPage() {
         description="Review, verify, and monitor activity reports submitted by your assigned organizations."
         eyebrow="UNIDOS · FACULTY ADVISER"
         title="Activity & Accomplishment Reports"
-      />
-      <section aria-label="Report summary" className="adviser-report-summary-grid">
-        {summaries.map((summary) => (
-          <article className={`adviser-report-summary-card adviser-report-summary-${summary.key}`} key={summary.key}>
-            <span className="adviser-report-summary-icon"><ReportIcon name={summary.icon} /></span>
-            <div><span>{summary.label}</span><strong>{summary.value}</strong><small>{summary.support}</small></div>
-          </article>
-        ))}
-      </section>
+      >
+        <section aria-label="Report summary" className="adviser-report-summary-grid">
+          {summaries.map((summary) => (
+            <article className={`adviser-report-summary-card adviser-report-summary-${summary.key}`} key={summary.key}>
+              <span className="stat-label">{summary.label}</span>
+              <strong className="stat-value">{summary.value}</strong>
+              <small className="stat-note">{summary.support}</small>
+            </article>
+          ))}
+        </section>
+      </PageHeader>
 
       <section aria-label="Activity reports" className="adviser-reports-section">
         <div className="adviser-reports-heading">

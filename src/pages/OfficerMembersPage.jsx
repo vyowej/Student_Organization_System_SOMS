@@ -1,13 +1,14 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import DataTable from 'datatables.net-dt'
+import { useStickyOffset } from '../components/ui/useStickyColumns.js'
 import 'datatables.net-dt/css/dataTables.dataTables.min.css'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { officerPositions } from '../data/officerPortal.js'
 import { formatDisplayName } from '../data/displayName.js'
 
@@ -22,6 +23,7 @@ function formatStatus(status) {
 export default function OfficerMembersPage() {
   const {
     assignOfficerPosition,
+    captureUndo,
     officerMemberCount,
     officerMembers,
     updateOfficerMemberStatus,
@@ -39,6 +41,7 @@ export default function OfficerMembersPage() {
   const [assignedMemberId, setAssignedMemberId] = useState('')
   const [assignedPosition, setAssignedPosition] = useState('')
   const tableRef = useRef(null)
+  useStickyOffset(tableRef)
 
   const filteredMembers = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
@@ -82,9 +85,10 @@ export default function OfficerMembersPage() {
 
   function confirmEdit() {
     if (!editingMember) return
+    const undo = captureUndo()
     const result = assignOfficerPosition(editingMember.id, editPosition)
     if (result.ok) {
-      showToast(`${formatDisplayName(editingMember)}'s position is now ${editPosition}.`, 'success')
+      showToast(`${formatDisplayName(editingMember)}'s position is now ${editPosition}.`, 'success', undoAction(undo))
       setEditingMember(null)
     } else {
       showToast(result.reason, 'error')
@@ -93,8 +97,9 @@ export default function OfficerMembersPage() {
 
   function confirmStatusChange() {
     if (!statusTarget) return
+    const undo = captureUndo()
     const changed = updateOfficerMemberStatus(statusTarget.id, nextStatus)
-    if (changed) showToast(`${formatDisplayName(statusTarget)}'s membership status is now ${formatStatus(nextStatus)}.`, 'success')
+    if (changed) showToast(`${formatDisplayName(statusTarget)}'s membership status is now ${formatStatus(nextStatus)}.`, 'success', undoAction(undo))
     setStatusTarget(null)
   }
 
@@ -102,9 +107,10 @@ export default function OfficerMembersPage() {
     if (!positionTarget) return
     const selectedMember = officerMembers.find((member) => member.id === assignedMemberId && member.status === 'ACTIVE')
     if (!selectedMember) return
+    const undo = captureUndo()
     const result = assignOfficerPosition(selectedMember.id, assignedPosition)
     if (result.ok) {
-      showToast(`${formatDisplayName(selectedMember)} is now ${assignedPosition}.`, 'success')
+      showToast(`${formatDisplayName(selectedMember)} is now ${assignedPosition}.`, 'success', undoAction(undo))
       setPositionTarget(null)
     } else {
       showToast(result.reason, 'error')
@@ -163,8 +169,8 @@ export default function OfficerMembersPage() {
           <table className="officer-member-table" ref={tableRef}>
             <thead>
               <tr>
-                <th>Student</th>
-                <th>Student ID</th>
+                <th className="cell-sticky cell-sticky-1">Student</th>
+                <th className="cell-sticky cell-sticky-2 cell-sticky-last">Student ID</th>
                 <th>Program</th>
                 <th>Position</th>
                 <th>Membership Status</th>
@@ -175,8 +181,8 @@ export default function OfficerMembersPage() {
             <tbody>
               {filteredMembers.map((member) => (
                 <tr key={member.id}>
-                  <td data-label="Student"><strong>{formatDisplayName(member)}</strong></td>
-                  <td data-label="Student ID">{member.studentId}</td>
+                  <td className="cell-sticky cell-sticky-1" data-label="Student"><strong>{formatDisplayName(member)}</strong></td>
+                  <td className="cell-sticky cell-sticky-2 cell-sticky-last" data-label="Student ID">{member.studentId}</td>
                   <td data-label="Program">{member.program}</td>
                   <td data-label="Position">{member.position}</td>
                   <td data-label="Membership Status"><Badge tone={statusTones[member.status]}>{formatStatus(member.status)}</Badge></td>

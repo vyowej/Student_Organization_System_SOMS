@@ -6,7 +6,7 @@ import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { officerActivity, officerOrganization } from '../data/officerPortal.js'
 import { formatDisplayName } from '../data/displayName.js'
 
@@ -32,6 +32,7 @@ function formatTime(event) {
 export default function OfficerOrganizationProfilePage() {
   const {
     addOfficerDocument,
+    captureUndo,
     adminOrganizations,
     adminAuditLogs,
     adviserDocuments,
@@ -90,12 +91,13 @@ export default function OfficerOrganizationProfilePage() {
       setFormError('Organization name, acronym, category, mission, and vision are required.')
       return
     }
+    const undo = captureUndo()
     if (!updateOfficerOrganizationProfile(profileForm)) {
       setFormError('The profile could not be saved. Check your officer permissions and try again.')
       return
     }
     setEditOpen(false)
-    showToast('Organization profile updated successfully.', 'success')
+    showToast('Organization profile updated successfully.', 'success', undoAction(undo))
   }
 
   function uploadDocument(event) {
@@ -104,6 +106,7 @@ export default function OfficerOrganizationProfilePage() {
       setFormError('Enter a document name, choose a type, and select a file.')
       return
     }
+    const undo = captureUndo()
     const saved = addOfficerDocument({
       title: documentForm.title,
       type: documentForm.type,
@@ -116,7 +119,7 @@ export default function OfficerOrganizationProfilePage() {
     setUploadOpen(false)
     setDocumentForm({ title: '', type: documentTypes[0], file: null })
     setFormError('')
-    showToast('Document submitted for adviser review.', 'success')
+    showToast('Document submitted for adviser review.', 'success', undoAction(undo))
   }
 
   return (
@@ -125,20 +128,20 @@ export default function OfficerOrganizationProfilePage() {
         description="Manage your organization profile and review its shared membership, document, and activity records."
         eyebrow="ORGANIZATION MANAGEMENT"
         title="Organization Profile"
-      />
-
-      <Card className="officer-org-hero">
-        <div aria-hidden="true" className="officer-org-hero-logo">{organization.logo ? <img alt="" src={organization.logo} /> : organization.acronym}</div>
-        <div className="officer-org-hero-copy">
-          <div className="officer-org-eyebrow">{organization.category} · {organization.acronym}</div>
-          <h2>{organization.name}</h2>
-          <div className="officer-org-status-line">
-            <Badge tone={statusTone(organization.accreditationStatus ?? organization.status)}>{organization.accreditationStatus ?? organization.status}</Badge>
-            <span>Faculty Adviser: <strong>{organization.adviser}</strong></span>
+      >
+        <Card className="officer-org-hero">
+          <div aria-hidden="true" className="officer-org-hero-logo">{organization.logo ? <img alt="" src={organization.logo} /> : organization.acronym}</div>
+          <div className="officer-org-hero-copy">
+            <div className="officer-org-eyebrow">{organization.category} · {organization.acronym}</div>
+            <h2>{organization.name}</h2>
+            <div className="officer-org-status-line">
+              <Badge tone={statusTone(organization.accreditationStatus ?? organization.status)}>{organization.accreditationStatus ?? organization.status}</Badge>
+              <span>Faculty Adviser: <strong>{organization.adviser}</strong></span>
+            </div>
           </div>
-        </div>
-        <Button onClick={openEdit}><span aria-hidden="true">✎</span> Edit Organization Profile</Button>
-      </Card>
+          <Button onClick={openEdit}><span aria-hidden="true">✎</span> Edit Organization Profile</Button>
+        </Card>
+      </PageHeader>
 
       <Card className="officer-org-information">
         <SectionHeading title="Organization Information" action={<Button onClick={openEdit} variant="secondary">Edit Information</Button>} />
@@ -171,9 +174,9 @@ export default function OfficerOrganizationProfilePage() {
         <Card className="officer-org-section officer-org-member-summary">
           <SectionHeading title="Members" />
           <div className="officer-org-member-metrics">
-            <div><strong>{totalMembers}</strong><span>Total Members</span></div>
-            <div><strong>{officerMemberCount}</strong><span>Active Members</span></div>
-            <div><strong>{pendingRequests.length}</strong><span>Pending Requests</span></div>
+            <div><span className="stat-label">Total Members</span><strong className="stat-value">{totalMembers}</strong></div>
+            <div><span className="stat-label">Active Members</span><strong className="stat-value">{officerMemberCount}</strong></div>
+            <div><span className="stat-label">Pending Requests</span><strong className="stat-value">{pendingRequests.length}</strong></div>
           </div>
           <Link className="button button-secondary" to="/officer/members">View Members</Link>
         </Card>

@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
+import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import Input from '../components/ui/Input.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 
 function toDateInputValue(value) {
   const parsed = value ? new Date(value) : null
@@ -32,7 +33,7 @@ function toDisplayTime(value) {
 export default function OfficerEventFormPage() {
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
-  const { officerEvents, saveOfficerEvent } = useOutletContext()
+  const { captureUndo, officerEvents, saveOfficerEvent } = useOutletContext()
   const existing = officerEvents.find((event) => event.id === editId && event.status === 'RETURNED_FOR_REVISION')
   const initialDateValue = toDateInputValue(existing?.date)
   const existingTimes = existing?.time?.split('–').map((value) => value.trim()) ?? []
@@ -49,14 +50,23 @@ export default function OfficerEventFormPage() {
   const [budget, setBudget] = useState(existing?.budget ?? '')
   const [supportingDocuments, setSupportingDocuments] = useState(existing?.supportingDocuments?.join(', ') ?? '')
   const [error, setError] = useState('')
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false)
+  const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false)
   const { showToast } = useToast()
   const navigate = useNavigate()
 
-  function submit(status) {
+  function submit(status, confirmed = false) {
     if (!title.trim() || !date || !location.trim() || !description.trim()) {
       setError('Complete the event title, date, location, and description before saving.')
       return
     }
+    if (status === 'SUBMITTED' && !confirmed) {
+      setError('')
+      setConfirmSubmitOpen(true)
+      return
+    }
+    setConfirmSubmitOpen(false)
+    const undo = captureUndo()
     saveOfficerEvent({
       ...(existing ?? {}),
       id: existing?.id,
@@ -75,7 +85,7 @@ export default function OfficerEventFormPage() {
       supportingDocuments: supportingDocuments.split(',').map((document) => document.trim()).filter(Boolean),
       registrations: existing?.registrations ?? 0,
     }, status)
-    showToast(status === 'SUBMITTED' ? 'Event proposal submitted for adviser review.' : 'Event proposal saved as a draft.', 'success')
+    showToast(status === 'SUBMITTED' ? 'Event proposal submitted for adviser review.' : 'Event proposal saved as a draft.', 'success', undoAction(undo))
     navigate('/officer/events')
   }
 
@@ -108,13 +118,31 @@ export default function OfficerEventFormPage() {
           <div className="officer-form-footer">
             <p>Submission sends this proposal to your adviser. Officers cannot approve event proposals.</p>
             <div>
-              <Button onClick={() => navigate('/officer/events')} variant="secondary">Cancel</Button>
+              <Button onClick={() => (title.trim() || description.trim() || location.trim() ? setConfirmLeaveOpen(true) : navigate('/officer/events'))} variant="secondary">Cancel</Button>
               <Button onClick={() => submit('DRAFT')} variant="secondary">Save Draft</Button>
               <Button onClick={() => submit('SUBMITTED')} variant="primary">{existing ? 'Save and Resubmit' : 'Submit Proposal'}</Button>
             </div>
           </div>
         </form>
       </Card>
+      <ConfirmDialog
+        cancelLabel="Keep editing"
+        confirmLabel="Discard and leave"
+        message="Are you sure you want to leave? Anything you typed that hasn't been saved as a draft will be lost."
+        onCancel={() => setConfirmLeaveOpen(false)}
+        onConfirm={() => navigate('/officer/events')}
+        open={confirmLeaveOpen}
+        title="Discard this proposal?"
+        tone="danger"
+      />
+      <ConfirmDialog
+        confirmLabel={existing ? 'Resubmit proposal' : 'Submit proposal'}
+        message="Are you sure you want to submit this event proposal? It will be sent to your adviser for review, and you won't be able to edit it until they respond."
+        onCancel={() => setConfirmSubmitOpen(false)}
+        onConfirm={() => submit('SUBMITTED', true)}
+        open={confirmSubmitOpen}
+        title="Submit event proposal"
+      />
     </>
   )
 }

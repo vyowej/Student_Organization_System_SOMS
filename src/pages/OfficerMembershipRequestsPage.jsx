@@ -5,7 +5,7 @@ import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { formatDisplayName } from '../data/displayName.js'
 
 const statusTones = { PENDING: 'warning', APPROVED: 'success', REJECTED: 'danger' }
@@ -14,6 +14,7 @@ const requestFilters = ['ALL', 'APPROVED', 'REJECTED', 'PENDING']
 export default function OfficerMembershipRequestsPage() {
   const {
     approveOfficerMembershipRequest,
+    captureUndo,
     officerMembershipRequests,
     rejectOfficerMembershipRequest,
   } = useOutletContext()
@@ -24,7 +25,6 @@ export default function OfficerMembershipRequestsPage() {
   const [rejectTarget, setRejectTarget] = useState(null)
   const [rejectionReason, setRejectionReason] = useState('')
   const pending = officerMembershipRequests.filter((request) => request.status === 'PENDING')
-  const history = officerMembershipRequests.filter((request) => ['APPROVED', 'REJECTED'].includes(request.status))
   const visibleRequests = activeFilter === 'ALL'
     ? officerMembershipRequests
     : officerMembershipRequests.filter((request) => request.status === activeFilter)
@@ -32,16 +32,18 @@ export default function OfficerMembershipRequestsPage() {
 
   function approve() {
     if (!approveTarget) return
+    const undo = captureUndo()
     if (approveOfficerMembershipRequest(approveTarget.id)) {
-      showToast(`${nameOf(approveTarget)} is now an active member.`, 'success')
+      showToast(`${nameOf(approveTarget)} is now an active member.`, 'success', undoAction(undo))
     }
     setApproveTarget(null)
   }
 
   function reject() {
     if (!rejectTarget) return
+    const undo = captureUndo()
     if (rejectOfficerMembershipRequest(rejectTarget.id, rejectionReason)) {
-      showToast(`${nameOf(rejectTarget)}'s application was rejected.`, 'success')
+      showToast(`${nameOf(rejectTarget)}'s application was rejected.`, 'success', undoAction(undo))
     }
     setRejectTarget(null)
     setRejectionReason('')
@@ -58,10 +60,16 @@ export default function OfficerMembershipRequestsPage() {
             <div className="officer-request-history-info">
               <strong>{nameOf(request)}</strong>
               <span>{request.studentId} <i aria-hidden="true">·</i> {request.program}</span>
-              <small>{request.organizationName}</small>
-              <small>Applied {request.applicationDate}</small>
-              {request.status !== 'PENDING' && (
-                <small>Decision: {request.status} on {request.decisionDate} · Processed by {request.processedBy ?? 'Organization Officer'}{request.decisionReason && ` · ${request.decisionReason}`}</small>
+            </div>
+            <div className="officer-request-history-meta">
+              <span>Applied {request.applicationDate}</span>
+              {request.status !== 'PENDING' ? (
+                <small>
+                  {request.status === 'APPROVED' ? 'Approved' : 'Rejected'} {request.decisionDate} · by {request.processedBy ?? 'Organization Officer'}
+                  {request.decisionReason && ` · “${request.decisionReason}”`}
+                </small>
+              ) : (
+                <small>{request.organizationName}</small>
               )}
             </div>
             <Badge tone={statusTones[request.status]}>{request.status}</Badge>
@@ -70,7 +78,7 @@ export default function OfficerMembershipRequestsPage() {
               {request.status === 'PENDING' && request.studentId !== 'WMSU-OFFICER-0142' && (
                 <>
                   <Button onClick={() => setApproveTarget(request)} variant="primary">Approve</Button>
-                  <Button onClick={() => { setRejectTarget(request); setRejectionReason('') }} variant="secondary">Reject</Button>
+                  <Button onClick={() => { setRejectTarget(request); setRejectionReason('') }} variant="danger">Reject</Button>
                 </>
               )}
               {request.status === 'PENDING' && request.studentId === 'WMSU-OFFICER-0142' && <span className="officer-readonly-label">Cannot process your own application</span>}
@@ -97,7 +105,7 @@ export default function OfficerMembershipRequestsPage() {
       />
       <Card className="officer-page-card officer-membership-requests-card">
         <div className="officer-request-filter-heading">
-          <div><h2>{activeFilter === 'PENDING' ? 'Pending Applications' : 'Request History'}</h2><p>Review and track membership applications for WMSU Computer Society.</p></div>
+          <div><h2>{activeFilter === 'PENDING' ? 'Pending Applications' : activeFilter === 'ALL' ? 'All Applications' : 'Request History'}</h2><p>Review and track membership applications for WMSU Computer Society.</p></div>
           <Badge tone="warning">{pending.length} Pending</Badge>
         </div>
         <div className="officer-request-tabs" role="group" aria-label="Filter membership requests">
@@ -118,7 +126,6 @@ export default function OfficerMembershipRequestsPage() {
               </button>
             )
           })}
-          <span className="officer-request-history-label">Request History includes approved and rejected applications ({history.length})</span>
         </div>
         {requestList(visibleRequests)}
       </Card>
@@ -175,7 +182,7 @@ export default function OfficerMembershipRequestsPage() {
         </label>
         <div className="officer-modal-actions">
           <Button onClick={() => { setRejectTarget(null); setRejectionReason('') }} variant="secondary">Cancel</Button>
-          <Button onClick={reject} variant="primary">Reject Application</Button>
+          <Button onClick={reject} variant="danger">Reject Application</Button>
         </div>
       </Modal>
     </>

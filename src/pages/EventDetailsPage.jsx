@@ -5,7 +5,7 @@ import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { getEventRegistrationState, isEventAlmostFull, studentEvents } from '../data/studentEvents.js'
 import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
 
@@ -19,7 +19,7 @@ const stateTone = {
 
 export default function EventDetailsPage() {
   const { id } = useParams()
-  const { eventRegisteredCounts, officerEvents, registerForEvent, studentRegistrations } = useOutletContext()
+  const { captureUndo, eventRegisteredCounts, officerEvents, registerForEvent, studentRegistrations } = useOutletContext()
   const { showToast } = useToast()
   const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false)
   const baseEvent = studentEvents.find((item) => item.id === id)
@@ -58,13 +58,14 @@ export default function EventDetailsPage() {
 
   function confirmRegistration() {
     if (!canRegister) return
+    const undo = captureUndo()
     const registrationResult = registerForEvent(event.id)
     if (!registrationResult) {
       showToast('Unable to complete registration. Please refresh the event and try again.', 'error')
       return
     }
     setRegistrationDialogOpen(false)
-    showToast('You are registered for this event.', 'success')
+    showToast('You are registered for this event.', 'success', undoAction(undo))
   }
 
   const actionLabel = registrationState === 'REGISTERED' ? 'Registered ✓'

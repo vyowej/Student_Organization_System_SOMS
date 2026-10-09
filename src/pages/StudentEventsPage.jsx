@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import FilterSelect from '../components/ui/FilterSelect.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { eventCategories, getEventRegistrationState, isEventAlmostFull, studentEvents } from '../data/studentEvents.js'
 import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
@@ -75,7 +76,7 @@ export default function StudentEventsPage() {
         title="Campus Events"
       />
 
-      <div className="event-directory-controls">
+      <div className="directory-toolbar">
         <label className="organization-search event-search">
           <span aria-hidden="true">⌕</span>
           <input
@@ -86,32 +87,11 @@ export default function StudentEventsPage() {
             value={search}
           />
         </label>
-        <div aria-label="Filter events by category" className="organization-category-filters" role="group">
-          {eventCategories.map((item) => (
-            <button
-              aria-pressed={category === item}
-              className={`organization-category-filter${category === item ? ' is-active' : ''}`}
-              key={item}
-              onClick={() => setCategory(item)}
-              type="button"
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-        <div aria-label="Filter events by registration status" className="event-status-filters" role="group">
-          {eventStatusFilters.map((item) => (
-            <button
-              aria-pressed={statusFilter === item}
-              className={`event-status-filter${statusFilter === item ? ' is-active' : ''}`}
-              key={item}
-              onClick={() => setStatusFilter(item)}
-              type="button"
-            >
-              {item}
-            </button>
-          ))}
-        </div>
+        <FilterSelect label="Category" onChange={setCategory} options={eventCategories} value={category} />
+        <FilterSelect label="Status" onChange={setStatusFilter} options={eventStatusFilters} value={statusFilter} />
+        {(category !== 'All' || statusFilter !== 'All' || search) && (
+          <button className="directory-toolbar-reset" onClick={() => { setCategory('All'); setStatusFilter('All'); setSearch('') }} type="button">Clear</button>
+        )}
       </div>
 
       <p aria-live="polite" className="organization-results-label">

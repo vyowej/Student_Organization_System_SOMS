@@ -63,26 +63,25 @@ export default function StudentDashboardPage() {
 
   return (
     <div className="student-dashboard">
-      <section aria-labelledby="student-welcome-title" className="student-welcome dashboard-enter">
-        <div>
-          <span className="student-dashboard-eyebrow">UNIDOS Student Portal</span>
-          <h1 id="student-welcome-title">{getTimeGreeting()}, {formatGreetingName(currentUser)}!</h1>
-          <p>Stay connected with your organizations, events, and campus activities.</p>
-        </div>
-        <div aria-hidden="true" className="student-welcome-mark">W</div>
-      </section>
+      <div className="page-hero page-hero-student">
+        <section aria-labelledby="student-welcome-title" className="student-welcome dashboard-enter">
+          <div>
+            <span className="student-dashboard-eyebrow">UNIDOS Student Portal</span>
+            <h1 id="student-welcome-title">{getTimeGreeting()}, {formatGreetingName(currentUser)}!</h1>
+            <p>Stay connected with your organizations, events, and campus activities.</p>
+          </div>
+          <div aria-hidden="true" className="student-welcome-mark">W</div>
+        </section>
 
-      <section aria-label="Your activity overview" className="student-metrics">
-        {studentDashboardMetrics.map((metric, index) => (
-          <article className={`student-metric metric-${metric.tone}`} key={metric.label} style={{ '--metric-index': index }}>
-            <div className="student-metric-icon"><Icon name={metric.icon} /></div>
-            <div>
-              <strong aria-label={`${metric.value} ${metric.label}`}>{metricCounts[index]}</strong>
-              <span>{metric.label}</span>
-            </div>
-          </article>
-        ))}
-      </section>
+        <section aria-label="Your activity overview" className="student-metrics">
+          {studentDashboardMetrics.map((metric, index) => (
+            <article className={`student-metric metric-${metric.tone}`} key={metric.label} style={{ '--metric-index': index }}>
+              <span className="stat-label">{metric.label}</span>
+              <strong aria-label={`${metric.value} ${metric.label}`} className="stat-value">{metricCounts[index]}</strong>
+            </article>
+          ))}
+        </section>
+      </div>
 
       <div className="student-dashboard-columns">
         <section aria-labelledby="my-organizations-title" className="student-dashboard-panel">

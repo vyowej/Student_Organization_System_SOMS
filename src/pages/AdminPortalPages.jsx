@@ -7,7 +7,8 @@ import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import Table from '../components/ui/Table.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { adminPrograms, adminYears } from '../data/adminPortal.js'
 import { studentEvents } from '../data/studentEvents.js'
 import { formatDisplayName } from '../data/displayName.js'
@@ -45,7 +46,7 @@ function FilterSelect({ label, onChange, options, value }) {
 }
 
 function Metric({ label, value, detail }) {
-  return <Card className="admin-metric-card"><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</Card>
+  return <Card className="admin-metric-card"><span className="stat-label">{label}</span><strong className="stat-value">{value}</strong>{detail && <small className="stat-note">{detail}</small>}</Card>
 }
 
 function FilterBar({ search, setSearch, children }) {
@@ -93,6 +94,7 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
   const [decision, setDecision] = useState('')
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
+  const [confirming, setConfirming] = useState(false)
   if (!item) return null
   const fields = Object.entries(item).filter(([key, value]) => (
     !['id', 'proposedOfficers', 'documents', 'eventIds', 'announcements', 'officers'].includes(key)
@@ -107,39 +109,55 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
       setError('Add a reason or revision comment before continuing.')
       return
     }
+    setConfirming(true)
+  }
+  function applyDecision() {
     const succeeded = onDecision(decision, comment)
+    setConfirming(false)
     if (!succeeded) {
       setError('This item is no longer eligible for this action.')
       return
     }
     onClose()
   }
+  const decisionVerb = (decisionLabels[decision] ?? String(decision).replace('_', ' ')).toLowerCase()
   return (
-    <Modal onClose={onClose} open title={item.title ?? item.name ?? 'Record details'}>
-      <dl className="admin-detail-list">
-        {fields.map(([key, value]) => <div key={key}><dt>{key.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`)}</dt><dd>{String(value)}</dd></div>)}
-        {Object.entries(item).filter(([key, value]) => Array.isArray(value) && !['documents', 'proposedOfficers'].includes(key)).map(([key, values]) => <div key={key}><dt>{key}</dt><dd>{values.length ? values.join(', ') : 'None recorded'}</dd></div>)}
-        {Array.isArray(item.documents) && <div><dt>Supporting documents</dt><dd>{item.documents.join(', ')}</dd></div>}
-        {Array.isArray(item.proposedOfficers) && <div><dt>Proposed officers</dt><dd>{item.proposedOfficers.map((officer) => `${officer.name} — ${officer.position}`).join(', ')}</dd></div>}
-      </dl>
-      {canDecide && (
-        <div className="admin-modal-decision">
-          <label>Decision
-            <select onChange={(event) => setDecision(event.target.value)} value={decision}>
-              <option value="">Choose a decision</option>
-              {decisionOptions.map((option) => <option key={option} value={option}>{decisionLabels[option] ?? option.replace('_', ' ')}</option>)}
-            </select>
-          </label>
-          {['RETURNED', 'REJECTED'].includes(decision) && (
-            <label>{decision === 'RETURNED' ? 'Revision comments' : 'Reason'} <span aria-hidden="true">*</span>
-              <textarea onChange={(event) => setComment(event.target.value)} value={comment} />
+    <>
+      <ConfirmDialog
+        confirmLabel="Yes, confirm"
+        message={`Are you sure you want to ${decisionVerb} "${item.title ?? item.name ?? 'this item'}"? You can undo this right after.`}
+        onCancel={() => setConfirming(false)}
+        onConfirm={applyDecision}
+        open={confirming}
+        title="Confirm decision"
+        tone={decision === 'REJECTED' ? 'danger' : 'primary'}
+      />
+      <Modal onClose={onClose} open={!confirming} title={item.title ?? item.name ?? 'Record details'}>
+        <dl className="admin-detail-list">
+          {fields.map(([key, value]) => <div key={key}><dt>{key.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`)}</dt><dd>{String(value)}</dd></div>)}
+          {Object.entries(item).filter(([key, value]) => Array.isArray(value) && !['documents', 'proposedOfficers'].includes(key)).map(([key, values]) => <div key={key}><dt>{key}</dt><dd>{values.length ? values.join(', ') : 'None recorded'}</dd></div>)}
+          {Array.isArray(item.documents) && <div><dt>Supporting documents</dt><dd>{item.documents.join(', ')}</dd></div>}
+          {Array.isArray(item.proposedOfficers) && <div><dt>Proposed officers</dt><dd>{item.proposedOfficers.map((officer) => `${officer.name} — ${officer.position}`).join(', ')}</dd></div>}
+        </dl>
+        {canDecide && (
+          <div className="admin-modal-decision">
+            <label>Decision
+              <select onChange={(event) => setDecision(event.target.value)} value={decision}>
+                <option value="">Choose a decision</option>
+                {decisionOptions.map((option) => <option key={option} value={option}>{decisionLabels[option] ?? option.replace('_', ' ')}</option>)}
+              </select>
             </label>
-          )}
-          {error && <p className="form-error" role="alert">{error}</p>}
-          <Button onClick={submit}>{decision ? 'Confirm decision' : 'Close'}</Button>
-        </div>
-      )}
-    </Modal>
+            {['RETURNED', 'REJECTED'].includes(decision) && (
+              <label>{decision === 'RETURNED' ? 'Revision comments' : 'Reason'} <span aria-hidden="true">*</span>
+                <textarea onChange={(event) => setComment(event.target.value)} value={comment} />
+              </label>
+            )}
+            {error && <p className="form-error" role="alert">{error}</p>}
+            <Button onClick={submit}>{decision ? 'Continue' : 'Close'}</Button>
+          </div>
+        )}
+      </Modal>
+    </>
   )
 }
 
@@ -308,13 +326,14 @@ function AdminDashboard({ data }) {
   const upcomingEvents = data.officerEvents.filter((item) => ['APPROVED', 'PUBLISHED', 'ONGOING'].includes(item.status)).slice(0, 4)
   return (
     <>
-      <PageHeader description="Campus-wide oversight of organizations, events, accounts, and approval work." eyebrow="UNIDOS ADMINISTRATION" title="Admin Dashboard" />
-      <div className="admin-metrics-grid">
-        <Metric label="Active Organizations" value={data.adminOrganizations.filter((item) => item.status === 'ACTIVE').length} />
-        <Metric label="Total Students" value={data.adminUsers.filter((item) => item.role === 'Student').length.toLocaleString()} />
-        <Metric label="Pending Organization Applications" value={pendingApplications} />
-        <Metric label="Pending Event Reviews" value={pendingEvents} />
-      </div>
+      <PageHeader description="Campus-wide oversight of organizations, events, accounts, and approval work." eyebrow="UNIDOS ADMINISTRATION" title="Admin Dashboard">
+        <div className="admin-metrics-grid">
+          <Metric label="Active Organizations" value={data.adminOrganizations.filter((item) => item.status === 'ACTIVE').length} />
+          <Metric label="Total Students" value={data.adminUsers.filter((item) => item.role === 'Student').length.toLocaleString()} />
+          <Metric label="Pending Organization Applications" value={pendingApplications} />
+          <Metric label="Pending Event Reviews" value={pendingEvents} />
+        </div>
+      </PageHeader>
       <Card className="admin-section-card">
         <div className="admin-section-heading"><div><h2>Work requiring attention</h2><p>Review pending requests across campus.</p></div><Link className="button button-secondary" to="/admin/approvals">Open Approval Center</Link></div>
         {pending.length ? <Table useDataTable columns={[
@@ -348,6 +367,8 @@ export default function AdminPortalPage() {
   const [target, setTarget] = useState(null)
   const [organizationEdit, setOrganizationEdit] = useState(null)
   const [userChange, setUserChange] = useState(null)
+  const [publishTarget, setPublishTarget] = useState(null)
+  const [saveSettingsOpen, setSaveSettingsOpen] = useState(false)
   const [actionFilter, setActionFilter] = useState('All')
   const [reportFilters, setReportFilters] = useState({ college: 'All Colleges', category: 'All Categories', eventType: 'All Event Types' })
   const [settings, setSettings] = useState(() => ({
@@ -374,18 +395,21 @@ export default function AdminPortalPage() {
   const filteredApplications = data.organizationApplications.filter((item) => matches(item))
 
   function decideApplication(item, decision, comment) {
+    const undo = data.captureUndo()
     const ok = data.reviewOrganizationApplication(item.id, decision, comment)
-    if (ok) showToast(`Organization application ${decision.toLowerCase()}.`, 'success')
+    if (ok) showToast(`Organization application ${decision.toLowerCase()}.`, 'success', undoAction(undo))
     return ok
   }
   function decideEvent(item, decision, comment) {
+    const undo = data.captureUndo()
     const ok = data.reviewAdminEvent(item.id, decision, comment)
-    if (ok) showToast(`Event proposal ${decision.toLowerCase()}.`, 'success')
+    if (ok) showToast(`Event proposal ${decision.toLowerCase()}.`, 'success', undoAction(undo))
     return ok
   }
   function decideDocument(item, decision, comment) {
+    const undo = data.captureUndo()
     const ok = data.reviewAdminDocument(item.id, decision, comment)
-    if (ok) showToast(`Document ${decision.toLowerCase()}.`, 'success')
+    if (ok) showToast(`Document ${decision.toLowerCase()}.`, 'success', undoAction(undo))
     return ok
   }
 
@@ -411,13 +435,15 @@ export default function AdminPortalPage() {
             { key: 'program', label: 'Program' }, { key: 'yearLevel', label: 'Year' },
             { key: 'organizationCount', label: 'Organizations', render: (_, row) => data.studentMemberships.filter((membership) => membership.studentId === row.userId && membership.status === 'ACTIVE').length },
             { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
-            { key: 'actions', label: 'Profile', render: (_, row) => <Button onClick={() => setSelected({
-              ...row,
-              title: `${formatDisplayName(row)} — Student Profile`,
-              organizations: data.studentMemberships.filter((membership) => membership.studentId === row.userId).map((membership) => `${membership.organizationId}: ${membership.status}`),
-              registrations: data.studentRegistrations.filter((registration) => registration.studentId === row.userId).map((registration) => `${registration.eventId}: ${registration.status}`),
-              attendance: data.studentRegistrations.filter((registration) => registration.studentId === row.userId).map((registration) => `${registration.eventId}: ${registration.attendanceStatus}`),
-            })} variant="secondary">View profile</Button> },
+            {
+              key: 'actions', label: 'Profile', render: (_, row) => <Button onClick={() => setSelected({
+                ...row,
+                title: `${formatDisplayName(row)} — Student Profile`,
+                organizations: data.studentMemberships.filter((membership) => membership.studentId === row.userId).map((membership) => `${membership.organizationId}: ${membership.status}`),
+                registrations: data.studentRegistrations.filter((registration) => registration.studentId === row.userId).map((registration) => `${registration.eventId}: ${registration.status}`),
+                attendance: data.studentRegistrations.filter((registration) => registration.studentId === row.userId).map((registration) => `${registration.eventId}: ${registration.attendanceStatus}`),
+              })} variant="secondary">View profile</Button>
+            },
           ] : [
             { key: 'role', label: 'Role', render: (value, row) => <select aria-label={`Role for ${formatDisplayName(row)}`} disabled={row.id === 'admin-root'} onChange={(event) => setUserChange({ user: row, changes: { role: event.target.value } })} value={value}>{roleOptions.map((role) => <option key={role}>{role}</option>)}</select> },
             { key: 'status', label: 'Status', render: (value, row) => <select aria-label={`Status for ${formatDisplayName(row)}`} disabled={row.id === 'admin-root'} onChange={(event) => setUserChange({ user: row, changes: { status: event.target.value } })} value={value}>{['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((status) => <option key={status} value={status}>{humanize(status)}</option>)}</select> },
@@ -427,7 +453,7 @@ export default function AdminPortalPage() {
         ]} rows={rows} /> : <EmptyState title="No matching records" />}</Card>
         <RecordModal item={selected} onClose={() => setSelected(null)} />
         <Modal onClose={() => setUserChange(null)} open={Boolean(userChange)} title="Confirm account change">
-          {userChange && <><p>Apply this access change for <strong>{formatDisplayName(userChange.user)}</strong>?</p><p>{Object.entries(userChange.changes).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p><Button onClick={() => { const result = data.updateAdminUser(userChange.user.id, userChange.changes); showToast(result.ok ? 'User account updated.' : result.reason, result.ok ? 'success' : 'error'); if (result.ok) setUserChange(null) }}>Confirm change</Button></>}
+          {userChange && <><p>Apply this access change for <strong>{formatDisplayName(userChange.user)}</strong>?</p><p>{Object.entries(userChange.changes).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p><Button onClick={() => { const undo = data.captureUndo(); const result = data.updateAdminUser(userChange.user.id, userChange.changes); showToast(result.ok ? 'User account updated.' : result.reason, result.ok ? 'success' : 'error', result.ok ? undoAction(undo) : {}); if (result.ok) setUserChange(null) }}>Confirm change</Button></>}
         </Modal>
       </>
     )
@@ -448,8 +474,9 @@ export default function AdminPortalPage() {
           {target && <p>Change <strong>{target.name}</strong> status?{target.status !== 'SUSPENDED' && <label className="admin-modal-label">Reason for suspension<textarea onChange={(event) => setReason(event.target.value)} value={reason} /></label>}</p>}
           <Button onClick={() => {
             const next = target?.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED'
+            const undo = data.captureUndo()
             const ok = target && data.updateAdminOrganizationStatus(target.id, next, reason)
-            if (ok) { showToast(`Organization ${next.toLowerCase()}.`, 'success'); setTarget(null) }
+            if (ok) { showToast(`Organization ${next.toLowerCase()}.`, 'success', undoAction(undo)); setTarget(null) }
             else showToast('A suspension reason is required.', 'error')
           }}>Confirm</Button>
         </Modal>
@@ -487,9 +514,22 @@ export default function AdminPortalPage() {
         <Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[
           { key: 'title', label: 'Event' }, { key: 'organizationName', label: 'Organization' }, { key: 'date', label: 'Date' }, { key: 'location', label: 'Venue' },
           { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
-          { key: 'actions', label: 'Actions', render: (_, item) => <div className="admin-row-actions"><Button onClick={() => setSelected(item)} variant="secondary">View</Button>{pendingAdminEvents.some((event) => event.id === item.id) && <Button onClick={() => setSelected({ ...item, __event: true })}>Review</Button>}{item.adminApprovedAt && item.status === 'APPROVED' && <Button onClick={() => { const ok = data.publishAdminEvent(item.id); showToast(ok ? 'Event published and visible to students.' : 'Event cannot be published yet.', ok ? 'success' : 'error') }}>Publish</Button>}</div> },
+          { key: 'actions', label: 'Actions', render: (_, item) => <div className="admin-row-actions"><Button onClick={() => setSelected(item)} variant="secondary">View</Button>{pendingAdminEvents.some((event) => event.id === item.id) && <Button onClick={() => setSelected({ ...item, __event: true })}>Review</Button>}{item.adminApprovedAt && item.status === 'APPROVED' && <Button onClick={() => setPublishTarget(item)}>Publish</Button>}</div> },
         ]} rows={rows} /> : <EmptyState title="No campus events found" />}</Card>
         <RecordModal canDecide={Boolean(selected?.__event)} decisionLabels={{ APPROVED: 'Approve for publication', RETURNED: 'Return for revision', REJECTED: 'Reject proposal' }} item={selected} onClose={() => setSelected(null)} onDecision={(decision, comment) => decideEvent(selected, decision, comment)} />
+        <ConfirmDialog
+          confirmLabel="Publish event"
+          message={`Are you sure you want to publish "${publishTarget?.title ?? 'this event'}"? It will become visible to all students.`}
+          onCancel={() => setPublishTarget(null)}
+          onConfirm={() => {
+            const undo = data.captureUndo()
+            const ok = data.publishAdminEvent(publishTarget.id)
+            setPublishTarget(null)
+            showToast(ok ? 'Event published and visible to students.' : 'Event cannot be published yet.', ok ? 'success' : 'error', ok ? undoAction(undo) : {})
+          }}
+          open={Boolean(publishTarget)}
+          title="Publish event"
+        />
       </>
     )
   }
@@ -560,13 +600,14 @@ export default function AdminPortalPage() {
       && (reportFilters.eventType === 'All Event Types' || item.eventCategory === reportFilters.eventType))
     return (
       <>
-        <PageHeader description="Export current mock system records for administrative review." eyebrow="UNIDOS ADMINISTRATION" title="Reports" />
-        <div className="admin-metrics-grid">
-          <Metric label="Total Accredited Organizations" value="47" />
-          <Metric label="Active Student Members" value="2,381" />
-          <Metric label="Total Events Held" value="213" />
-          <Metric label="Unique Student Participants" value="1,842" />
-        </div>
+        <PageHeader description="Export current mock system records for administrative review." eyebrow="UNIDOS ADMINISTRATION" title="Reports">
+          <div className="admin-metrics-grid">
+            <Metric label="Total Accredited Organizations" value="47" />
+            <Metric label="Active Student Members" value="2,381" />
+            <Metric label="Total Events Held" value="213" />
+            <Metric label="Unique Student Participants" value="1,842" />
+          </div>
+        </PageHeader>
 
         <div className="admin-report-actions"><Button onClick={() => showToast(downloadCsv('unidos-campus-report.csv', reportRows) ? 'CSV report downloaded.' : 'There is no report data to export.', reportRows.length ? 'success' : 'error')}>Download CSV</Button><Button onClick={() => showToast(downloadExcel('unidos-campus-report.xls', reportRows) ? 'Excel-compatible report downloaded.' : 'There is no report data to export.', reportRows.length ? 'success' : 'error')} variant="secondary">Download Excel</Button><Button onClick={() => window.print()} variant="secondary">Print / Save as PDF</Button></div>
         <FilterBar search={search} setSearch={setSearch}>
@@ -601,8 +642,9 @@ export default function AdminPortalPage() {
     }))
     return (
       <>
-        <PageHeader description="A live summary of organization, membership, event, and participation patterns." eyebrow="UNIDOS ADMINISTRATION" title="Analytics" />
-        <div className="admin-metrics-grid">{stats.map((stat) => <Metric key={stat.label} label={stat.label} value={stat.value} detail={`of ${stat.total} total records`} />)}</div>
+        <PageHeader description="A live summary of organization, membership, event, and participation patterns." eyebrow="UNIDOS ADMINISTRATION" title="Analytics">
+          <div className="admin-metrics-grid">{stats.map((stat) => <Metric key={stat.label} label={stat.label} value={stat.value} detail={`of ${stat.total} total records`} />)}</div>
+        </PageHeader>
         <div className="admin-analytics-grid">
           <AnalyticsChart title="Organization category distribution" type="bar" rows={categories.map((label) => ({ label, value: data.adminOrganizations.filter((organization) => organization.category === label).length }))} />
           <AnalyticsChart title="Events per month" type="bar" rows={[{ label: 'Aug', value: 4 }, { label: 'Sep', value: 7 }, { label: 'Oct', value: 9 }, { label: 'Nov', value: 5 }, { label: 'Dec', value: 3 }]} />
@@ -638,8 +680,21 @@ export default function AdminPortalPage() {
           <div className="admin-category-add"><input aria-label="New organization category" onChange={(event) => setNewCategory(event.target.value)} placeholder="Add a category" value={newCategory} /><Button onClick={() => { const category = newCategory.trim(); if (!category) return; setSettings((current) => ({ ...current, organizationCategories: [...new Set([...(current.organizationCategories ?? ['Academic', 'Socio-Civic', 'Cultural', 'Sports']), category])] })); setNewCategory('') }}>Add category</Button></div>
           <h2>Notification preferences</h2>
           {Object.entries(settings.notifications).map(([key, checked]) => <label className="admin-checkbox-row" key={key}><input checked={checked} onChange={(event) => setSettings((current) => ({ ...current, notifications: { ...current.notifications, [key]: event.target.checked } }))} type="checkbox" />{key.replace(/([A-Z])/g, ' $1')}</label>)}
-          <Button onClick={() => { data.saveAdminSettings(settings); showToast('System settings saved.', 'success') }}>Save Settings</Button>
+          <Button onClick={() => setSaveSettingsOpen(true)}>Save Settings</Button>
         </Card>
+        <ConfirmDialog
+          confirmLabel="Save settings"
+          message="Are you sure you want to save these system settings? They apply to every user."
+          onCancel={() => setSaveSettingsOpen(false)}
+          onConfirm={() => {
+            const undo = data.captureUndo()
+            data.saveAdminSettings(settings)
+            setSaveSettingsOpen(false)
+            showToast('System settings saved.', 'success', undoAction(undo))
+          }}
+          open={saveSettingsOpen}
+          title="Save system settings"
+        />
       </>
     )
   }
