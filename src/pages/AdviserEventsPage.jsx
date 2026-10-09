@@ -37,11 +37,12 @@ export default function AdviserEventsPage() {
     const undo = captureUndo()
     const saved = reviewAdviserRequest('EVENT', selected.id, decision, comment)
     if (saved) showToast(decision === 'APPROVED'
-      ? `${selected.title} approved for Student Affairs review.`
+      ? 'Event proposal approved successfully.'
       : decision === 'RETURNED'
         ? `${selected.title} returned to the officer for revision.`
         : `${selected.title} proposal rejected.`, 'success', undoAction(undo))
     else showToast('The event decision could not be saved.', 'error')
+    return saved
   }
 
   return (

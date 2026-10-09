@@ -16,44 +16,87 @@ const statusTone = {
   PENDING_VERIFICATION: 'warning',
 }
 
-export default function AdviserReviewDialog({ item, onClose, onDecision, report = false, initialDecision = '', verifiedBy, turnout }) {
+export default function AdviserReviewDialog({
+  item,
+  onClose,
+  onDecision,
+  report = false,
+  initialDecision = '',
+  verifiedBy,
+  turnout,
+  approvalConfirmationTitle = 'Confirm Event Approval',
+  approvalConfirmationMessage = 'Are you sure you want to approve this event proposal? Please review the event details before proceeding.',
+  approvalConfirmationLabel = 'Yes, Approve Event',
+}) {
   const [decision, setDecision] = useState(initialDecision)
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
-  const [verificationConfirmationOpen, setVerificationConfirmationOpen] = useState(false)
-  const [verificationProcessing, setVerificationProcessing] = useState(false)
+  const [approvalConfirmationOpen, setApprovalConfirmationOpen] = useState(false)
+  const [approvalProcessing, setApprovalProcessing] = useState(false)
 
   function close() {
     setDecision('')
     setComment('')
     setError('')
-    setVerificationConfirmationOpen(false)
-    setVerificationProcessing(false)
+    setApprovalConfirmationOpen(false)
+    setApprovalProcessing(false)
     onClose()
   }
 
-  function submitDecision() {
+  function requestDecision(nextDecision) {
+    setDecision(nextDecision)
+    setError('')
+    setApprovalConfirmationOpen(true)
+  }
+
+  function confirmDecision() {
+    if (approvalProcessing) return
     if (decision === 'RETURNED' || decision === 'REJECTED') {
       if (!comment.trim()) {
         setError(decision === 'REJECTED' ? 'Enter a reason before rejecting this submission.' : 'Enter revision comments before returning this submission.')
         return
       }
     }
-    if (decision === 'VERIFIED') {
-      setVerificationConfirmationOpen(true)
-      return
-    }
-    onDecision(decision, comment)
-    close()
+    setApprovalProcessing(true)
+    const saved = onDecision(decision, comment)
+    if (saved) close()
+    else setApprovalProcessing(false)
   }
 
-  function confirmVerification() {
-    if (verificationProcessing) return
-    setVerificationProcessing(true)
-    const saved = onDecision('VERIFIED', comment)
-    if (saved) close()
-    else setVerificationProcessing(false)
+  function confirmationCopy() {
+    if (decision === 'APPROVED') {
+      return {
+        title: approvalConfirmationTitle,
+        message: approvalConfirmationMessage,
+        label: approvalConfirmationLabel,
+        icon: '?',
+      }
+    }
+    if (decision === 'VERIFIED') {
+      return {
+        title: 'Confirm Report Verification',
+        message: 'Are you sure you want to verify this accomplishment report? Please make sure you have reviewed all the report details and supporting documents before proceeding.',
+        label: 'Yes, Verify Report',
+        icon: '!',
+      }
+    }
+    if (decision === 'REJECTED') {
+      return {
+        title: 'Confirm Rejection',
+        message: 'Are you sure you want to reject this request? Please review the details and provide a reason before proceeding.',
+        label: 'Yes, Reject',
+        icon: '!',
+      }
+    }
+    return {
+      title: 'Confirm Return for Revision',
+      message: 'Are you sure you want to return this request for revision? Please review the details and provide feedback before proceeding.',
+      label: 'Yes, Return for Revision',
+      icon: '!',
+    }
   }
+
+  const confirmation = confirmationCopy()
 
   return (
     <>
@@ -153,6 +196,35 @@ export default function AdviserReviewDialog({ item, onClose, onDecision, report 
 
           {item.status === 'PENDING_VERIFICATION' || (report && item.status === 'RETURNED') || ['PENDING', 'SUBMITTED', 'UNDER_REVIEW'].includes(item.status) ? (
             <>
+              <div className="adviser-review-actions">
+                {report ? (
+                  <>
+                    <Button onClick={() => requestDecision('RETURNED')} variant="secondary">Return for Revision</Button>
+                    <Button onClick={() => requestDecision('VERIFIED')} variant="primary">Verify Report</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button onClick={() => requestDecision('REJECTED')} variant="danger">Reject</Button>
+                    <Button onClick={() => requestDecision('RETURNED')} variant="secondary">Return for Revision</Button>
+                    <Button onClick={() => requestDecision('APPROVED')} variant="primary">Approve</Button>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="adviser-review-actions"><Button onClick={close} variant="secondary">Close</Button></div>
+          )}
+          </div>
+        )}
+      </Modal>
+      <ConfirmDialog
+        confirmDisabled={approvalProcessing}
+        confirmLabel={approvalProcessing ? 'Processing…' : confirmation.label}
+        details={(
+          <div className="adviser-action-confirmation">
+            <span aria-hidden="true" className="adviser-verification-confirmation-icon">{confirmation.icon}</span>
+            <div>
+              <p>{confirmation.message}</p>
               {(decision === 'RETURNED' || decision === 'REJECTED') && (
                 <div className="form-field adviser-review-comment">
                   <label htmlFor="adviser-review-comment">{decision === 'REJECTED' ? 'Rejection reason (required)' : 'Revision comments (required)'}</label>
@@ -166,55 +238,16 @@ export default function AdviserReviewDialog({ item, onClose, onDecision, report 
                   {error && <span className="adviser-form-error" role="alert">{error}</span>}
                 </div>
               )}
-              <div className="adviser-review-actions">
-                {!decision ? (
-                  report ? (
-                    <>
-                      <Button onClick={() => setDecision('RETURNED')} variant="secondary">Return for Revision</Button>
-                      <Button onClick={() => setDecision('VERIFIED')} variant="primary">Verify Report</Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button onClick={() => setDecision('REJECTED')} variant="danger">Reject</Button>
-                      <Button onClick={() => setDecision('RETURNED')} variant="secondary">Return for Revision</Button>
-                      <Button onClick={() => setDecision('APPROVED')} variant="primary">Approve</Button>
-                    </>
-                  )
-                ) : (
-                  <>
-                    <Button onClick={() => setDecision('')} variant="secondary">Back</Button>
-                    <Button onClick={submitDecision} variant="primary">
-                      {decision === 'APPROVED' ? 'Confirm Approval'
-                        : decision === 'VERIFIED' ? 'Confirm Verification'
-                          : decision === 'REJECTED' ? 'Confirm Rejection'
-                            : 'Send Back to Officer'}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="adviser-review-actions"><Button onClick={close} variant="secondary">Close</Button></div>
-          )}
-          </div>
-        )}
-      </Modal>
-      <ConfirmDialog
-        confirmDisabled={verificationProcessing}
-        confirmLabel={verificationProcessing ? 'Verifying…' : 'Yes, Verify Report'}
-        details={(
-          <div className="adviser-verification-confirmation">
-            <span aria-hidden="true" className="adviser-verification-confirmation-icon">!</span>
-            <p>Are you sure you want to verify this accomplishment report? Please make sure you have reviewed all the report details and supporting documents before proceeding.</p>
+            </div>
           </div>
         )}
         message=""
         onCancel={() => {
-          if (!verificationProcessing) setVerificationConfirmationOpen(false)
+          if (!approvalProcessing) setApprovalConfirmationOpen(false)
         }}
-        onConfirm={confirmVerification}
-        open={verificationConfirmationOpen}
-        title="Confirm Report Verification"
+        onConfirm={confirmDecision}
+        open={approvalConfirmationOpen}
+        title={confirmation.title}
       />
     </>
   )

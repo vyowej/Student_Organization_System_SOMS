@@ -43,7 +43,7 @@ export default function AdviserApprovalsPage() {
       ? reviewAccomplishmentReport(selected.id, decision === 'VERIFIED' ? 'VERIFIED' : decision, comment)
       : reviewAdviserRequest(selected.type === 'EVENT' ? 'EVENT' : 'DOCUMENT', selected.id, decision, comment)
     if (success) {
-      const message = decision === 'APPROVED' ? `${selected.title} was approved.`
+      const message = decision === 'APPROVED' ? 'Request approved successfully.'
         : decision === 'VERIFIED' ? `${selected.title} report was verified.`
           : decision === 'REJECTED' ? `${selected.title} was rejected.`
             : `${selected.title} was returned for revision.`
@@ -51,6 +51,7 @@ export default function AdviserApprovalsPage() {
     } else {
       showToast('The decision could not be saved. Refresh the page and try again.', 'error')
     }
+    return success
   }
 
   const visibleItems = items
@@ -96,6 +97,9 @@ export default function AdviserApprovalsPage() {
         ) : <EmptyState description={`No ${filter.toLowerCase()} submissions from assigned organizations.`} title="Nothing to review" />}
       </Card>
       <AdviserReviewDialog
+        approvalConfirmationLabel="Yes, Approve"
+        approvalConfirmationMessage="Are you sure you want to approve this request? Please review the details before proceeding."
+        approvalConfirmationTitle="Confirm Approval"
         item={selected}
         key={selected?.id ?? 'closed'}
         onClose={() => setSelected(null)}
