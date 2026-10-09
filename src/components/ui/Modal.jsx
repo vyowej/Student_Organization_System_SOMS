@@ -36,7 +36,7 @@ export default function Modal({ open, title, onClose, children }) {
     // Move focus into the dialog.
     const focusables = () => Array.from(dialog?.querySelectorAll(FOCUSABLE) ?? [])
     const first = focusables().find((el) => !el.classList.contains('modal-close')) ?? focusables()[0]
-    ;(first ?? dialog)?.focus()
+      ; (first ?? dialog)?.focus()
 
     function handleKeyDown(event) {
       if (event.key === 'Escape') {
