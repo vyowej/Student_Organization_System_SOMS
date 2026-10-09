@@ -1,0 +1,365 @@
+/* ==========================================================================
+   UI refinements (loaded last). Dropdown filters, wider content area,
+   compact membership-request rows, simpler public navbar.
+   ========================================================================== */
+
+:root {
+  /* Use more of the screen on large monitors (was 1220px). */
+  --layout-content-width: 1600px;
+}
+
+/* ---------- Dropdown filters ---------- */
+.directory-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.directory-toolbar .organization-search {
+  flex: 1 1 280px;
+  max-width: none;
+}
+
+.directory-toolbar-reset {
+  min-height: 46px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--crimson);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.directory-toolbar-reset:hover { background: var(--crimson-soft); }
+
+.filter-select {
+  display: grid;
+  gap: 4px;
+  min-width: 170px;
+}
+
+.filter-select > label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.filter-select-control { position: relative; }
+
+.filter-select select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 38px 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  background: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  appearance: none;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.filter-select select:hover { border-color: #d9c3cb; }
+
+.filter-select select:focus-visible {
+  outline: 0;
+  border-color: var(--crimson);
+  box-shadow: 0 0 0 3px rgba(143, 21, 56, 0.1);
+}
+
+.filter-select-caret {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.landing-category-select { max-width: 260px; margin-bottom: 21px; }
+
+@media (max-width: 640px) {
+  .filter-select { flex: 1 1 100%; }
+}
+
+/* ---------- Membership requests: one compact row per applicant ---------- */
+.officer-request-history-card {
+  grid-template-columns: 40px minmax(180px, 1.2fr) minmax(200px, 1.6fr) auto auto;
+  gap: 16px;
+  padding: 12px 16px;
+}
+
+.officer-request-history-meta {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  color: #5f5a62;
+  font-size: 12px;
+}
+
+.officer-request-history-meta small {
+  color: #8a848c;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.officer-request-history-actions {
+  grid-column: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 0;
+}
+
+.officer-request-history-actions .button {
+  width: auto;
+  min-width: 82px;
+  padding: 0 14px;
+}
+
+@media (max-width: 1100px) {
+  .officer-request-history-card {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+  }
+  .officer-request-history-meta { grid-column: 2; }
+  .officer-request-history-card > .badge { grid-column: 3; grid-row: 1; }
+  .officer-request-history-actions { grid-column: 2 / -1; justify-content: flex-start; }
+}
+
+@media (max-width: 560px) {
+  .officer-request-history-card { grid-template-columns: 38px minmax(0, 1fr); }
+  .officer-request-history-card > .badge { grid-column: 2; grid-row: auto; justify-self: start; }
+  .officer-request-history-actions { grid-column: 1 / -1; }
+  .officer-request-history-actions .button { flex: 1; }
+}
+
+/* ---------- Public navbar: 4 links + sign in / get started ---------- */
+.public-brand-copy > span { max-width: 260px; }
+.public-links { gap: clamp(16px, 2.2vw, 32px); }
+.public-links a { font-size: 14px; }
+
+/* ---------- Registration cancel button ---------- */
+.student-registration-actions .button-danger { min-height: 36px; }
+
+/* Reject = outlined red so it never reads like the primary "Approve" action. */
+.officer-request-history-actions .button-danger {
+  color: var(--danger);
+  background: #fff;
+  border: 1px solid #efc4c0;
+}
+.officer-request-history-actions .button-danger:hover { background: #fdf0ef; }
+
+/* ---------- Members table: keep row actions on one line ---------- */
+.officer-member-row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.officer-member-row-actions .button { min-height: 34px; padding: 0 12px; font-size: 12px; }
+
+/* ---------- Phone: the long brand subtitle used to wrap onto 5 lines ---------- */
+@media (max-width: 640px) {
+  .brand-copy span,
+  .topbar-role { display: none; }
+}
+
+/* ---------- Student profile: a single card using the full width ---------- */
+.student-profile-card { padding: 0; overflow: hidden; }
+
+.student-profile-card .student-profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 0;
+  padding: 24px 28px;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(90deg, var(--crimson-soft), #fff 70%);
+}
+.student-profile-card .student-profile-identity-copy { flex: 1; min-width: 0; }
+
+.student-profile-block {
+  padding: 24px 28px;
+  border-top: 1px solid var(--border);
+}
+
+.student-profile-block dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px 24px;
+  margin: 18px 0 0;
+}
+.student-profile-block dl > div {
+  min-width: 0;
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 1px solid #f0eef0;
+  border-radius: 0;
+  background: transparent;
+}
+.student-profile-block dd { overflow-wrap: anywhere; }
+
+@media (max-width: 560px) {
+  .student-profile-card .student-profile-identity,
+  .student-profile-block { padding: 18px; }
+  .student-profile-card .student-profile-identity { flex-wrap: wrap; }
+}
+
+/* ---------- Organization settings: one field per line, full width ---------- */
+.officer-settings-field-grid { grid-template-columns: minmax(0, 1fr); }
+.officer-settings-field-grid > label { grid-column: 1 / -1; }
+.officer-settings-field-grid input,
+.officer-settings-field-grid select,
+.officer-settings-field-grid textarea { width: 100%; }
+.student-profile-block dt,
+.student-profile-block dd { margin: 0; padding: 0; }
+.student-profile-block dd { margin-top: 4px; }
+
+/* ==========================================================================
+   Navigation: hidden by default on every screen size. The ☰ (three-line)
+   button in the top bar opens it as a slide-over drawer, so pages use the
+   full width of the screen.
+   ========================================================================== */
+.mobile-menu-button { display: inline-grid; }
+
+.portal-body { display: block; }
+
+.sidebar {
+  position: fixed;
+  z-index: 40;
+  top: 72px;
+  bottom: 0;
+  left: 0;
+  height: calc(100vh - 72px);
+  height: calc(100dvh - 72px);
+  max-height: none;
+  width: min(285px, 84vw);
+  flex: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  visibility: hidden;
+  transform: translateX(-105%);
+  transition: transform 200ms ease, visibility 0s linear 200ms;
+  box-shadow: var(--shadow);
+}
+
+.sidebar-open .sidebar {
+  visibility: visible;
+  transform: translateX(0);
+  transition: transform 200ms ease, visibility 0s;
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  z-index: 35;
+  inset: 72px 0 0;
+  border: 0;
+  background: rgba(35, 27, 31, 0.32);
+}
+
+.portal-main {
+  width: 100%;
+  max-width: none;
+  padding-inline: max(var(--layout-gutter), calc((100% - var(--layout-content-width)) / 2));
+}
+
+@media (max-width: 760px) {
+  .sidebar { top: 64px; height: calc(100vh - 64px); height: calc(100dvh - 64px); }
+  .sidebar-backdrop { inset: 64px 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .sidebar-open .sidebar { transition: none; }
+}
+
+/* ==========================================================================
+   Persistent undo bar (stays under the top bar, on every portal page,
+   until the last action is undone, dismissed, or replaced).
+   ========================================================================== */
+.undo-bar {
+  position: sticky;
+  top: 80px;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid #ecd7a8;
+  border-radius: 12px;
+  color: #4a3a12;
+  background: #fff8e3;
+  box-shadow: 0 6px 18px rgba(60, 40, 10, 0.1);
+  animation: undo-bar-in 220ms ease-out both;
+}
+.undo-bar-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #946200;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.undo-bar-message { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.undo-bar-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--crimson);
+  border-radius: 8px;
+  color: #fff;
+  background: var(--crimson);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.undo-bar-button:hover { background: var(--crimson-dark); }
+.undo-bar-button kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+}
+.undo-bar-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  color: #7a6428;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.undo-bar-close:hover { background: rgba(0, 0, 0, 0.06); }
+@keyframes undo-bar-in { from { opacity: 0; transform: translateY(-6px); } }
+@media (max-width: 760px) {
+  .undo-bar { top: 72px; flex-wrap: wrap; }
+  .undo-bar-button kbd { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .undo-bar { animation: none; } }
