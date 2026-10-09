@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useParams, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import { adviserAssignedOrganizations } from '../data/adviserPortal.js'
@@ -11,6 +12,127 @@ import { formatDisplayName } from '../data/displayName.js'
 function adviserInitials(name = '') {
   const words = name.replace(/^(dr|prof|engr|mr|ms|mrs|atty)\.?\s+/i, '').split(/\s+/).filter(Boolean)
   return words.slice(0, 2).map((word) => word[0]).join('').toUpperCase() || 'FA'
+}
+
+const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const calendarStatusClass = {
+  DRAFT: 'is-neutral',
+  SUBMITTED: 'is-warning',
+  UNDER_REVIEW: 'is-warning',
+  APPROVED: 'is-success',
+  PUBLISHED: 'is-success',
+  RETURNED_FOR_REVISION: 'is-danger',
+  REJECTED: 'is-danger',
+  ONGOING: 'is-crimson',
+  COMPLETED: 'is-neutral',
+  ARCHIVED: 'is-neutral',
+}
+
+function eventDateKey(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function CalendarOfEvents({ events, organizationName }) {
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1)
+  })
+  const [today] = useState(() => eventDateKey(new Date()))
+  const [selectedDate, setSelectedDate] = useState(today)
+  const [selectedEvent, setSelectedEvent] = useState(null)
+  const eventsByDate = useMemo(() => events.reduce((groups, event) => {
+    const key = eventDateKey(event.date)
+    if (key) groups[key] = [...(groups[key] ?? []), event]
+    return groups
+  }, {}), [events])
+  const calendarDays = useMemo(() => {
+    const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1)
+    const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate()
+    return Array.from({ length: 42 }, (_, index) => {
+      const day = index - first.getDay() + 1
+      return day > 0 && day <= daysInMonth ? new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day) : null
+    })
+  }, [calendarMonth])
+  const selectedEvents = eventsByDate[selectedDate] ?? []
+  const selectedDateLabel = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(`${selectedDate}T00:00:00`))
+
+  function changeMonth(offset) {
+    setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1))
+  }
+
+  return (
+    <div className="adviser-calendar" aria-label={`${organizationName} Calendar of Events`}>
+      <div className="adviser-calendar-toolbar">
+        <div className="adviser-calendar-heading">
+          <h3>{new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(calendarMonth)}</h3>
+          <span>{events.length} event{events.length === 1 ? '' : 's'}</span>
+        </div>
+        <div className="adviser-calendar-controls">
+          <button aria-label="Previous month" className="button button-secondary" onClick={() => changeMonth(-1)} type="button">‹</button>
+          <button className="button button-secondary" onClick={() => {
+            const now = new Date()
+            setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1))
+            setSelectedDate(eventDateKey(now))
+          }} type="button">Today</button>
+          <button aria-label="Next month" className="button button-secondary" onClick={() => changeMonth(1)} type="button">›</button>
+        </div>
+      </div>
+      <div className="adviser-calendar-grid">
+        {weekDays.map((day) => <div className="adviser-calendar-weekday" key={day}>{day.slice(0, 3)}</div>)}
+        {calendarDays.map((day, index) => {
+          const key = day ? eventDateKey(day) : `empty-${index}`
+          const dayEvents = eventsByDate[key] ?? []
+          return (
+            <div className={`adviser-calendar-day${day ? '' : ' is-outside'}${key === selectedDate ? ' is-selected' : ''}`} key={key}>
+              {day && <>
+                <button aria-label={`Select ${day.toDateString()}`} className={`adviser-calendar-date${key === today ? ' is-today' : ''}`} onClick={() => setSelectedDate(key)} type="button">{day.getDate()}</button>
+                <div className="adviser-calendar-events">
+                  {dayEvents.slice(0, 3).map((event) => <button className={`adviser-calendar-event ${calendarStatusClass[event.status] ?? 'is-neutral'}`} key={event.id} onClick={() => setSelectedEvent(event)} title={event.title} type="button">{event.title}</button>)}
+                  {dayEvents.length > 3 && <button className="adviser-calendar-more" onClick={() => setSelectedDate(key)} type="button">+{dayEvents.length - 3} more</button>}
+                </div>
+              </>}
+            </div>
+          )
+        })}
+      </div>
+      <section className="adviser-selected-date" aria-live="polite">
+        <div className="adviser-selected-date-heading">
+          <div><span className="adviser-muted-label">Selected date</span><h4>{selectedDateLabel}</h4></div>
+          <span>{selectedEvents.length} event{selectedEvents.length === 1 ? '' : 's'}</span>
+        </div>
+        {selectedEvents.length ? <div className="adviser-selected-events">
+          {selectedEvents.map((event) => <button className="adviser-selected-event" key={event.id} onClick={() => setSelectedEvent(event)} type="button">
+            <span className={`adviser-event-status-dot ${calendarStatusClass[event.status] ?? 'is-neutral'}`} />
+            <span><strong>{event.title}</strong><small>{event.time || event.startTime || 'Time to be confirmed'} · {event.location || event.venue || 'Venue to be confirmed'}</small></span>
+            <Badge tone={calendarStatusClass[event.status] === 'is-success' ? 'success' : calendarStatusClass[event.status] === 'is-danger' ? 'danger' : 'warning'}>{event.status.replaceAll('_', ' ')}</Badge>
+          </button>)}
+        </div> : <p className="adviser-calendar-empty">No events are scheduled for this date.</p>}
+      </section>
+      <Modal onClose={() => setSelectedEvent(null)} open={Boolean(selectedEvent)} title="Event Details">
+        {selectedEvent && <div className="adviser-calendar-event-dialog">
+          <div className="adviser-review-summary">
+            <div><span className="adviser-muted-label">{organizationName}</span><h3>{selectedEvent.title}</h3></div>
+            <Badge tone={calendarStatusClass[selectedEvent.status] === 'is-success' ? 'success' : calendarStatusClass[selectedEvent.status] === 'is-danger' ? 'danger' : 'warning'}>{selectedEvent.status.replaceAll('_', ' ')}</Badge>
+          </div>
+          <dl className="adviser-review-facts">
+            <div><dt>Organization</dt><dd>{organizationName}</dd></div>
+            <div><dt>Date</dt><dd>{selectedEvent.date}</dd></div>
+            <div><dt>Time</dt><dd>{selectedEvent.time || selectedEvent.startTime || 'Not provided'}</dd></div>
+            <div><dt>Venue</dt><dd>{selectedEvent.location || selectedEvent.venue || 'Not provided'}</dd></div>
+            <div><dt>Approval status</dt><dd>{selectedEvent.status.replaceAll('_', ' ')}</dd></div>
+          </dl>
+          <section><h4>Description</h4><p>{selectedEvent.description || 'No description was provided.'}</p></section>
+        </div>}
+      </Modal>
+    </div>
+  )
 }
 
 export function AdviserOrganizationsPage() {
@@ -125,7 +247,7 @@ export function AdviserOrganizationDetailsPage() {
         </Card>
         <Card className="adviser-panel adviser-detail-wide">
           <h2>Calendar of Events</h2>
-          {events.length ? <div className="adviser-people-list">{events.map((event) => <div key={event.id}><strong>{event.title}</strong><span>{event.date} · {event.time || event.startTime || 'Time not set'} · {event.location || 'Venue not set'}</span><Badge tone={event.status === 'APPROVED' || event.status === 'PUBLISHED' ? 'success' : 'warning'}>{event.status}</Badge></div>)}</div> : <p>No events have been submitted.</p>}
+          {events.length ? <CalendarOfEvents events={events} organizationName={organization.name} /> : <p>No events have been submitted.</p>}
         </Card>
         <Card className="adviser-panel">
           <h2>Announcements</h2>

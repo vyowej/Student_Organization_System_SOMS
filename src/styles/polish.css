@@ -187,6 +187,63 @@ table.dataTable.no-footer { border-bottom: 0; }
 .campus-event-card-link.event-gold .campus-event-card-top { color: #80641d; }
 .campus-event-card-link.event-rose .campus-event-card-top { color: var(--crimson); }
 
+/* Adviser calendar --------------------------------------------------------- */
+.adviser-calendar { display: grid; gap: 18px; }
+.adviser-calendar-toolbar,
+.adviser-selected-date-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.adviser-calendar-heading { display: flex; align-items: baseline; gap: 10px; }
+.adviser-calendar-heading h2,
+.adviser-calendar-heading h3,
+.adviser-selected-date-heading h3 { margin: 0; color: #332f35; }
+.adviser-calendar-heading span,
+.adviser-selected-date-heading > span { color: #77717a; font-size: 12px; }
+.adviser-calendar-controls { display: flex; gap: 7px; }
+.adviser-calendar-controls .button { min-width: 36px; padding-inline: 10px; }
+.adviser-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid #e9e5e9; border-left: 1px solid #e9e5e9; }
+.adviser-calendar-weekday { padding: 10px 8px; border-right: 1px solid #e9e5e9; border-bottom: 1px solid #e9e5e9; color: #77717a; font-size: 11px; font-weight: 700; text-align: center; text-transform: uppercase; }
+.adviser-calendar-day { min-height: 112px; padding: 7px; border-right: 1px solid #e9e5e9; border-bottom: 1px solid #e9e5e9; background: #fff; }
+.adviser-calendar-day.is-outside { background: #faf8fa; }
+.adviser-calendar-day.is-selected { background: #fff8fa; box-shadow: inset 0 0 0 2px #efd4dc; }
+.adviser-calendar-date { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #4a454b; cursor: pointer; font: inherit; font-size: 12px; }
+.adviser-calendar-date:hover { background: #f7e9ed; color: var(--crimson); }
+.adviser-calendar-date.is-today { background: var(--crimson); color: #fff; font-weight: 700; }
+.adviser-calendar-events { display: grid; gap: 4px; margin-top: 5px; }
+.adviser-calendar-event,
+.adviser-calendar-more { overflow: hidden; padding: 4px 6px; border: 0; border-left: 3px solid var(--crimson); border-radius: 4px; background: #fdf2f5; color: #7d2938; cursor: pointer; font: inherit; font-size: 11px; font-weight: 600; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.adviser-calendar-event:hover,
+.adviser-calendar-more:hover { background: #f7e1e7; }
+.adviser-calendar-event.is-success { border-left-color: #3c7b54; background: #eef8f1; color: #2f6543; }
+.adviser-calendar-event.is-warning { border-left-color: #a8791d; background: #fff8e9; color: #765712; }
+.adviser-calendar-event.is-danger { border-left-color: #b02b47; }
+.adviser-calendar-event.is-neutral { border-left-color: #77717a; background: #f2f0f2; color: #5c565e; }
+.adviser-calendar-event.is-crimson { border-left-color: var(--crimson); }
+.adviser-calendar-more { padding: 2px 6px; background: transparent; color: var(--crimson); font-size: 10px; }
+.adviser-selected-date { display: grid; gap: 12px; padding-top: 2px; }
+.adviser-selected-date-heading h3 { margin-top: 3px; font-size: 16px; }
+.adviser-selected-date-heading h4 { margin: 3px 0 0; color: #332f35; font-size: 16px; }
+.adviser-calendar-empty { margin: 0; color: #77717a; font-size: 12px; }
+.adviser-calendar-event-dialog { display: grid; gap: 16px; }
+.adviser-selected-events { display: grid; gap: 8px; }
+.adviser-selected-event { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 11px 12px; border: 1px solid #eee8eb; border-radius: 9px; background: #fff; color: inherit; cursor: pointer; font: inherit; text-align: left; }
+.adviser-selected-event:hover { border-color: #e6c5ce; background: #fff8fa; }
+.adviser-selected-event strong,
+.adviser-selected-event small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adviser-selected-event strong { color: #39343b; font-size: 13px; }
+.adviser-selected-event small { margin-top: 2px; color: #77717a; font-size: 11px; }
+.adviser-event-status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--crimson); }
+.adviser-event-status-dot.is-success { background: #3c7b54; }
+.adviser-event-status-dot.is-warning { background: #a8791d; }
+.adviser-event-status-dot.is-danger { background: #b02b47; }
+.adviser-event-status-dot.is-neutral { background: #77717a; }
+
+@media (max-width: 760px) {
+  .adviser-calendar-toolbar { align-items: flex-start; flex-direction: column; }
+  .adviser-calendar-grid { min-width: 650px; }
+  .adviser-calendar { overflow-x: auto; }
+  .adviser-calendar-heading h2 { font-size: 18px; }
+  .adviser-selected-date { min-width: 0; }
+}
+
 /* 6 · Landing page --------------------------------------------------------- */
 /* Hero, sections and stats strip share one container and one left edge. */
 .landing-hero {
