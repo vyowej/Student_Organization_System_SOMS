@@ -143,7 +143,7 @@ export function AdviserOrganizationsPage() {
     .filter((item) => matchesQuery(search, item.name, item.acronym, item.category, item.adviser))
 
   return (
-    <>
+    <div className="adviser-page">
       <PageHeader
         description="View the organizations assigned to you and their current activities."
         eyebrow="UNIDOS · FACULTY ADVISER"
@@ -176,7 +176,7 @@ export function AdviserOrganizationsPage() {
           )
         })}
       </div>
-    </>
+    </div>
   )
 }
 
@@ -190,10 +190,10 @@ export function AdviserOrganizationDetailsPage() {
 
   if (!organization) {
     return (
-      <>
+      <div className="adviser-page">
         <PageHeader eyebrow="UNIDOS · FACULTY ADVISER" title="Organization not found" />
         <EmptyState description="This organization is not assigned to your adviser account." title="No access to organization" />
-      </>
+      </div>
     )
   }
 

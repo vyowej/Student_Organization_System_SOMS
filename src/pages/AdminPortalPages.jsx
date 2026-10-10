@@ -122,7 +122,7 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
   }
   const decisionVerb = (decisionLabels[decision] ?? String(decision).replace('_', ' ')).toLowerCase()
   return (
-    <>
+    <div className="admin-page">
       <ConfirmDialog
         confirmLabel="Yes, confirm"
         message={`Are you sure you want to ${decisionVerb} "${item.title ?? item.name ?? 'this item'}"? You can undo this right after.`}
@@ -157,7 +157,7 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
           </div>
         )}
       </Modal>
-    </>
+    </div>
   )
 }
 
@@ -180,7 +180,7 @@ function OrganizationEditModal({ organization, onClose, onSave }) {
   )
 }
 
-function AnalyticsChart({ title, rows, type, lineColor = '#9c1c37' }) {
+function AnalyticsChart({ title, rows, type, lineColor = '#9c1c37', filter }) {
   const width = 360
   const height = 168
   const left = 42
@@ -198,7 +198,10 @@ function AnalyticsChart({ title, rows, type, lineColor = '#9c1c37' }) {
 
   return (
     <Card className="admin-section-card admin-analytics-card">
-      <h2>{title}</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h2 style={{ margin: 0 }}>{title}</h2>
+        {filter}
+      </div>
       <div className="admin-analytics-chart">
         <svg
           aria-label={`${title}. ${chartDescription}`}
@@ -222,12 +225,13 @@ function AnalyticsChart({ title, rows, type, lineColor = '#9c1c37' }) {
               {points.length > 1 && (
                 <polyline
                   className="admin-analytics-chart-line"
+                  fill="none"
                   points={points.map((point) => `${point.x},${point.y}`).join(' ')}
                   style={{ stroke: lineColor }}
                 />
               )}
               {points.map((point, index) => (
-                <circle className="admin-analytics-chart-point" cx={point.x} cy={point.y} key={rows[index].label} r="4" style={{ stroke: lineColor }} />
+                <circle className="admin-analytics-chart-point" cx={point.x} cy={point.y} key={rows[index].label} r="4" style={{ stroke: lineColor, fill: 'var(--card-background, white)' }} />
               ))}
             </>
           ) : (
@@ -325,7 +329,7 @@ function AdminDashboard({ data }) {
   ]
   const upcomingEvents = data.officerEvents.filter((item) => ['APPROVED', 'PUBLISHED', 'ONGOING'].includes(item.status)).slice(0, 4)
   return (
-    <>
+    <div className="admin-page">
       <PageHeader description="Campus-wide oversight of organizations, events, accounts, and approval work." eyebrow="UNIDOS ADMINISTRATION" title="Admin Dashboard">
         <div className="admin-metrics-grid">
           <Metric label="Active Organizations" value={data.adminOrganizations.filter((item) => item.status === 'ACTIVE').length} />
@@ -350,7 +354,7 @@ function AdminDashboard({ data }) {
         {data.adminAuditLogs.slice(0, 4).map((log) => <div className="admin-activity-row" key={log.id}><strong>{log.action.replaceAll('_', ' ')}</strong><span>{log.description}</span><small>{log.timestamp}</small></div>)}
       </Card>
       <Card className="admin-section-card"><h2>Upcoming and approved events</h2>{upcomingEvents.length ? <Table useDataTable columns={[{ key: 'title', label: 'Event' }, { key: 'organizationName', label: 'Organization' }, { key: 'date', label: 'Date' }, { key: 'startTime', label: 'Time' }, { key: 'location', label: 'Venue' }, { key: 'status', label: 'Status', render: (value) => <Status value={value} /> }]} rows={upcomingEvents} /> : <EmptyState title="No scheduled events" />}</Card>
-    </>
+    </div>
   )
 }
 
@@ -370,6 +374,10 @@ export default function AdminPortalPage() {
   const [publishTarget, setPublishTarget] = useState(null)
   const [saveSettingsOpen, setSaveSettingsOpen] = useState(false)
   const [actionFilter, setActionFilter] = useState('All')
+  const [orgsCategoryFilter, setOrgsCategoryFilter] = useState('All Time')
+  const [eventsTimeframe, setEventsTimeframe] = useState('Last 6 Months')
+  const [attendanceTimeframe, setAttendanceTimeframe] = useState('Last 6 Months')
+  const [membershipTimeframe, setMembershipTimeframe] = useState('Last 6 Months')
   const [reportFilters, setReportFilters] = useState({ college: 'All Colleges', category: 'All Categories', eventType: 'All Event Types' })
   const [settings, setSettings] = useState(() => ({
     ...data.adminSettings,
@@ -419,7 +427,7 @@ export default function AdminPortalPage() {
     const isStudents = pathname.endsWith('/students')
     const rows = isStudents ? filteredStudents : data.adminUsers.filter((item) => matches(item))
     return (
-      <>
+      <div className="admin-page">
         <PageHeader description={isStudents ? 'Browse student directory records and academic information.' : 'Manage account access while protecting administrator safeguards.'} eyebrow="UNIDOS ADMINISTRATION" title={isStudents ? 'Student Directory' : 'User Management'} />
         <FilterBar search={search} setSearch={setSearch}>
           {!isStudents && <FilterSelect label="Account status" onChange={setStatusFilter} options={['All', ...['ACTIVE', 'INACTIVE', 'SUSPENDED']]} value={statusFilter} />}
@@ -455,13 +463,13 @@ export default function AdminPortalPage() {
         <Modal onClose={() => setUserChange(null)} open={Boolean(userChange)} title="Confirm account change">
           {userChange && <><p>Apply this access change for <strong>{formatDisplayName(userChange.user)}</strong>?</p><p>{Object.entries(userChange.changes).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p><Button onClick={() => { const undo = data.captureUndo(); const result = data.updateAdminUser(userChange.user.id, userChange.changes); showToast(result.ok ? 'User account updated.' : result.reason, result.ok ? 'success' : 'error', result.ok ? undoAction(undo) : {}); if (result.ok) setUserChange(null) }}>Confirm change</Button></>}
         </Modal>
-      </>
+      </div>
     )
   }
 
   if (pathname.endsWith('/organizations')) {
     return (
-      <>
+      <div className="admin-page">
         <PageHeader description="Monitor accreditation and institutional standing for recognized organizations." eyebrow="UNIDOS ADMINISTRATION" title="Organizations" />
         <FilterBar search={search} setSearch={setSearch}><FilterSelect label="Status" onChange={setStatusFilter} options={['All', ...['ACTIVE', 'INACTIVE', 'SUSPENDED']]} value={statusFilter} /></FilterBar>
         <Card className="admin-section-card">{data.adminOrganizations.filter((item) => matches(item, ['name', 'acronym', 'category', 'adviser', 'status'])).length ? <Table useDataTable columns={[
@@ -486,13 +494,13 @@ export default function AdminPortalPage() {
           else showToast('Complete all organization fields before saving.', 'error')
         }} />
         <RecordModal item={selected} onClose={() => setSelected(null)} />
-      </>
+      </div>
     )
   }
 
   if (pathname.endsWith('/organization-applications')) {
     return (
-      <>
+      <div className="admin-page">
         <PageHeader description="Review recognition submissions and required supporting documents." eyebrow="UNIDOS ADMINISTRATION" title="Organization Applications" />
         <FilterBar search={search} setSearch={setSearch}><FilterSelect label="Status" onChange={setStatusFilter} options={['All', 'PENDING', 'APPROVED', 'RETURNED', 'REJECTED']} value={statusFilter} /></FilterBar>
         <Card className="admin-section-card">{filteredApplications.length ? <Table useDataTable columns={[
@@ -501,14 +509,14 @@ export default function AdminPortalPage() {
           { key: 'actions', label: 'Actions', render: (_, item) => <div className="admin-row-actions"><Button onClick={() => setSelected({ ...item, title: item.name })} variant="secondary">View</Button>{item.status === 'PENDING' && <Button onClick={() => setSelected({ ...item, title: item.name, __application: true })}>Review</Button>}</div> },
         ]} rows={filteredApplications} /> : <EmptyState title="No applications found" />}</Card>
         <RecordModal canDecide={Boolean(selected?.__application)} decisionLabels={{ APPROVED: 'Approve accreditation', RETURNED: 'Return for revision', REJECTED: 'Reject application' }} item={selected} onClose={() => setSelected(null)} onDecision={(decision, comment) => decideApplication(selected, decision, comment)} />
-      </>
+      </div>
     )
   }
 
   if (pathname.endsWith('/events')) {
     const rows = orgEvents.filter((item) => matches(item, ['title', 'organizationName', 'status', 'category']))
     return (
-      <>
+      <div className="admin-page">
         <PageHeader description="Oversee proposals across campus. Publishing is available only after both adviser and Student Affairs approval." eyebrow="UNIDOS ADMINISTRATION" title="Campus Events" />
         <FilterBar search={search} setSearch={setSearch}><FilterSelect label="Status" onChange={setStatusFilter} options={['All', 'DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PUBLISHED', 'ONGOING', 'COMPLETED', 'ARCHIVED', 'RETURNED_FOR_REVISION', 'REJECTED']} value={statusFilter} /></FilterBar>
         <Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[
@@ -530,7 +538,7 @@ export default function AdminPortalPage() {
           open={Boolean(publishTarget)}
           title="Publish event"
         />
-      </>
+      </div>
     )
   }
 
@@ -550,7 +558,7 @@ export default function AdminPortalPage() {
       })),
     ].filter((item) => matches(item, ['title', 'name', 'organizationName', 'type', 'status']))
     return (
-      <>
+      <div className="admin-page">
         <PageHeader description="A single queue for cross-campus applications, adviser-approved events, and documents." eyebrow="UNIDOS ADMINISTRATION" title="Approval Center" />
         <FilterBar search={search} setSearch={setSearch}>
           <select aria-label="Filter approvals by status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
@@ -567,14 +575,14 @@ export default function AdminPortalPage() {
           ? decideApplication(selected, decision, comment)
           : selected?.__approval === 'event' ? decideEvent(selected, decision, comment)
             : selected?.__approval === 'document' ? decideDocument(selected, decision, comment) : false} />
-      </>
+      </div>
     )
   }
 
   if (pathname.endsWith('/documents')) {
     const rows = adminDocuments.filter((item) => matches(item, ['title', 'organizationName', 'type', 'status']))
     return (
-      <>
+      <div className="admin-page">
         <PageHeader description="Review organization documents after the adviser has completed their review." eyebrow="UNIDOS ADMINISTRATION" title="Documents" />
         <FilterBar search={search} setSearch={setSearch}><select aria-label="Filter document status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{['PENDING', 'APPROVED', 'RETURNED', 'REJECTED'].map((value) => <option key={value}>{value}</option>)}</select></FilterBar>
         <Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[
@@ -583,7 +591,7 @@ export default function AdminPortalPage() {
           { key: 'actions', label: 'Actions', render: (_, item) => <div className="admin-row-actions"><Button onClick={() => setSelected(item)} variant="secondary">View</Button>{item.status === 'APPROVED' && <Button onClick={() => setSelected({ ...item, __document: true })}>Review</Button>}</div> },
         ]} rows={rows} /> : <EmptyState description="Adviser-approved documents requiring Student Affairs review will appear here." title="No documents to review" />}</Card>
         <RecordModal canDecide={Boolean(selected?.__document)} item={selected} onClose={() => setSelected(null)} onDecision={(decision, comment) => decideDocument(selected, decision, comment)} />
-      </>
+      </div>
     )
   }
 
@@ -599,13 +607,13 @@ export default function AdminPortalPage() {
       && (reportFilters.college === 'All Colleges' || item.college === reportFilters.college)
       && (reportFilters.eventType === 'All Event Types' || item.eventCategory === reportFilters.eventType))
     return (
-      <>
+      <div className="admin-page">
         <PageHeader description="Export current mock system records for administrative review." eyebrow="UNIDOS ADMINISTRATION" title="Reports">
           <div className="admin-metrics-grid">
-            <Metric label="Total Accredited Organizations" value="47" />
-            <Metric label="Active Student Members" value="2,381" />
-            <Metric label="Total Events Held" value="213" />
-            <Metric label="Unique Student Participants" value="1,842" />
+            <Metric label="Total Accredited Organizations" value={data.adminOrganizations.filter(o => o.status === 'ACTIVE').length} />
+            <Metric label="Active Student Members" value={data.adminUsers.filter(u => u.role === 'Student').length} />
+            <Metric label="Total Events Held" value={orgEvents.length} />
+            <Metric label="Unique Student Participants" value={data.adminUsers.filter(u => u.role === 'Student').length} />
           </div>
         </PageHeader>
 
@@ -622,7 +630,7 @@ export default function AdminPortalPage() {
           <select aria-label="Filter event type" onChange={(event) => setReportFilters((current) => ({ ...current, eventType: event.target.value }))} value={reportFilters.eventType}>{['All Event Types', ...new Set(orgEvents.map((event) => event.category).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select>
         </FilterBar>
         <Card className="admin-section-card">{reportRows.length ? <Table useDataTable columns={[{ key: 'type', label: 'Record type' }, { key: 'name', label: 'Name' }, { key: 'status', label: 'Status', render: (value) => <Status value={value} /> }, { key: 'count', label: 'Members / attendance' }]} rows={reportRows} /> : <EmptyState title="No report records" />}</Card>
-      </>
+      </div>
     )
   }
 
@@ -640,19 +648,78 @@ export default function AdminPortalPage() {
       label: status,
       value: data.adminOrganizations.filter((organization) => organization.status === status).length,
     }))
+
+    const getMonthLabels = (timeframe) => {
+      if (timeframe === 'All Time') timeframe = 'Last 12 Months'
+      const monthCount = timeframe === 'Last 6 Months' ? 6 : 12
+      const labels = []
+      const d = new Date()
+      for (let i = monthCount - 1; i >= 0; i--) {
+        labels.push(new Date(d.getFullYear(), d.getMonth() - i, 1).toLocaleString('default', { month: 'short' }))
+      }
+      return labels
+    }
+
+    const eventsLabels = getMonthLabels(eventsTimeframe)
+    const eventsPerMonth = eventsLabels.map((label) => ({ label, value: 0 }))
+    orgEvents.forEach((event) => {
+      const month = new Date(event.date || event.createdAt).toLocaleString('default', { month: 'short' })
+      const found = eventsPerMonth.find((m) => m.label === month)
+      if (found) found.value++
+    })
+
+    const attendanceLabels = getMonthLabels(attendanceTimeframe)
+    const attendanceTrends = attendanceLabels.map((label) => ({ label, value: 0 }))
+    data.studentRegistrations?.forEach((reg) => {
+      const month = new Date(reg.registrationDate || reg.checkInTime).toLocaleString('default', { month: 'short' })
+      const found = attendanceTrends.find((m) => m.label === month)
+      if (found && (reg.status === 'COMPLETED' || reg.attendanceStatus === 'ATTENDED')) found.value++
+    })
+
+    const membershipLabels = getMonthLabels(membershipTimeframe)
+    const membershipTrends = membershipLabels.map((label) => ({ label, value: 0 }))
+    data.studentMemberships?.forEach((membership) => {
+      if (!membership.applicationDate) return
+      const month = new Date(membership.applicationDate).toLocaleString('default', { month: 'short' })
+      const found = membershipTrends.find((m) => m.label === month)
+      if (found) found.value++
+    })
+
     return (
-      <>
+      <div className="admin-page">
         <PageHeader description="A live summary of organization, membership, event, and participation patterns." eyebrow="UNIDOS ADMINISTRATION" title="Analytics">
           <div className="admin-metrics-grid">{stats.map((stat) => <Metric key={stat.label} label={stat.label} value={stat.value} detail={`of ${stat.total} total records`} />)}</div>
         </PageHeader>
         <div className="admin-analytics-grid">
-          <AnalyticsChart title="Organization category distribution" type="bar" rows={categories.map((label) => ({ label, value: data.adminOrganizations.filter((organization) => organization.category === label).length }))} />
-          <AnalyticsChart title="Events per month" type="bar" rows={[{ label: 'Aug', value: 4 }, { label: 'Sep', value: 7 }, { label: 'Oct', value: 9 }, { label: 'Nov', value: 5 }, { label: 'Dec', value: 3 }]} />
-          <AnalyticsChart title="Attendance trends" type="line" lineColor="#2563eb" rows={[{ label: 'Aug', value: 66 }, { label: 'Sep', value: 74 }, { label: 'Oct', value: 82 }, { label: 'Nov', value: 79 }]} />
-          <AnalyticsChart title="Membership trends" type="line" lineColor="#d97706" rows={[{ label: 'Aug', value: 188 }, { label: 'Sep', value: 216 }, { label: 'Oct', value: 243 }, { label: 'Nov', value: 278 }]} />
+          <AnalyticsChart 
+            title="Organization category distribution" 
+            type="bar" 
+            rows={categories.map((label) => ({ label, value: data.adminOrganizations.filter((organization) => organization.category === label).length }))}
+            filter={<select className="admin-chart-filter" value={orgsCategoryFilter} onChange={(e) => setOrgsCategoryFilter(e.target.value)}><option>All Time</option></select>}
+          />
+          <AnalyticsChart 
+            title="Events per month" 
+            type="bar" 
+            rows={eventsPerMonth} 
+            filter={<select className="admin-chart-filter" value={eventsTimeframe} onChange={(e) => setEventsTimeframe(e.target.value)}><option>Last 6 Months</option><option>Last 12 Months</option></select>}
+          />
+          <AnalyticsChart 
+            title="Attendance trends" 
+            type="line" 
+            lineColor="#2563eb" 
+            rows={attendanceTrends} 
+            filter={<select className="admin-chart-filter" value={attendanceTimeframe} onChange={(e) => setAttendanceTimeframe(e.target.value)}><option>Last 6 Months</option><option>Last 12 Months</option></select>}
+          />
+          <AnalyticsChart 
+            title="Membership trends" 
+            type="line" 
+            lineColor="#d97706" 
+            rows={membershipTrends} 
+            filter={<select className="admin-chart-filter" value={membershipTimeframe} onChange={(e) => setMembershipTimeframe(e.target.value)}><option>Last 6 Months</option><option>Last 12 Months</option></select>}
+          />
         </div>
         <OrganizationStandingChart rows={organizationStanding} total={orgTotal} />
-      </>
+      </div>
     )
   }
 
@@ -668,7 +735,7 @@ export default function AdminPortalPage() {
 
   if (pathname.endsWith('/settings')) {
     return (
-      <>
+      <div className="admin-page">
         <PageHeader description="Update academic period and notification preferences for this local preview." eyebrow="UNIDOS ADMINISTRATION" title="System Settings" />
         <Card className="admin-section-card admin-settings-form">
           <h2>System Information</h2>
@@ -695,7 +762,7 @@ export default function AdminPortalPage() {
           open={saveSettingsOpen}
           title="Save system settings"
         />
-      </>
+      </div>
     )
   }
   return <PageHeader description="This administration section is not available." title="Page not found" />

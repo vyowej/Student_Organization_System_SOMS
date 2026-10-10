@@ -42,13 +42,13 @@ export default function StudentOrganizationDetailsPage() {
 
   if (!organization) {
     return (
-      <>
+      <div className="student-page">
         <PageHeader eyebrow="UNIDOS STUDENT PORTAL" title="Organization not found" />
         <Card className="organization-not-found">
           <p>We could not find that organization in the current preview.</p>
           <Link className="button button-primary" to="/student/organizations">Browse Organizations</Link>
         </Card>
-      </>
+      </div>
     )
   }
 

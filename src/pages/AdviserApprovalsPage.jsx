@@ -59,7 +59,7 @@ export default function AdviserApprovalsPage() {
     .filter((item) => matchesQuery(search, item.title, item.type, item.organizationName, item.submittedDate))
 
   return (
-    <>
+    <div className="adviser-page">
       <PageHeader
         description="Review submissions from organizations assigned to you. Your decisions are recorded for the officer."
         eyebrow="UNIDOS · FACULTY ADVISER"
@@ -106,6 +106,6 @@ export default function AdviserApprovalsPage() {
         onDecision={decide}
         report={selected?.type === 'ACCOMPLISHMENT_REPORT'}
       />
-    </>
+    </div>
   )
 }

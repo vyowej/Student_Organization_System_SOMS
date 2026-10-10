@@ -66,6 +66,7 @@
 .public-brand-copy span {
   color: #77727a;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .public-brand-copy b {
@@ -2197,6 +2198,7 @@
   font-weight: 600;
   letter-spacing: 0.65px;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .portal-layout {
@@ -9157,7 +9159,6 @@
 }
 
 .admin-metric-card>strong {
-  align-self: end;
   color: #8e1830;
   font-size: 29px;
   line-height: 1;

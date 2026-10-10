@@ -97,7 +97,7 @@ export default function OfficerMembershipRequestsPage() {
   }
 
   return (
-    <>
+    <div className="officer-page">
       <PageHeader
         description="Review membership applications for WMSU Computer Society. Decisions affect only your assigned organization."
         eyebrow="WMSU Computer Society"
@@ -185,6 +185,6 @@ export default function OfficerMembershipRequestsPage() {
           <Button onClick={reject} variant="danger">Reject Application</Button>
         </div>
       </Modal>
-    </>
+    </div>
   )
 }

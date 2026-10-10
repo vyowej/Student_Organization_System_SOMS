@@ -26,7 +26,7 @@ export default function OfficerEventsPage() {
   ]
 
   return (
-    <>
+    <div className="officer-page">
       <PageHeader
         description="Create proposals, submit them for review, and update proposals returned by your adviser."
         eyebrow="WMSU Computer Society"
@@ -41,6 +41,6 @@ export default function OfficerEventsPage() {
         <Table useDataTable columns={columns} rows={visibleEvents} />
         <p className="officer-permission-note">Event proposals cannot be approved by an organization officer. Approval is reserved for the Organization Adviser and Student Affairs Admin.</p>
       </Card>
-    </>
+    </div>
   )
 }

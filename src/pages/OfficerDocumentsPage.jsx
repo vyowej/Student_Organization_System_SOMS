@@ -14,7 +14,7 @@ export default function OfficerDocumentsPage() {
   const documents = adviserDocuments.filter((document) => matchesQuery(search, document.title, document.type, document.status, document.submittedDate))
 
   return (
-    <>
+    <div className="officer-page">
       <PageHeader
         description="Track documents submitted for your organization's adviser review."
         eyebrow="WMSU COMPUTER SOCIETY"
@@ -35,6 +35,6 @@ export default function OfficerDocumentsPage() {
           ))}
         </div> : <EmptyState description={search ? 'No documents match your search.' : 'There are no document submissions.'} title="No documents" />}
       </Card>
-    </>
+    </div>
   )
 }

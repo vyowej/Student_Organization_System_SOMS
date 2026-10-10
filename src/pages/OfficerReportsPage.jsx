@@ -14,7 +14,7 @@ export default function OfficerReportsPage() {
   const reports = adviserReports.filter((report) => matchesQuery(search, report.eventTitle, report.status, report.eventDate, report.submittedDate))
 
   return (
-    <>
+    <div className="officer-page">
       <PageHeader
         description="View adviser verification decisions and feedback for your activity reports."
         eyebrow="WMSU COMPUTER SOCIETY"
@@ -36,6 +36,6 @@ export default function OfficerReportsPage() {
           ))}
         </div> : <EmptyState description={search ? 'No reports match your search.' : 'Completed activities and submitted reports will be shown here.'} title="No activity reports" />}
       </Card>
-    </>
+    </div>
   )
 }

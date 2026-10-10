@@ -956,7 +956,6 @@ tbody tr:hover .cell-sticky { background: #fcf8fa; }
   .officer-dashboard-grid,
   .adviser-dashboard-columns, .adviser-detail-grid,
   .officer-org-grid, .officer-settings-two-column,
-  .admin-analytics-grid,
   .organization-details-grid
 ) {
   display: flex;
@@ -977,7 +976,6 @@ tbody tr:hover .cell-sticky { background: #fcf8fa; }
   .officer-dashboard-grid,
   .adviser-dashboard-columns, .adviser-detail-grid,
   .officer-org-grid, .officer-settings-two-column,
-  .admin-analytics-grid,
   .organization-details-grid
 ) > :is(section, article, div, aside, form) {
   width: 100%;
@@ -995,7 +993,6 @@ tbody tr:hover .cell-sticky { background: #fcf8fa; }
   .officer-dashboard-grid,
   .adviser-dashboard-columns, .adviser-detail-grid,
   .officer-org-grid, .officer-settings-two-column,
-  .admin-analytics-grid,
   .organization-details-grid
 ) > * + * { border-top: 1px solid var(--border); }
 

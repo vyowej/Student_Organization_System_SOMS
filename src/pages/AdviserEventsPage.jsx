@@ -46,7 +46,7 @@ export default function AdviserEventsPage() {
   }
 
   return (
-    <>
+    <div className="adviser-page">
       <PageHeader
         description="Review activities for assigned organizations. Adviser approval does not publish an event; Student Affairs must complete the next review."
         eyebrow="UNIDOS · FACULTY ADVISER"
@@ -75,6 +75,6 @@ export default function AdviserEventsPage() {
         ) : <EmptyState description="No organization events match this filter." title="No events found" />}
       </Card>
       <AdviserReviewDialog item={selected} key={selected?.id ?? 'closed'} onClose={() => setSelected(null)} onDecision={decide} />
-    </>
+    </div>
   )
 }

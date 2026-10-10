@@ -63,10 +63,10 @@ export default function OfficerSettingsPage() {
 
   if (!organization) {
     return (
-      <>
+      <div className="officer-page">
         <PageHeader title="Organization Settings" description="Manage your organization's information, preferences, and account settings." eyebrow="ORGANIZATION MANAGEMENT" />
         <Card className="officer-settings-card"><p>Your officer account does not have an assigned organization to configure.</p></Card>
-      </>
+      </div>
     )
   }
 

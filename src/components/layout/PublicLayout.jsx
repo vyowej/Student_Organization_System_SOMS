@@ -87,7 +87,7 @@ export default function PublicLayout() {
         <nav aria-label="Main navigation" className={`public-links${menuOpen ? ' public-links-open' : ''}`} id="public-navigation">
           {publicLinks.map((item, index) => {
             const sectionId = item.to.split('#')[1]
-            const isHome = !sectionId && index === 0 && location.pathname === '/' && !location.hash
+            const isHome = !sectionId && index === 0 && location.pathname === '/' && !location.hash && !activeSection
             const isActive = sectionId ? activeSection === sectionId : isHome
 
             return (

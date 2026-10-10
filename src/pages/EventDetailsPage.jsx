@@ -36,7 +36,7 @@ export default function EventDetailsPage() {
 
   if (!event) {
     return (
-      <>
+      <div className="event-details-page">
         <PageHeader
           description="The event may have been removed or the link may be incorrect."
           eyebrow="UNIDOS STUDENT PORTAL"
@@ -46,7 +46,7 @@ export default function EventDetailsPage() {
           <p>We could not find that event in the current preview.</p>
           <Link className="button button-primary" to="/student/events">Explore all events</Link>
         </Card>
-      </>
+      </div>
     )
   }
 

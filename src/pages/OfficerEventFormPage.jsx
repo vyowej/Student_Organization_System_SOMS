@@ -90,7 +90,7 @@ export default function OfficerEventFormPage() {
   }
 
   return (
-    <>
+    <div className="officer-page">
       <PageHeader
         description={existing ? 'Address the adviser’s feedback, then resubmit the proposal for review.' : 'Create a proposal for your assigned organization. An adviser and Student Affairs Admin will review it.'}
         eyebrow="WMSU Computer Society"
@@ -143,6 +143,6 @@ export default function OfficerEventFormPage() {
         open={confirmSubmitOpen}
         title="Submit event proposal"
       />
-    </>
+    </div>
   )
 }

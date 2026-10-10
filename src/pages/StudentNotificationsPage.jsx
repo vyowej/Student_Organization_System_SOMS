@@ -13,7 +13,7 @@ export default function StudentNotificationsPage() {
   const visibleNotifications = studentNotifications.filter((notification) => matchesQuery(search, notification.message, notification.createdAt))
 
   return (
-    <>
+    <div className="student-page">
       <PageHeader
         description="Updates about your organization memberships and campus activities."
         eyebrow="UNIDOS STUDENT PORTAL"
@@ -32,6 +32,6 @@ export default function StudentNotificationsPage() {
           </Card>
         )) : <EmptyState description={search ? 'No notifications match your search.' : 'Membership, event, and campus updates will appear here.'} title={search ? 'No matching notifications' : 'You’re all caught up'} />}
       </div>
-    </>
+    </div>
   )
 }

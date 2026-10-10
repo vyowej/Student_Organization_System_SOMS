@@ -233,62 +233,7 @@
 .student-profile-block dd { margin: 0; padding: 0; }
 .student-profile-block dd { margin-top: 4px; }
 
-/* ==========================================================================
-   Navigation: hidden by default on every screen size. The ☰ (three-line)
-   button in the top bar opens it as a slide-over drawer, so pages use the
-   full width of the screen.
-   ========================================================================== */
-.mobile-menu-button { display: inline-grid; }
 
-.portal-body { display: block; }
-
-.sidebar {
-  position: fixed;
-  z-index: 40;
-  top: 72px;
-  bottom: 0;
-  left: 0;
-  height: calc(100vh - 72px);
-  height: calc(100dvh - 72px);
-  max-height: none;
-  width: min(285px, 84vw);
-  flex: none;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  visibility: hidden;
-  transform: translateX(-105%);
-  transition: transform 200ms ease, visibility 0s linear 200ms;
-  box-shadow: var(--shadow);
-}
-
-.sidebar-open .sidebar {
-  visibility: visible;
-  transform: translateX(0);
-  transition: transform 200ms ease, visibility 0s;
-}
-
-.sidebar-backdrop {
-  position: fixed;
-  z-index: 35;
-  inset: 72px 0 0;
-  border: 0;
-  background: rgba(35, 27, 31, 0.32);
-}
-
-.portal-main {
-  width: 100%;
-  max-width: none;
-  padding-inline: max(var(--layout-gutter), calc((100% - var(--layout-content-width)) / 2));
-}
-
-@media (max-width: 760px) {
-  .sidebar { top: 64px; height: calc(100vh - 64px); height: calc(100dvh - 64px); }
-  .sidebar-backdrop { inset: 64px 0 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sidebar, .sidebar-open .sidebar { transition: none; }
-}
 
 /* ==========================================================================
    Persistent undo bar (stays under the top bar, on every portal page,

@@ -99,7 +99,7 @@ export default function AdviserReportsPage() {
   ]
 
   return (
-    <>
+    <div className="adviser-page">
       <PageHeader
         description="Review, verify, and monitor activity reports submitted by your assigned organizations."
         eyebrow="UNIDOS · FACULTY ADVISER"
@@ -191,6 +191,6 @@ export default function AdviserReportsPage() {
         verifiedBy={adviserName}
         turnout={selected ? getTurnout(selected) : null}
       />
-    </>
+    </div>
   )
 }
