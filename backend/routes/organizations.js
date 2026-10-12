@@ -5,7 +5,16 @@ const db = require('../db');
 // DATA RELATED: Get all active organizations for students to view
 router.get('/', async (req, res) => {
   try {
-    const result = await db.query("SELECT * FROM organizations WHERE status = 'ACTIVE'");
+    const result = await db.query(`
+      SELECT o.*,
+             c.name as college_name,
+             d.name as department_name
+        FROM organizations o
+   LEFT JOIN colleges c ON c.id = o.college_id
+   LEFT JOIN departments d ON d.id = o.department_id
+       WHERE o.status = 'ACTIVE'
+       ORDER BY o.name ASC
+    `);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -16,14 +25,79 @@ router.get('/', async (req, res) => {
 // ADMIN RELATED: Create or accredit a new organization
 router.post('/', async (req, res) => {
   try {
-    const { name, acronym, description, adviser_id } = req.body;
+    const {
+      name,
+      acronym,
+      description,
+      logo,
+      org_type,
+      scope,
+      college_id,
+      department_id,
+      created_by,
+      adviser_id,
+    } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Organization name is required' });
+    }
+
+    // Determine scope to satisfy student_org_db check constraints:
+    // UNIVERSITY requires null college_id and department_id
+    // COLLEGE requires non-null college_id and null department_id
+    // DEPARTMENT requires non-null college_id and department_id
+    const collegeIdVal = college_id || null;
+    const departmentIdVal = department_id || null;
+
+    let orgScope = scope;
+    if (!orgScope) {
+      if (departmentIdVal && collegeIdVal) orgScope = 'DEPARTMENT';
+      else if (collegeIdVal) orgScope = 'COLLEGE';
+      else orgScope = 'UNIVERSITY';
+    }
+
+    const orgTypeVal = org_type || 'OTHER';
+
     const result = await db.query(
-      'INSERT INTO organizations (name, acronym, description, adviser_id, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [name, acronym, description, adviser_id, 'PENDING'] // PENDING until admin approves
+      `INSERT INTO organizations (
+        name, acronym, description, logo, org_type, scope,
+        college_id, department_id, created_by, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING')
+      RETURNING *`,
+      [
+        name.trim(),
+        acronym ? acronym.trim() : null,
+        description || null,
+        logo || null,
+        orgTypeVal,
+        orgScope,
+        collegeIdVal,
+        departmentIdVal,
+        created_by || null,
+      ]
     );
-    res.status(201).json(result.rows[0]);
+
+    const createdOrg = result.rows[0];
+
+    // If adviser_id provided and exists in advisers table, link via organization_advisers
+    if (adviser_id) {
+      try {
+        await db.query(
+          `INSERT INTO organization_advisers (organization_id, adviser_id, assigned_by)
+           VALUES ($1, $2, $3)`,
+          [createdOrg.id, adviser_id, created_by || null]
+        );
+      } catch (advErr) {
+        console.warn('Notice: Could not link adviser to organization:', advErr.message);
+      }
+    }
+
+    res.status(201).json(createdOrg);
   } catch (err) {
     console.error(err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'An organization with this name/acronym already exists' });
+    }
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -32,10 +106,22 @@ router.post('/', async (req, res) => {
 router.put('/:id/approve', async (req, res) => {
   try {
     const { id } = req.params;
+    const { approved_by } = req.body || {};
     const result = await db.query(
-      "UPDATE organizations SET status = 'ACTIVE' WHERE id = $1 RETURNING *",
-      [id]
+      `UPDATE organizations
+          SET status = 'ACTIVE',
+              approved_by = COALESCE($2, approved_by),
+              approved_at = now(),
+              updated_at = now()
+        WHERE id = $1
+        RETURNING *`,
+      [id, approved_by || null]
     );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -44,3 +130,4 @@ router.put('/:id/approve', async (req, res) => {
 });
 
 module.exports = router;
+

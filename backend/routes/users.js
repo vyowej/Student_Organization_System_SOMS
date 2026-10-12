@@ -1,12 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcrypt');
+let bcrypt;
+try {
+  bcrypt = require('bcrypt');
+} catch {
+  bcrypt = require('bcryptjs');
+}
 const db = require('../db');
+
 
 // ADMIN RELATED: Get all users
 router.get('/', async (req, res) => {
   try {
-    const result = await db.query('SELECT id, email, role, status, created_at FROM users');
+    const result = await db.query(
+      'SELECT id, email, first_name, last_name, role, status, created_at FROM users ORDER BY id ASC'
+    );
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -17,21 +25,35 @@ router.get('/', async (req, res) => {
 // USER RELATED: Register (Sign up) a new user
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, role } = req.body;
-    // ADMIN RELATED: Users start as STUDENT by default, unless specified
+    const { email, password, role, first_name, last_name, status } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    // student_org_db schema requires first_name and last_name (NOT NULL)
+    const firstName = first_name || email.split('@')[0];
+    const lastName = last_name || 'Member';
     const userRole = role || 'STUDENT';
-    
+    const userStatus = status || 'ACTIVE';
+
     // DATA RELATED: Hash the password using bcrypt
     const saltRounds = 10;
     const password_hash = await bcrypt.hash(password, saltRounds);
 
     const result = await db.query(
-      'INSERT INTO users (email, password_hash, role, status) VALUES ($1, $2, $3, $4) RETURNING id, email, role, status',
-      [email, password_hash, userRole, 'ACTIVE']
+      `INSERT INTO users (email, password_hash, first_name, last_name, role, status)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, email, first_name, last_name, role, status, created_at`,
+      [email.trim(), password_hash, firstName.trim(), lastName.trim(), userRole, userStatus]
     );
+
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A user with this email already exists' });
+    }
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -40,11 +62,15 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
-    // DATA RELATED: Check if the user exists
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    // DATA RELATED: Check if the user exists (case-insensitive email)
     const result = await db.query(
-      'SELECT id, email, password_hash, role, status FROM users WHERE email = $1',
-      [email]
+      'SELECT id, email, first_name, last_name, password_hash, role, status FROM users WHERE lower(email) = lower($1)',
+      [email.trim()]
     );
 
     if (result.rows.length === 0) {
@@ -55,7 +81,7 @@ router.post('/login', async (req, res) => {
 
     // DATA RELATED: Compare the password with the hashed password in the DB
     const isMatch = await bcrypt.compare(password, user.password_hash);
-    
+
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -64,8 +90,10 @@ router.post('/login', async (req, res) => {
     res.json({
       id: user.id,
       email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
       role: user.role,
-      status: user.status
+      status: user.status,
     });
   } catch (err) {
     console.error(err);
@@ -74,3 +102,4 @@ router.post('/login', async (req, res) => {
 });
 
 module.exports = router;
+
