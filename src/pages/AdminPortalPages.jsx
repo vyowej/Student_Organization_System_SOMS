@@ -180,84 +180,489 @@ function OrganizationEditModal({ organization, onClose, onSave }) {
   )
 }
 
-function AnalyticsChart({ title, rows, type, lineColor = '#9c1c37', filter }) {
-  const width = 360
-  const height = 168
-  const left = 42
-  const right = width - 12
-  const top = 12
-  const bottom = height - 20
-  const barColors = ['#9c1c37', '#d97742', '#457b9d', '#6b8e62', '#8b6da8', '#c49a35']
-  const maxValue = Math.max(...rows.map((row) => row.value), 1)
+function parseRecordDate(raw) {
+  if (!raw) return null
+  if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw
+  const str = String(raw).trim()
+  if (!str) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const [y, m, d] = str.split('-').map(Number)
+    return new Date(y, m - 1, d)
+  }
+  const cleaned = str.replace('·', ' ').trim()
+  const parsed = new Date(cleaned)
+  return isNaN(parsed.getTime()) ? null : parsed
+}
+
+function buildTimeline(dateRange, fallbackMonthCount = 6) {
+  const sParsed = parseRecordDate(dateRange?.start)
+  const eParsed = parseRecordDate(dateRange?.end)
+
+  if (!sParsed && !eParsed) {
+    const now = new Date()
+    const months = []
+    for (let i = fallbackMonthCount - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const label = d.toLocaleString('default', { month: 'short' })
+      months.push({ key, label, isMonth: true, year: d.getFullYear(), month: d.getMonth() })
+    }
+    return { granularity: 'month', slots: months, startDate: null, endDate: null }
+  }
+
+  let start = sParsed
+  let end = eParsed
+
+  if (start && !end) {
+    end = new Date(start)
+    end.setDate(end.getDate() + 13)
+  } else if (!start && end) {
+    start = new Date(end)
+    start.setDate(start.getDate() - 13)
+  }
+
+  if (start > end) {
+    const tmp = start
+    start = end
+    end = tmp
+  }
+
+  const startDate = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0, 0)
+  const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)
+
+  const diffDays = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (diffDays <= 14) {
+    const days = []
+    const cur = new Date(startDate)
+    while (cur <= endDate) {
+      const y = cur.getFullYear()
+      const m = String(cur.getMonth() + 1).padStart(2, '0')
+      const d = String(cur.getDate()).padStart(2, '0')
+      const key = `${y}-${m}-${d}`
+      const label = cur.toLocaleDateString('default', { month: 'short', day: 'numeric' })
+      days.push({ key, label, isMonth: false, date: new Date(cur) })
+      cur.setDate(cur.getDate() + 1)
+    }
+    return { granularity: 'day', slots: days, startDate, endDate }
+  } else if (diffDays <= 90) {
+    const weeks = []
+    const cur = new Date(startDate)
+    let weekIndex = 1
+    while (cur <= endDate) {
+      const weekStart = new Date(cur)
+      const weekEnd = new Date(cur)
+      weekEnd.setDate(weekEnd.getDate() + 6)
+      if (weekEnd > endDate) {
+        weekEnd.setTime(endDate.getTime())
+      }
+      weekEnd.setHours(23, 59, 59, 999)
+
+      const y = weekStart.getFullYear()
+      const m = String(weekStart.getMonth() + 1).padStart(2, '0')
+      const d = String(weekStart.getDate()).padStart(2, '0')
+      const key = `${y}-${m}-${d}`
+
+      const startMonth = weekStart.toLocaleDateString('default', { month: 'short' })
+      const endMonth = weekEnd.toLocaleDateString('default', { month: 'short' })
+      const startDay = weekStart.getDate()
+      const endDay = weekEnd.getDate()
+
+      const label = startMonth === endMonth
+        ? `${startMonth} ${startDay}–${endDay}`
+        : `${startMonth} ${startDay}–${endMonth} ${endDay}`
+
+      weeks.push({
+        key,
+        label,
+        weekStart: new Date(weekStart),
+        weekEnd: new Date(weekEnd),
+        weekIndex,
+      })
+
+      cur.setDate(cur.getDate() + 7)
+      weekIndex++
+    }
+    return { granularity: 'week', slots: weeks, startDate, endDate }
+  } else {
+    const months = []
+    const cur = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+    const endMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 1)
+    while (cur <= endMonth) {
+      const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`
+      const label = cur.toLocaleString('default', { month: 'short' })
+      months.push({ key, label, isMonth: true, year: cur.getFullYear(), month: cur.getMonth() })
+      cur.setMonth(cur.getMonth() + 1)
+    }
+    return { granularity: 'month', slots: months, startDate, endDate }
+  }
+}
+
+function getRecordSlotKey(rawDate, timeline) {
+  const d = parseRecordDate(rawDate)
+  if (!d) return null
+  if (timeline.startDate && d < timeline.startDate) return null
+  if (timeline.endDate && d > timeline.endDate) return null
+
+  if (timeline.granularity === 'day') {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  } else if (timeline.granularity === 'week') {
+    const match = timeline.slots.find(
+      (slot) => d >= slot.weekStart && d <= slot.weekEnd
+    )
+    return match ? match.key : null
+  } else {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    return `${y}-${m}`
+  }
+}
+
+function DateRangeFilter({ startDate, endDate, onStartChange, onEndChange, onReset }) {
+  return (
+    <div className="admin-chart-date-filter">
+      <input
+        type="date"
+        className="admin-chart-date-input"
+        value={startDate}
+        onChange={(e) => onStartChange(e.target.value)}
+        title="Start date"
+        aria-label="Start date"
+      />
+      <span className="admin-chart-date-sep">to</span>
+      <input
+        type="date"
+        className="admin-chart-date-input"
+        value={endDate}
+        onChange={(e) => onEndChange(e.target.value)}
+        title="End date"
+        aria-label="End date"
+      />
+      {(startDate || endDate) && (
+        <button
+          type="button"
+          className="admin-chart-date-clear"
+          onClick={onReset}
+          title="Reset date filter"
+          aria-label="Reset date filter"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  )
+}
+
+function getChartUnitLabel(title, value) {
+  const t = title.toLowerCase()
+  if (t.includes('category') || t.includes('organization')) {
+    return value === 1 ? 'organization' : 'organizations'
+  }
+  if (t.includes('event')) {
+    return value === 1 ? 'event' : 'events'
+  }
+  if (t.includes('attendance')) {
+    return value === 1 ? 'attendee' : 'attendees'
+  }
+  if (t.includes('membership')) {
+    return value === 1 ? 'member' : 'members'
+  }
+  return value === 1 ? 'record' : 'records'
+}
+
+function AnalyticsChart({ title, rows, type, lineColor = '#8f1538', filter }) {
+  const [hoveredIndex, setHoveredIndex] = useState(null)
+
+  const width = 420
+  const height = 180
+  const left = 36
+  const right = width - 16
+  const top = 16
+  const bottom = height - 26
+
+  const barPalette = [
+    { start: '#8f1538', end: '#b8294e' },
+    { start: '#d4653b', end: '#e2825b' },
+    { start: '#2563eb', end: '#4f83f2' },
+    { start: '#10b981', end: '#34d399' },
+    { start: '#8b5cf6', end: '#a78bfa' },
+    { start: '#d97706', end: '#f59e0b' },
+  ]
+
+  const maxVal = Math.max(...rows.map((r) => r.value), 0)
+  const totalVal = rows.reduce((sum, r) => sum + (r.value || 0), 0)
+
+  let ticks = [0, 1, 2]
+  if (maxVal <= 1) {
+    ticks = [0, 1, 2]
+  } else if (maxVal === 2) {
+    ticks = [0, 1, 2]
+  } else if (maxVal === 3) {
+    ticks = [0, 1, 2, 3]
+  } else if (maxVal === 4) {
+    ticks = [0, 2, 4]
+  } else if (maxVal <= 6) {
+    ticks = [0, 2, 4, 6]
+  } else if (maxVal <= 10) {
+    ticks = [0, 3, 6, 9, 12].filter((t, i) => t <= maxVal || i <= 2)
+  } else {
+    const step = Math.ceil(maxVal / 4)
+    ticks = [0, step, step * 2, step * 3, step * 4]
+  }
+  const chartMax = Math.max(ticks[ticks.length - 1], maxVal, 1)
+
   const slotWidth = (right - left) / Math.max(rows.length, 1)
   const points = rows.map((row, index) => ({
     x: left + (index + 0.5) * slotWidth,
-    y: bottom - (row.value / maxValue) * (bottom - top),
+    y: bottom - (row.value / chartMax) * (bottom - top),
   }))
+
+  const chartId = title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
   const chartDescription = rows.map((row) => `${row.label}: ${row.value}`).join('; ')
+
+  const activePoint = hoveredIndex !== null && points[hoveredIndex] ? points[hoveredIndex] : null
+  const activeRow = hoveredIndex !== null && rows[hoveredIndex] ? rows[hoveredIndex] : null
+  const activeColor =
+    type === 'line'
+      ? lineColor
+      : rows.length <= 6 && hoveredIndex !== null
+      ? barPalette[hoveredIndex % barPalette.length].start
+      : lineColor
 
   return (
     <Card className="admin-section-card admin-analytics-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h2 style={{ margin: 0 }}>{title}</h2>
+      <div className="admin-chart-header">
+        <h2>{title}</h2>
         {filter}
       </div>
-      <div className="admin-analytics-chart">
+      <div
+        className="admin-analytics-chart"
+        onMouseLeave={() => setHoveredIndex(null)}
+      >
         <svg
           aria-label={`${title}. ${chartDescription}`}
           className={`admin-analytics-chart-graphic admin-analytics-chart-${type}`}
           role="img"
           viewBox={`0 0 ${width} ${height}`}
         >
-          {[0, 0.5, 1].map((fraction) => {
-            const y = bottom - fraction * (bottom - top)
+          <defs>
+            <linearGradient id={`area-${chartId}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={lineColor} stopOpacity="0.28" />
+              <stop offset="100%" stopColor={lineColor} stopOpacity="0.01" />
+            </linearGradient>
+            <linearGradient id={`bar-default-${chartId}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={lineColor} stopOpacity="1" />
+              <stop offset="100%" stopColor={lineColor} stopOpacity="0.8" />
+            </linearGradient>
+            {barPalette.map((p, i) => (
+              <linearGradient id={`bar-${chartId}-${i}`} key={i} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={p.start} stopOpacity="1" />
+                <stop offset="100%" stopColor={p.end} stopOpacity="0.85" />
+              </linearGradient>
+            ))}
+          </defs>
+
+          {ticks.map((tickVal) => {
+            const y = bottom - (tickVal / chartMax) * (bottom - top)
             return (
-              <g key={fraction}>
-                <line className="admin-analytics-chart-gridline" x1={left} x2={right} y1={y} y2={y} />
-                <text className="admin-analytics-chart-tick" textAnchor="end" x={left - 6} y={y + 4}>
-                  {Math.round(maxValue * fraction)}
+              <g key={tickVal}>
+                <line
+                  className="admin-analytics-chart-gridline"
+                  x1={left}
+                  x2={right}
+                  y1={y}
+                  y2={y}
+                  stroke="#f1ebef"
+                  strokeWidth="1"
+                  strokeDasharray={tickVal === 0 ? 'none' : '3 3'}
+                />
+                <text
+                  className="admin-analytics-chart-tick"
+                  textAnchor="end"
+                  x={left - 8}
+                  y={y + 4}
+                >
+                  {tickVal}
                 </text>
               </g>
             )
           })}
+
           {type === 'line' ? (
             <>
+              {points.length > 1 && (
+                <polygon
+                  fill={`url(#area-${chartId})`}
+                  points={`${points[0].x},${bottom} ${points.map((p) => `${p.x},${p.y}`).join(' ')} ${points[points.length - 1].x},${bottom}`}
+                />
+              )}
               {points.length > 1 && (
                 <polyline
                   className="admin-analytics-chart-line"
                   fill="none"
-                  points={points.map((point) => `${point.x},${point.y}`).join(' ')}
-                  style={{ stroke: lineColor }}
+                  points={points.map((p) => `${p.x},${p.y}`).join(' ')}
+                  stroke={lineColor}
                 />
               )}
-              {points.map((point, index) => (
-                <circle className="admin-analytics-chart-point" cx={point.x} cy={point.y} key={rows[index].label} r="4" style={{ stroke: lineColor, fill: 'var(--card-background, white)' }} />
-              ))}
+              {hoveredIndex !== null && activePoint && (
+                <line
+                  className="admin-chart-cursor-line"
+                  x1={activePoint.x}
+                  x2={activePoint.x}
+                  y1={top}
+                  y2={bottom}
+                  stroke={lineColor}
+                  strokeWidth="1.5"
+                  strokeDasharray="3 3"
+                  opacity="0.65"
+                />
+              )}
+              {points.map((point, index) => {
+                const isHovered = hoveredIndex === index
+                const hasValue = rows[index].value > 0
+                const isCrowded = rows.length > 12
+
+                const r = isHovered ? 6 : hasValue ? 4.5 : isCrowded ? 2 : 4
+                const strokeWidth = isHovered ? 3 : hasValue ? 2.5 : isCrowded ? 1.5 : 2.5
+                const stroke = isHovered ? lineColor : hasValue ? lineColor : isCrowded ? '#d1c7ce' : lineColor
+
+                return (
+                  <g key={rows[index].label}>
+                    {isHovered && (
+                      <circle
+                        className="admin-chart-point-halo"
+                        cx={point.x}
+                        cy={point.y}
+                        r="8.5"
+                        fill={lineColor}
+                        fillOpacity="0.22"
+                      />
+                    )}
+                    <circle
+                      className="admin-analytics-chart-point"
+                      cx={point.x}
+                      cy={point.y}
+                      r={r}
+                      stroke={stroke}
+                      strokeWidth={strokeWidth}
+                      fill="#ffffff"
+                    />
+                  </g>
+                )
+              })}
             </>
           ) : (
             rows.map((row, index) => {
-              const barWidth = Math.min(42, slotWidth * 0.56)
-              const barHeight = (row.value / maxValue) * (bottom - top)
+              const barWidth = Math.min(36, Math.max(12, slotWidth * 0.56))
+              const barHeight = chartMax ? (row.value / chartMax) * (bottom - top) : 0
+              const gradId = rows.length <= 6 ? `url(#bar-${chartId}-${index % barPalette.length})` : `url(#bar-default-${chartId})`
+              const isHovered = hoveredIndex === index
+              const opacity = hoveredIndex !== null ? (isHovered ? 1 : 0.45) : 1
+
               return (
-                <rect
-                  className="admin-analytics-chart-bar"
-                  height={barHeight}
-                  key={row.label}
-                  rx="3"
-                  width={barWidth}
-                  x={points[index].x - barWidth / 2}
-                  y={bottom - barHeight}
-                  style={{ fill: barColors[index % barColors.length] }}
-                />
+                <g key={row.label} style={{ opacity, transition: 'opacity 0.15s ease' }}>
+                  {barHeight > 0 ? (
+                    <rect
+                      className="admin-analytics-chart-bar"
+                      height={barHeight}
+                      rx="4"
+                      ry="4"
+                      width={barWidth}
+                      x={points[index].x - barWidth / 2}
+                      y={bottom - barHeight}
+                      fill={gradId}
+                      filter={isHovered ? 'drop-shadow(0 2px 5px rgba(0,0,0,0.22))' : undefined}
+                    />
+                  ) : (
+                    <rect
+                      className="admin-analytics-chart-bar"
+                      height="2"
+                      rx="1"
+                      ry="1"
+                      width={barWidth}
+                      x={points[index].x - barWidth / 2}
+                      y={bottom - 2}
+                      fill={isHovered ? lineColor : '#e2dce0'}
+                    />
+                  )}
+                </g>
               )
             })
           )}
+
+          {/* Full vertical interactive hover hit-areas */}
+          {rows.map((row, index) => {
+            const slotX = left + index * slotWidth
+            return (
+              <rect
+                key={`hit-${index}`}
+                className="admin-chart-hover-zone"
+                x={slotX}
+                y={top}
+                width={slotWidth}
+                height={bottom - top}
+                fill="transparent"
+                onMouseEnter={() => setHoveredIndex(index)}
+                onMouseMove={() => setHoveredIndex(index)}
+              />
+            )
+          })}
         </svg>
+
+        {hoveredIndex !== null && activeRow && activePoint && (
+          <div
+            className={`admin-chart-tooltip ${activePoint.y < 55 ? 'is-flipped' : ''}`}
+            style={{
+              left: `clamp(65px, ${(activePoint.x / width) * 100}%, calc(100% - 65px))`,
+              top: `${(activePoint.y / height) * 100}%`,
+            }}
+          >
+            <div className="admin-chart-tooltip-header">
+              <span
+                className="admin-chart-tooltip-badge"
+                style={{ backgroundColor: activeColor }}
+              />
+              <span className="admin-chart-tooltip-title">{activeRow.label}</span>
+            </div>
+            <div className="admin-chart-tooltip-body">
+              <strong>{activeRow.value}</strong>
+              <span>{getChartUnitLabel(title, activeRow.value)}</span>
+            </div>
+            {totalVal > 0 && activeRow.value > 0 && (
+              <div className="admin-chart-tooltip-percent">
+                {Math.round((activeRow.value / totalVal) * 100)}% of total
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="admin-analytics-chart-labels" style={{ gridTemplateColumns: `repeat(${Math.max(rows.length, 1)}, minmax(0, 1fr))` }}>
-          {rows.map((row) => (
-            <div className="admin-analytics-chart-label" key={row.label}>
-              <span>{row.label}</span>
-              <strong>{row.value}</strong>
+          {rows.map((row, index) => (
+            <div
+              className={`admin-analytics-chart-label ${hoveredIndex === index ? 'is-hovered' : ''}`}
+              key={row.label}
+              onMouseEnter={() => setHoveredIndex(index)}
+            >
+              <span
+                className="admin-chart-label-text"
+                title={row.label}
+                style={{ fontSize: rows.length > 12 ? '9.5px' : '10.5px' }}
+              >
+                {row.label}
+              </span>
+              <span
+                className={`admin-chart-value-pill ${row.value > 0 ? 'has-value' : ''}`}
+                style={{
+                  minWidth: rows.length > 12 ? '18px' : '22px',
+                  height: rows.length > 12 ? '18px' : '20px',
+                  fontSize: rows.length > 12 ? '10px' : '11px',
+                }}
+              >
+                {row.value}
+              </span>
             </div>
           ))}
         </div>
@@ -266,11 +671,17 @@ function AnalyticsChart({ title, rows, type, lineColor = '#9c1c37', filter }) {
   )
 }
 
-function OrganizationStandingChart({ rows, total }) {
+
+function OrganizationStandingChart({ rows, total, organizations = [] }) {
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [hoveredStatus, setHoveredStatus] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+
   const radius = 52
   const circumference = 2 * Math.PI * radius
   const segments = rows.map((row) => ({
     ...row,
+    percent: total ? Math.round((row.value / total) * 100) : 0,
     length: total ? (row.value / total) * circumference : 0,
   }))
   const positionedSegments = segments.map((segment, index) => ({
@@ -278,40 +689,243 @@ function OrganizationStandingChart({ rows, total }) {
     offset: -segments.slice(0, index).reduce((sum, previous) => sum + previous.length, 0),
   }))
 
+  const activeCount = organizations.filter((o) => o.status === 'ACTIVE').length
+  const inactiveCount = organizations.filter((o) => o.status === 'INACTIVE').length
+  const suspendedCount = organizations.filter((o) => o.status === 'SUSPENDED').length
+  const accreditedCount = organizations.filter((o) => (o.accreditationStatus || 'ACCREDITED') === 'ACCREDITED').length
+  const totalMembers = organizations.reduce((sum, o) => sum + (Number(o.memberCount) || 0), 0)
+  const avgMembers = organizations.length ? Math.round(totalMembers / organizations.length) : 0
+  const standingRate = organizations.length ? Math.round((activeCount / organizations.length) * 100) : 0
+
+  const filteredOrgs = organizations.filter((org) => {
+    const matchesStatus = statusFilter === 'ALL' || org.status === statusFilter
+    const q = searchQuery.trim().toLowerCase()
+    const matchesSearch = !q || [org.name, org.acronym, org.category, org.college, org.adviser].some((f) => String(f ?? '').toLowerCase().includes(q))
+    return matchesStatus && matchesSearch
+  })
+
+  const columns = [
+    {
+      key: 'name',
+      label: 'Organization',
+      render: (_, org) => (
+        <div className="admin-standing-org-cell">
+          <strong className="admin-standing-org-name">{org.name}</strong>
+          <span className="admin-standing-org-acronym">{org.acronym}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'category',
+      label: 'Category',
+      render: (val) => <span className="admin-standing-cat-pill">{val || '—'}</span>,
+    },
+    {
+      key: 'college',
+      label: 'College / Academic Unit',
+      render: (val) => <span className="admin-standing-college-cell">{val || '—'}</span>,
+    },
+    {
+      key: 'adviser',
+      label: 'Faculty Adviser',
+      render: (val) => <span>{val || '—'}</span>,
+    },
+    {
+      key: 'memberCount',
+      label: 'Members',
+      render: (val) => (
+        <span className="admin-standing-members-pill">
+          <strong>{val ?? 0}</strong>
+        </span>
+      ),
+    },
+    {
+      key: 'accreditationStatus',
+      label: 'Accreditation',
+      render: (val) => (
+        <Badge tone={toneFor(val || 'ACCREDITED')}>
+          {humanize(val || 'ACCREDITED')}
+        </Badge>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Standing',
+      render: (val) => <Status value={val} />,
+    },
+  ]
+
   return (
     <Card className="admin-section-card admin-analytics-card admin-standing-card">
-      <h2>Organization standing</h2>
-      <div className="admin-standing-content">
-        <svg
-          aria-label={`Organization standing. ${rows.map((row) => `${row.label}: ${row.value}`).join('; ')}`}
-          className="admin-standing-donut"
-          role="img"
-          viewBox="0 0 140 140"
-        >
-          <circle className="admin-standing-donut-track" cx="70" cy="70" r={radius} />
-          {positionedSegments.map((segment) => (
-            <circle
-              className={`admin-standing-donut-segment admin-standing-${segment.label.toLowerCase()}`}
-              cx="70"
-              cy="70"
-              key={segment.label}
-              r={radius}
-              strokeDasharray={`${segment.length} ${circumference - segment.length}`}
-              strokeDashoffset={segment.offset}
+      <div className="admin-standing-header">
+        <div>
+          <h2>Organization standing & accreditation roster</h2>
+          <p className="admin-standing-subtitle">
+            Comprehensive institutional standing, official accreditation, and member body breakdown for all recognized campus organizations.
+          </p>
+        </div>
+        <div className="admin-standing-filter-tabs">
+          <button
+            type="button"
+            className={`admin-standing-tab ${statusFilter === 'ALL' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('ALL')}
+          >
+            All ({organizations.length})
+          </button>
+          <button
+            type="button"
+            className={`admin-standing-tab ${statusFilter === 'ACTIVE' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('ACTIVE')}
+          >
+            Active ({activeCount})
+          </button>
+          <button
+            type="button"
+            className={`admin-standing-tab ${statusFilter === 'INACTIVE' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('INACTIVE')}
+          >
+            Inactive ({inactiveCount})
+          </button>
+          <button
+            type="button"
+            className={`admin-standing-tab ${statusFilter === 'SUSPENDED' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('SUSPENDED')}
+          >
+            Suspended ({suspendedCount})
+          </button>
+        </div>
+      </div>
+
+      <div className="admin-standing-overview-grid">
+        <div className="admin-standing-donut-panel">
+          <div className="admin-standing-donut-wrapper">
+            <svg
+              aria-label={`Organization standing. ${rows.map((row) => `${row.label}: ${row.value}`).join('; ')}`}
+              className="admin-standing-donut"
+              role="img"
+              viewBox="0 0 140 140"
+            >
+              <circle className="admin-standing-donut-track" cx="70" cy="70" r={radius} />
+              {positionedSegments.map((segment) => (
+                <circle
+                  className={`admin-standing-donut-segment admin-standing-${segment.label.toLowerCase()} ${hoveredStatus === segment.label ? 'highlighted' : ''}`}
+                  cx="70"
+                  cy="70"
+                  key={segment.label}
+                  r={radius}
+                  strokeDasharray={`${segment.length} ${circumference - segment.length}`}
+                  strokeDashoffset={segment.offset}
+                  onMouseEnter={() => setHoveredStatus(segment.label)}
+                  onMouseLeave={() => setHoveredStatus(null)}
+                />
+              ))}
+              <text className="admin-standing-total" textAnchor="middle" x="70" y="67">
+                {hoveredStatus ? (rows.find((r) => r.label === hoveredStatus)?.value ?? total) : total}
+              </text>
+              <text className="admin-standing-caption" textAnchor="middle" x="70" y="84">
+                {hoveredStatus ? humanize(hoveredStatus) : 'organizations'}
+              </text>
+            </svg>
+
+            <ul className="admin-standing-legend">
+              {segments.map((segment) => (
+                <li
+                  key={segment.label}
+                  className={`admin-standing-legend-item ${hoveredStatus === segment.label ? 'highlighted' : ''} ${statusFilter === segment.label ? 'selected' : ''}`}
+                  onMouseEnter={() => setHoveredStatus(segment.label)}
+                  onMouseLeave={() => setHoveredStatus(null)}
+                  onClick={() => setStatusFilter(statusFilter === segment.label ? 'ALL' : segment.label)}
+                  role="button"
+                  tabIndex={0}
+                  title={`Click to filter by ${segment.label}`}
+                >
+                  <span className={`admin-standing-swatch admin-standing-${segment.label.toLowerCase()}`} />
+                  <span className="admin-standing-legend-name">{segment.label}</span>
+                  <span className="admin-standing-legend-percent">{segment.percent}%</span>
+                  <strong className="admin-standing-legend-value">{segment.value}</strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="admin-standing-kpi-grid">
+          <div className="admin-standing-kpi-card">
+            <span className="admin-standing-kpi-label">Good Standing Rate</span>
+            <div className="admin-standing-kpi-value-row">
+              <span className="admin-standing-kpi-val text-success">{standingRate}%</span>
+              <span className="admin-standing-kpi-badge badge-success">Compliant</span>
+            </div>
+            <span className="admin-standing-kpi-hint">{activeCount} of {total} recognized orgs</span>
+          </div>
+
+          <div className="admin-standing-kpi-card">
+            <span className="admin-standing-kpi-label">Accreditation Rate</span>
+            <div className="admin-standing-kpi-value-row">
+              <span className="admin-standing-kpi-val">{accreditedCount}</span>
+              <span className="admin-standing-kpi-unit">/ {total}</span>
+            </div>
+            <span className="admin-standing-kpi-hint">100% University certified</span>
+          </div>
+
+          <div className="admin-standing-kpi-card">
+            <span className="admin-standing-kpi-label">Total Student Footprint</span>
+            <div className="admin-standing-kpi-value-row">
+              <span className="admin-standing-kpi-val">{totalMembers.toLocaleString()}</span>
+              <span className="admin-standing-kpi-unit">members</span>
+            </div>
+            <span className="admin-standing-kpi-hint">Enrolled across active rosters</span>
+          </div>
+
+          <div className="admin-standing-kpi-card">
+            <span className="admin-standing-kpi-label">Average Organization Size</span>
+            <div className="admin-standing-kpi-value-row">
+              <span className="admin-standing-kpi-val">{avgMembers}</span>
+              <span className="admin-standing-kpi-unit">students</span>
+            </div>
+            <span className="admin-standing-kpi-hint">Mean active roster count</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-standing-roster-section">
+        <div className="admin-standing-roster-toolbar">
+          <div className="admin-standing-roster-heading">
+            <h3>Recognized organizations standing roster</h3>
+            <span className="admin-standing-roster-count">
+              Showing {filteredOrgs.length} of {organizations.length} organizations
+            </span>
+          </div>
+          <div className="admin-standing-search-wrap">
+            <input
+              type="text"
+              placeholder="Search by name, acronym, category, college, adviser..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="admin-standing-search-input"
+              aria-label="Search organizations standing"
             />
-          ))}
-          <text className="admin-standing-total" textAnchor="middle" x="70" y="67">{total}</text>
-          <text className="admin-standing-caption" textAnchor="middle" x="70" y="84">organizations</text>
-        </svg>
-        <ul className="admin-standing-legend">
-          {segments.map((segment) => (
-            <li key={segment.label}>
-              <span className={`admin-standing-swatch admin-standing-${segment.label.toLowerCase()}`} />
-              <span>{segment.label}</span>
-              <strong>{segment.value}</strong>
-            </li>
-          ))}
-        </ul>
+            {searchQuery && (
+              <button
+                type="button"
+                className="admin-standing-search-clear"
+                onClick={() => setSearchQuery('')}
+                title="Clear search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        {filteredOrgs.length ? (
+          <Table useDataTable columns={columns} rows={filteredOrgs} />
+        ) : (
+          <EmptyState
+            title="No organizations match your filter"
+            description="Try selecting a different status filter or clearing your search query."
+          />
+        )}
       </div>
     </Card>
   )
@@ -374,10 +988,10 @@ export default function AdminPortalPage() {
   const [publishTarget, setPublishTarget] = useState(null)
   const [saveSettingsOpen, setSaveSettingsOpen] = useState(false)
   const [actionFilter, setActionFilter] = useState('All')
-  const [orgsCategoryFilter, setOrgsCategoryFilter] = useState('All Time')
-  const [eventsTimeframe, setEventsTimeframe] = useState('Last 6 Months')
-  const [attendanceTimeframe, setAttendanceTimeframe] = useState('Last 6 Months')
-  const [membershipTimeframe, setMembershipTimeframe] = useState('Last 6 Months')
+  const [categoryDateRange, setCategoryDateRange] = useState({ start: '', end: '' })
+  const [eventsDateRange, setEventsDateRange] = useState({ start: '', end: '' })
+  const [attendanceDateRange, setAttendanceDateRange] = useState({ start: '', end: '' })
+  const [membershipDateRange, setMembershipDateRange] = useState({ start: '', end: '' })
   const [reportFilters, setReportFilters] = useState({ college: 'All Colleges', category: 'All Categories', eventType: 'All Event Types' })
   const [settings, setSettings] = useState(() => ({
     ...data.adminSettings,
@@ -649,41 +1263,86 @@ export default function AdminPortalPage() {
       value: data.adminOrganizations.filter((organization) => organization.status === status).length,
     }))
 
-    const getMonthLabels = (timeframe) => {
-      if (timeframe === 'All Time') timeframe = 'Last 12 Months'
-      const monthCount = timeframe === 'Last 6 Months' ? 6 : 12
-      const labels = []
-      const d = new Date()
-      for (let i = monthCount - 1; i >= 0; i--) {
-        labels.push(new Date(d.getFullYear(), d.getMonth() - i, 1).toLocaleString('default', { month: 'short' }))
+    const categoryRows = categories.map((cat) => {
+      const sDate = parseRecordDate(categoryDateRange.start)
+      const eDate = parseRecordDate(categoryDateRange.end)
+      if (eDate) eDate.setHours(23, 59, 59, 999)
+
+      if (!sDate && !eDate) {
+        return {
+          label: cat,
+          value: data.adminOrganizations.filter((org) => org.category === cat).length,
+        }
       }
-      return labels
-    }
 
-    const eventsLabels = getMonthLabels(eventsTimeframe)
-    const eventsPerMonth = eventsLabels.map((label) => ({ label, value: 0 }))
+      const matchingOrgs = data.adminOrganizations.filter((org) => {
+        if (org.category !== cat) return false
+        const hasAnnouncement = org.announcements?.some((a) => {
+          const d = parseRecordDate(a.datePosted || a.date)
+          return d && (!sDate || d >= sDate) && (!eDate || d <= eDate)
+        })
+        const hasEvent = orgEvents.some((e) => {
+          if (e.organizationId !== org.id && e.category !== cat) return false
+          const d = parseRecordDate(e.date) || parseRecordDate(e.submittedDate) || parseRecordDate(e.createdAt)
+          return d && (!sDate || d >= sDate) && (!eDate || d <= eDate)
+        })
+        return hasAnnouncement || hasEvent
+      })
+
+      return { label: cat, value: matchingOrgs.length }
+    })
+
+    const eventsTimeline = buildTimeline(eventsDateRange)
+    const eventsCounts = {}
     orgEvents.forEach((event) => {
-      const month = new Date(event.date || event.createdAt).toLocaleString('default', { month: 'short' })
-      const found = eventsPerMonth.find((m) => m.label === month)
-      if (found) found.value++
+      const primaryKey = getRecordSlotKey(event.date, eventsTimeline)
+      const secondaryKey = getRecordSlotKey(event.submittedDate || event.createdAt, eventsTimeline)
+      const chosenKey = primaryKey || secondaryKey
+      if (chosenKey) {
+        eventsCounts[chosenKey] = (eventsCounts[chosenKey] || 0) + 1
+      }
     })
+    const eventsChartData = eventsTimeline.slots.map((slot) => ({
+      label: slot.label,
+      value: eventsCounts[slot.key] || 0,
+    }))
+    const eventsTitle = eventsTimeline.granularity === 'day'
+      ? 'Events per day'
+      : eventsTimeline.granularity === 'week'
+      ? 'Events per week'
+      : 'Events per month'
 
-    const attendanceLabels = getMonthLabels(attendanceTimeframe)
-    const attendanceTrends = attendanceLabels.map((label) => ({ label, value: 0 }))
+    const attendanceTimeline = buildTimeline(attendanceDateRange)
+    const attendanceCounts = {}
     data.studentRegistrations?.forEach((reg) => {
-      const month = new Date(reg.registrationDate || reg.checkInTime).toLocaleString('default', { month: 'short' })
-      const found = attendanceTrends.find((m) => m.label === month)
-      if (found && (reg.status === 'COMPLETED' || reg.attendanceStatus === 'ATTENDED')) found.value++
+      const regDate = reg.checkInDate || reg.registrationDate || reg.checkInTime
+      const key = getRecordSlotKey(regDate, attendanceTimeline)
+      if (key && (reg.status === 'COMPLETED' || reg.attendanceStatus === 'ATTENDED' || reg.status === 'REGISTERED')) {
+        attendanceCounts[key] = (attendanceCounts[key] || 0) + 1
+      }
     })
+    const attendanceTrends = attendanceTimeline.slots.map((slot) => ({
+      label: slot.label,
+      value: attendanceCounts[slot.key] || 0,
+    }))
 
-    const membershipLabels = getMonthLabels(membershipTimeframe)
-    const membershipTrends = membershipLabels.map((label) => ({ label, value: 0 }))
-    data.studentMemberships?.forEach((membership) => {
-      if (!membership.applicationDate) return
-      const month = new Date(membership.applicationDate).toLocaleString('default', { month: 'short' })
-      const found = membershipTrends.find((m) => m.label === month)
-      if (found) found.value++
+    const membershipTimeline = buildTimeline(membershipDateRange)
+    const membershipCounts = {}
+    const allMemberships = [
+      ...(data.studentMemberships ?? []),
+      ...(data.officerMembershipRequests ?? []).filter((req) => !data.studentMemberships?.some((m) => m.id === req.id)),
+    ]
+    allMemberships.forEach((membership) => {
+      const memDate = membership.applicationDate || membership.approvedDate || membership.dateJoined
+      const key = getRecordSlotKey(memDate, membershipTimeline)
+      if (key) {
+        membershipCounts[key] = (membershipCounts[key] || 0) + 1
+      }
     })
+    const membershipTrends = membershipTimeline.slots.map((slot) => ({
+      label: slot.label,
+      value: membershipCounts[slot.key] || 0,
+    }))
 
     return (
       <div className="admin-page">
@@ -694,31 +1353,63 @@ export default function AdminPortalPage() {
           <AnalyticsChart 
             title="Organization category distribution" 
             type="bar" 
-            rows={categories.map((label) => ({ label, value: data.adminOrganizations.filter((organization) => organization.category === label).length }))}
-            filter={<select className="admin-chart-filter" value={orgsCategoryFilter} onChange={(e) => setOrgsCategoryFilter(e.target.value)}><option>All Time</option></select>}
+            rows={categoryRows}
+            filter={
+              <DateRangeFilter
+                startDate={categoryDateRange.start}
+                endDate={categoryDateRange.end}
+                onStartChange={(val) => setCategoryDateRange((prev) => ({ ...prev, start: val }))}
+                onEndChange={(val) => setCategoryDateRange((prev) => ({ ...prev, end: val }))}
+                onReset={() => setCategoryDateRange({ start: '', end: '' })}
+              />
+            }
           />
           <AnalyticsChart 
-            title="Events per month" 
+            title={eventsTitle} 
             type="bar" 
-            rows={eventsPerMonth} 
-            filter={<select className="admin-chart-filter" value={eventsTimeframe} onChange={(e) => setEventsTimeframe(e.target.value)}><option>Last 6 Months</option><option>Last 12 Months</option></select>}
+            rows={eventsChartData} 
+            filter={
+              <DateRangeFilter
+                startDate={eventsDateRange.start}
+                endDate={eventsDateRange.end}
+                onStartChange={(val) => setEventsDateRange((prev) => ({ ...prev, start: val }))}
+                onEndChange={(val) => setEventsDateRange((prev) => ({ ...prev, end: val }))}
+                onReset={() => setEventsDateRange({ start: '', end: '' })}
+              />
+            }
           />
           <AnalyticsChart 
             title="Attendance trends" 
             type="line" 
             lineColor="#2563eb" 
             rows={attendanceTrends} 
-            filter={<select className="admin-chart-filter" value={attendanceTimeframe} onChange={(e) => setAttendanceTimeframe(e.target.value)}><option>Last 6 Months</option><option>Last 12 Months</option></select>}
+            filter={
+              <DateRangeFilter
+                startDate={attendanceDateRange.start}
+                endDate={attendanceDateRange.end}
+                onStartChange={(val) => setAttendanceDateRange((prev) => ({ ...prev, start: val }))}
+                onEndChange={(val) => setAttendanceDateRange((prev) => ({ ...prev, end: val }))}
+                onReset={() => setAttendanceDateRange({ start: '', end: '' })}
+              />
+            }
           />
           <AnalyticsChart 
             title="Membership trends" 
             type="line" 
             lineColor="#d97706" 
             rows={membershipTrends} 
-            filter={<select className="admin-chart-filter" value={membershipTimeframe} onChange={(e) => setMembershipTimeframe(e.target.value)}><option>Last 6 Months</option><option>Last 12 Months</option></select>}
+            filter={
+              <DateRangeFilter
+                startDate={membershipDateRange.start}
+                endDate={membershipDateRange.end}
+                onStartChange={(val) => setMembershipDateRange((prev) => ({ ...prev, start: val }))}
+                onEndChange={(val) => setMembershipDateRange((prev) => ({ ...prev, end: val }))}
+                onReset={() => setMembershipDateRange({ start: '', end: '' })}
+              />
+            }
           />
         </div>
-        <OrganizationStandingChart rows={organizationStanding} total={orgTotal} />
+        <OrganizationStandingChart rows={organizationStanding} total={orgTotal} organizations={data.adminOrganizations} />
       </div>
     )
   }

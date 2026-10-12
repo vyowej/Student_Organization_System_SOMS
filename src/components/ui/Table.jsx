@@ -22,6 +22,7 @@ function TableInner({ columns, rows, getRowKey = (row, index) => row.id ?? index
         searching: false,
         ordering: true,
         info: true,
+        autoWidth: false,
         layout: {
           topStart: null,
           topEnd: null,

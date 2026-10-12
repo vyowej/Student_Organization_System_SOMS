@@ -848,7 +848,31 @@ table.dataTable.no-footer { border-bottom: 0; }
 /* The scroll container is the nearest overflow ancestor of the table, which is what
    position: sticky pins against. DataTables puts the table in its own layout cell. */
 .data-table-wrap,
-.officer-member-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.officer-member-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-color: #c7b7be #f8f6f7;
+  scrollbar-width: thin;
+}
+.data-table-wrap::-webkit-scrollbar,
+.officer-member-table-wrap::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.data-table-wrap::-webkit-scrollbar-track,
+.officer-member-table-wrap::-webkit-scrollbar-track {
+  background: #f8f6f7;
+  border-radius: 4px;
+}
+.data-table-wrap::-webkit-scrollbar-thumb,
+.officer-member-table-wrap::-webkit-scrollbar-thumb {
+  background: #c7b7be;
+  border-radius: 4px;
+}
+.data-table-wrap::-webkit-scrollbar-thumb:hover,
+.officer-member-table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #ad9ba4;
+}
 .data-table-wrap.using-datatables,
 .officer-member-table-wrap.using-datatables { overflow: visible; }
 div.dt-container .dt-layout-table,
@@ -858,35 +882,60 @@ div.dt-container .dt-layout-cell.dt-layout-full {
   width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-color: #c7b7be #f8f6f7;
+  scrollbar-width: thin;
+}
+div.dt-container .dt-layout-cell.dt-layout-full::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+div.dt-container .dt-layout-cell.dt-layout-full::-webkit-scrollbar-track {
+  background: #f8f6f7;
+  border-radius: 4px;
+}
+div.dt-container .dt-layout-cell.dt-layout-full::-webkit-scrollbar-thumb {
+  background: #c7b7be;
+  border-radius: 4px;
+}
+div.dt-container .dt-layout-cell.dt-layout-full::-webkit-scrollbar-thumb:hover {
+  background: #ad9ba4;
 }
 div.dt-container table.dataTable,
 .data-table,
-.officer-member-table { border-collapse: separate; border-spacing: 0; }
+.officer-member-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+  width: max-content;
+}
 .data-table { min-width: 100%; width: max-content; }
 .officer-member-table { min-width: 100%; width: max-content; }
 
 .cell-sticky {
-  position: sticky;
-  z-index: 2;
-  background: var(--surface);
+  position: static;
+  box-shadow: none;
 }
-th.cell-sticky { z-index: 3; background: #faf9fa; }
-.cell-sticky-1 { left: 0; }
-.cell-sticky-2 { left: var(--sticky-left-2, 160px); }
-.cell-sticky-last { box-shadow: 1px 0 0 var(--border), 6px 0 8px -6px rgba(31, 26, 29, 0.18); }
-tbody tr:hover .cell-sticky { background: #fcf8fa; }
+th.cell-sticky {
+  position: static;
+  box-shadow: none;
+}
+.cell-sticky-1,
+.cell-sticky-2,
+.cell-sticky-last {
+  position: static;
+  box-shadow: none;
+}
+tbody tr:hover .cell-sticky { background: transparent; }
 .data-table td.cell-sticky-1,
 .officer-member-table td.cell-sticky-1 { font-weight: 600; color: var(--text); }
-.cell-sticky-1 { min-width: 140px; }
+.cell-sticky-1 { min-width: auto; }
 
-/* Phones: pin only the name column and keep it narrow so there is room to swipe. */
+/* Phones: keep clean fluid layout */
 @media (max-width: 560px) {
-  .data-table .cell-sticky-2 { position: static; box-shadow: none; }
+  .data-table .cell-sticky-2,
   .data-table .cell-sticky-1 {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    box-shadow: 1px 0 0 var(--border), 6px 0 8px -6px rgba(31, 26, 29, 0.18);
+    position: static;
+    box-shadow: none;
   }
 }
 /* The member table turns into stacked cards on phones, so nothing is pinned there. */
