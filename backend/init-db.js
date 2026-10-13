@@ -3,7 +3,9 @@ const path = require('path');
 const { Pool } = require('pg');
 require('dotenv').config();
 
-const DB_SCHEMA_PATH = fs.existsSync(path.resolve(__dirname, 'schema/schema.sql'))
+const DB_SCHEMA_PATH = fs.existsSync(path.resolve(__dirname, 'schema/schema_student_db.sql'))
+  ? path.resolve(__dirname, 'schema/schema_student_db.sql')
+  : fs.existsSync(path.resolve(__dirname, 'schema/schema.sql'))
   ? path.resolve(__dirname, 'schema/schema.sql')
   : path.resolve(__dirname, '../database/student_org_db.sql');
 
@@ -16,7 +18,7 @@ async function initializeDatabase() {
 
   if (!fs.existsSync(DB_SCHEMA_PATH)) {
     console.error(`[ERROR] Schema file not found at: ${DB_SCHEMA_PATH}`);
-    console.error('Please verify that backend/schema/schema.sql or database/student_org_db.sql exists.');
+    console.error('Please verify that backend/schema/schema_student_db.sql exists.');
     process.exit(1);
   }
 

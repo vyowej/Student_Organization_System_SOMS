@@ -3,7 +3,9 @@ const path = require('path');
 const { Pool } = require('pg');
 require('dotenv').config();
 
-const SCHEMA_PATH = fs.existsSync(path.resolve(__dirname, 'schema/schema.sql'))
+const SCHEMA_PATH = fs.existsSync(path.resolve(__dirname, 'schema/schema_student_db.sql'))
+  ? path.resolve(__dirname, 'schema/schema_student_db.sql')
+  : fs.existsSync(path.resolve(__dirname, 'schema/schema.sql'))
   ? path.resolve(__dirname, 'schema/schema.sql')
   : path.resolve(__dirname, '../database/student_org_db.sql');
 
