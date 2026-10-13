@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// DATA RELATED: Get all announcements across all organizations (or filter by organization_id)
 router.get('/', async (req, res) => {
   try {
     const { organization_id, limit } = req.query;
@@ -39,7 +38,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// DATA RELATED: Get announcement by ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -66,7 +64,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// OFFICER/ADMIN: Post a new announcement
 router.post('/', async (req, res) => {
   try {
     const { organization_id, title, content, created_by } = req.body;
@@ -89,7 +86,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// OFFICER/ADMIN: Update announcement
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -114,7 +110,6 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// OFFICER/ADMIN: Delete announcement
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;

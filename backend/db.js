@@ -1,11 +1,12 @@
+const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
 require('dotenv').config();
 
-// LINK TO DATABASE: Path to schema in the database folder
-const SCHEMA_PATH = path.resolve(__dirname, '../database/student_org_db.sql');
+const SCHEMA_PATH = fs.existsSync(path.resolve(__dirname, 'schema/schema.sql'))
+  ? path.resolve(__dirname, 'schema/schema.sql')
+  : path.resolve(__dirname, '../database/student_org_db.sql');
 
-// DATA RELATED: Connects to PostgreSQL database for storing system information
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
@@ -46,4 +47,3 @@ module.exports = {
   testConnection,
   SCHEMA_PATH,
 };
-

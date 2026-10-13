@@ -2,11 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// ============================================================
-// EVENT REGISTRATIONS
-// ============================================================
-
-// DATA RELATED: Get all registered students for an event
 router.get('/registrations/:event_id', async (req, res) => {
   try {
     const { event_id } = req.params;
@@ -37,7 +32,6 @@ router.get('/registrations/:event_id', async (req, res) => {
   }
 });
 
-// STUDENT: Register for an event
 router.post('/register', async (req, res) => {
   try {
     const { event_id, student_id } = req.body;
@@ -46,7 +40,6 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'event_id and student_id are required' });
     }
 
-    // Check event status and capacity
     const eventRes = await db.query(
       'SELECT id, status, max_participants FROM events WHERE id = $1',
       [event_id]
@@ -88,7 +81,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// STUDENT: Cancel registration
 router.delete('/registrations/:event_id/:student_id', async (req, res) => {
   try {
     const { event_id, student_id } = req.params;
@@ -111,11 +103,6 @@ router.delete('/registrations/:event_id/:student_id', async (req, res) => {
   }
 });
 
-// ============================================================
-// ATTENDANCE CHECK-IN
-// ============================================================
-
-// DATA RELATED: Get all attendees checked in for an event
 router.get('/event/:event_id', async (req, res) => {
   try {
     const { event_id } = req.params;
@@ -147,7 +134,6 @@ router.get('/event/:event_id', async (req, res) => {
   }
 });
 
-// OFFICER/SCANNER: Record student check-in
 router.post('/check-in', async (req, res) => {
   try {
     const { event_id, student_id, method, recorded_by } = req.body;
@@ -156,9 +142,8 @@ router.post('/check-in', async (req, res) => {
       return res.status(400).json({ error: 'event_id and student_id are required' });
     }
 
-    const checkInMethod = method || 'QR_SCAN'; // QR_SCAN, MANUAL, SELF_CHECKIN
+    const checkInMethod = method || 'QR_SCAN';
 
-    // Record attendance
     const result = await db.query(
       `INSERT INTO attendance (event_id, student_id, method, recorded_by, checked_in_at)
        VALUES ($1, $2, $3, $4, now())
@@ -168,7 +153,6 @@ router.post('/check-in', async (req, res) => {
       [event_id, student_id, checkInMethod, recorded_by || null]
     );
 
-    // Update event_registrations status to ATTENDED if registered
     await db.query(
       `UPDATE event_registrations
           SET status = 'ATTENDED'
@@ -183,7 +167,6 @@ router.post('/check-in', async (req, res) => {
   }
 });
 
-// STUDENT: Get my event registrations and attendance history
 router.get('/student/:student_id', async (req, res) => {
   try {
     const { student_id } = req.params;

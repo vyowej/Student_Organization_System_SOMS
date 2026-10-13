@@ -5,11 +5,9 @@ const { testConnection, SCHEMA_PATH } = require('./db');
 
 const app = express();
 
-// MIDDLEWARE
 app.use(cors());
 app.use(express.json());
 
-// ROUTE MODULES (Linked with database/student_org_db.sql schema)
 app.use('/api/users', require('./routes/users'));
 app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/events', require('./routes/events'));
@@ -22,13 +20,10 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/advisers', require('./routes/advisers'));
 app.use('/api/audit-logs', require('./routes/auditLogs'));
 
-
-// Basic health check route
 app.get('/', (req, res) => {
   res.send('SOMS API is running...');
 });
 
-// Database & API Health Check Route
 app.get('/api/health', async (req, res) => {
   const dbStatus = await testConnection();
   res.json({
@@ -50,4 +45,3 @@ app.listen(PORT, async () => {
     console.log(`Database Notice: Not connected yet (${dbStatus.error}). Run "npm run db:init" once PostgreSQL is ready.`);
   }
 });
-

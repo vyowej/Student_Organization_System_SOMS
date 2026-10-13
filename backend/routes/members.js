@@ -2,11 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// ============================================================
-// MEMBERSHIP ROUTES
-// ============================================================
-
-// DATA RELATED: Get all active members and officers of an organization
 router.get('/org/:organization_id', async (req, res) => {
   try {
     const { organization_id } = req.params;
@@ -52,7 +47,6 @@ router.get('/org/:organization_id', async (req, res) => {
   }
 });
 
-// DATA RELATED: Get all organizations that a student is a member of
 router.get('/student/:student_id', async (req, res) => {
   try {
     const { student_id } = req.params;
@@ -81,7 +75,6 @@ router.get('/student/:student_id', async (req, res) => {
   }
 });
 
-// ADMIN/OFFICER: Add a student directly to an organization
 router.post('/', async (req, res) => {
   try {
     const { organization_id, student_id, position, custom_title } = req.body;
@@ -111,7 +104,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// ADMIN/OFFICER: Update member position or custom title
 router.put('/:id/position', async (req, res) => {
   try {
     const { id } = req.params;
@@ -137,7 +129,6 @@ router.put('/:id/position', async (req, res) => {
   }
 });
 
-// MEMBER/OFFICER: Leave or deactivate membership
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -159,11 +150,6 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// ============================================================
-// APPLICATION ROUTES
-// ============================================================
-
-// OFFICER: Get pending applications for an organization
 router.get('/applications/org/:organization_id', async (req, res) => {
   try {
     const { organization_id } = req.params;
@@ -195,7 +181,6 @@ router.get('/applications/org/:organization_id', async (req, res) => {
   }
 });
 
-// STUDENT: Submit application to join an organization
 router.post('/applications', async (req, res) => {
   try {
     const { organization_id, applicant_id, message } = req.body;
@@ -213,7 +198,6 @@ router.post('/applications', async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    // student_can_join eligibility trigger raises exception if not eligible
     if (err.message && err.message.includes('Student is not eligible')) {
       return res.status(403).json({ error: err.message });
     }
@@ -224,7 +208,6 @@ router.post('/applications', async (req, res) => {
   }
 });
 
-// OFFICER/ADMIN: Review (Approve or Reject) an application
 router.put('/applications/:id/review', async (req, res) => {
   try {
     const { id } = req.params;
@@ -251,7 +234,6 @@ router.put('/applications/:id/review', async (req, res) => {
 
     const app = appResult.rows[0];
 
-    // If approved, automatically add applicant as organization member
     if (status === 'APPROVED') {
       await db.query(
         `INSERT INTO organization_members (organization_id, student_id, position, status)

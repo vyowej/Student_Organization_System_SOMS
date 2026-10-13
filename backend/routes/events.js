@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// DATA RELATED: Fetch all published events for student calendar (with organization details)
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(`
@@ -21,7 +20,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// USER RELATED: Officers propose a new event
 router.post('/', async (req, res) => {
   try {
     const {
@@ -74,7 +72,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// ADMIN / OFFICER: Publish an event
 router.put('/:id/publish', async (req, res) => {
   try {
     const { id } = req.params;
@@ -95,4 +92,3 @@ router.put('/:id/publish', async (req, res) => {
 });
 
 module.exports = router;
-

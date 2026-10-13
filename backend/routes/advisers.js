@@ -2,11 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// ============================================================
-// ORGANIZATION ADVISERS
-// ============================================================
-
-// DATA RELATED: Get current and past advisers for an organization
 router.get('/org/:organization_id', async (req, res) => {
   try {
     const { organization_id } = req.params;
@@ -40,7 +35,6 @@ router.get('/org/:organization_id', async (req, res) => {
   }
 });
 
-// ADMIN: Assign / change adviser for an organization
 router.post('/assign', async (req, res) => {
   try {
     const { organization_id, adviser_id, assigned_by } = req.body;
@@ -49,7 +43,6 @@ router.post('/assign', async (req, res) => {
       return res.status(400).json({ error: 'organization_id and adviser_id are required' });
     }
 
-    // End current active adviser if any
     await db.query(
       `UPDATE organization_advisers
           SET ended_at = now()
@@ -57,7 +50,6 @@ router.post('/assign', async (req, res) => {
       [organization_id]
     );
 
-    // Assign new adviser
     const result = await db.query(
       `INSERT INTO organization_advisers (organization_id, adviser_id, assigned_by, assigned_at)
        VALUES ($1, $2, $3, now())
@@ -72,11 +64,6 @@ router.post('/assign', async (req, res) => {
   }
 });
 
-// ============================================================
-// ADVISER CHANGE REQUESTS
-// ============================================================
-
-// ADMIN/OFFICER: List adviser change requests
 router.get('/requests', async (req, res) => {
   try {
     const { status, organization_id } = req.query;
@@ -120,7 +107,6 @@ router.get('/requests', async (req, res) => {
   }
 });
 
-// OFFICER: Request a new adviser for organization
 router.post('/requests', async (req, res) => {
   try {
     const { organization_id, proposed_adviser_id, requested_by, reason } = req.body;
@@ -131,7 +117,6 @@ router.post('/requests', async (req, res) => {
       });
     }
 
-    // Find current active adviser
     const currentAdvRes = await db.query(
       'SELECT adviser_id FROM organization_advisers WHERE organization_id = $1 AND ended_at IS NULL',
       [organization_id]
@@ -160,7 +145,6 @@ router.post('/requests', async (req, res) => {
   }
 });
 
-// ADMIN: Review (Approve or Reject) adviser change request
 router.put('/requests/:id/review', async (req, res) => {
   try {
     const { id } = req.params;
@@ -187,7 +171,6 @@ router.put('/requests/:id/review', async (req, res) => {
 
     const changeRequest = reqResult.rows[0];
 
-    // If approved, update active adviser for the organization
     if (status === 'APPROVED' && changeRequest.proposed_adviser_id) {
       await db.query(
         `UPDATE organization_advisers

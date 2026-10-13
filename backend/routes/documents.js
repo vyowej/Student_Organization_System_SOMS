@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// DATA RELATED: Get all documents for an organization
 router.get('/org/:organization_id', async (req, res) => {
   try {
     const { organization_id } = req.params;
@@ -40,7 +39,6 @@ router.get('/org/:organization_id', async (req, res) => {
   }
 });
 
-// DATA RELATED: Get document by ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -66,7 +64,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// OFFICER/MEMBER: Submit/upload a document
 router.post('/', async (req, res) => {
   try {
     const { organization_id, type, title, file_url, uploaded_by } = req.body;
@@ -99,7 +96,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// ADVISER/ADMIN: Review document (Approve or Reject)
 router.put('/:id/review', async (req, res) => {
   try {
     const { id } = req.params;
@@ -131,7 +127,6 @@ router.put('/:id/review', async (req, res) => {
   }
 });
 
-// OFFICER/ADMIN: Delete document
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;

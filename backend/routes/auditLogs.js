@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// ADMIN: Get audit logs with optional filters and pagination
 router.get('/', async (req, res) => {
   try {
     const { user_id, entity, entity_id, action, limit = 50, offset = 0 } = req.query;
@@ -52,7 +51,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// SYSTEM/ADMIN: Record an audit log entry
 router.post('/', async (req, res) => {
   try {
     const { user_id, action, entity, entity_id, metadata, ip_address } = req.body;

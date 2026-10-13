@@ -8,8 +8,6 @@ try {
 }
 const db = require('../db');
 
-
-// ADMIN RELATED: Get all users
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(
@@ -22,7 +20,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// USER RELATED: Register (Sign up) a new user
 router.post('/register', async (req, res) => {
   try {
     const { email, password, role, first_name, last_name, status } = req.body;
@@ -31,13 +28,11 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    // student_org_db schema requires first_name and last_name (NOT NULL)
     const firstName = first_name || email.split('@')[0];
     const lastName = last_name || 'Member';
     const userRole = role || 'STUDENT';
     const userStatus = status || 'ACTIVE';
 
-    // DATA RELATED: Hash the password using bcrypt
     const saltRounds = 10;
     const password_hash = await bcrypt.hash(password, saltRounds);
 
@@ -58,7 +53,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// USER RELATED: Login (Sign in) user
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -67,7 +61,6 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    // DATA RELATED: Check if the user exists (case-insensitive email)
     const result = await db.query(
       'SELECT id, email, first_name, last_name, password_hash, role, status FROM users WHERE lower(email) = lower($1)',
       [email.trim()]
@@ -79,14 +72,12 @@ router.post('/login', async (req, res) => {
 
     const user = result.rows[0];
 
-    // DATA RELATED: Compare the password with the hashed password in the DB
     const isMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Send back user data (excluding password_hash)
     res.json({
       id: user.id,
       email: user.email,
@@ -102,4 +93,3 @@ router.post('/login', async (req, res) => {
 });
 
 module.exports = router;
-

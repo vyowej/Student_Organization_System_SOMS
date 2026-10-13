@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// DATA RELATED: Get all notifications for a user
 router.get('/user/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -25,7 +24,6 @@ router.get('/user/:user_id', async (req, res) => {
   }
 });
 
-// DATA RELATED: Get unread count for a user
 router.get('/user/:user_id/count', async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -40,7 +38,6 @@ router.get('/user/:user_id/count', async (req, res) => {
   }
 });
 
-// USER: Mark single notification as read
 router.put('/:id/read', async (req, res) => {
   try {
     const { id } = req.params;
@@ -59,7 +56,6 @@ router.put('/:id/read', async (req, res) => {
   }
 });
 
-// USER: Mark all notifications as read
 router.put('/user/:user_id/read-all', async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -74,7 +70,6 @@ router.put('/user/:user_id/read-all', async (req, res) => {
   }
 });
 
-// SYSTEM/ADMIN: Create notification
 router.post('/', async (req, res) => {
   try {
     const { user_id, type, title, message } = req.body;
@@ -96,7 +91,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// USER: Delete notification
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;

@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// DATA RELATED: Get all active organizations for students to view
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(`
@@ -22,7 +21,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ADMIN RELATED: Create or accredit a new organization
 router.post('/', async (req, res) => {
   try {
     const {
@@ -42,10 +40,6 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Organization name is required' });
     }
 
-    // Determine scope to satisfy student_org_db check constraints:
-    // UNIVERSITY requires null college_id and department_id
-    // COLLEGE requires non-null college_id and null department_id
-    // DEPARTMENT requires non-null college_id and department_id
     const collegeIdVal = college_id || null;
     const departmentIdVal = department_id || null;
 
@@ -79,7 +73,6 @@ router.post('/', async (req, res) => {
 
     const createdOrg = result.rows[0];
 
-    // If adviser_id provided and exists in advisers table, link via organization_advisers
     if (adviser_id) {
       try {
         await db.query(
@@ -102,7 +95,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-// ADMIN RELATED: Approve an organization
 router.put('/:id/approve', async (req, res) => {
   try {
     const { id } = req.params;
@@ -130,4 +122,3 @@ router.put('/:id/approve', async (req, res) => {
 });
 
 module.exports = router;
-

@@ -2,10 +2,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// ============================================================
-// COLLEGES
-// ============================================================
-
 router.get('/colleges', async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM colleges ORDER BY name ASC');
@@ -35,10 +31,6 @@ router.post('/colleges', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-// ============================================================
-// DEPARTMENTS
-// ============================================================
 
 router.get('/departments', async (req, res) => {
   try {
@@ -80,10 +72,6 @@ router.post('/departments', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-// ============================================================
-// PROGRAMS
-// ============================================================
 
 router.get('/programs', async (req, res) => {
   try {
@@ -129,10 +117,6 @@ router.post('/programs', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-// ============================================================
-// STUDENTS
-// ============================================================
 
 router.get('/students', async (req, res) => {
   try {
@@ -228,10 +212,6 @@ router.post('/students', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-// ============================================================
-// ADVISERS
-// ============================================================
 
 router.get('/advisers', async (req, res) => {
   try {

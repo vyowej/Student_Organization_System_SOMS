@@ -3,8 +3,9 @@ const path = require('path');
 const { Pool } = require('pg');
 require('dotenv').config();
 
-// Resolve the link to the database schema in the ../database directory
-const DB_SCHEMA_PATH = path.resolve(__dirname, '../database/student_org_db.sql');
+const DB_SCHEMA_PATH = fs.existsSync(path.resolve(__dirname, 'schema/schema.sql'))
+  ? path.resolve(__dirname, 'schema/schema.sql')
+  : path.resolve(__dirname, '../database/student_org_db.sql');
 
 async function initializeDatabase() {
   console.log('----------------------------------------------------');
@@ -13,17 +14,15 @@ async function initializeDatabase() {
   console.log('----------------------------------------------------');
   console.log(`[LINK] Resolving schema file at: ${DB_SCHEMA_PATH}`);
 
-  // 1. Verify schema file existence
   if (!fs.existsSync(DB_SCHEMA_PATH)) {
     console.error(`[ERROR] Schema file not found at: ${DB_SCHEMA_PATH}`);
-    console.error('Please verify that the database folder and student_org_db.sql exist.');
+    console.error('Please verify that backend/schema/schema.sql or database/student_org_db.sql exists.');
     process.exit(1);
   }
 
   const sqlContent = fs.readFileSync(DB_SCHEMA_PATH, 'utf8');
   console.log(`[FILE] Loaded schema file (${sqlContent.length} bytes)`);
 
-  // 2. Configure database connection
   const dbConfig = {
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres',
@@ -41,7 +40,7 @@ async function initializeDatabase() {
     client = await pool.connect();
     console.log('[SUCCESS] Database connection established.');
 
-    console.log('[RUN] Executing student_org_db.sql against the database...');
+    console.log('[RUN] Executing schema against the database...');
     await client.query(sqlContent);
 
     console.log('[SUCCESS] All types, tables, functions, triggers, and indexes applied successfully!');
