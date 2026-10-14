@@ -9,8 +9,10 @@ import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 
 export default function OfficerAttendancePage() {
-  const { adminUsers, captureUndo, checkInStudent, officerEvents, studentRegistrations } = useOutletContext()
-  const events = officerEvents.filter((event) => ['PUBLISHED', 'COMPLETED', 'ARCHIVED'].includes(event.status))
+  const { adminOrganizations, adminUsers, captureUndo, checkInStudent, currentUser, officerEvents, studentRegistrations } = useOutletContext()
+  const orgId = currentUser?.organizationId || 'wmsu-cs'
+  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society', acronym: 'CS' }
+  const events = officerEvents.filter((event) => ['PUBLISHED', 'COMPLETED', 'ARCHIVED', 'APPROVED', 'ONGOING'].includes(event.status))
   const [selectedEventId, setSelectedEventId] = useState(() => events[0]?.id ?? '')
   const [registrationCode, setRegistrationCode] = useState('')
   const { showToast } = useToast()
@@ -48,51 +50,121 @@ export default function OfficerAttendancePage() {
 
   const visibleAttendees = attendees.filter((attendee) => matchesQuery(rosterSearch, attendee.studentName, attendee.studentId, attendee.id))
   const checkedInCount = attendees.filter((attendee) => attendee.attendanceStatus === 'ATTENDED').length
+  const attendanceRate = attendees.length ? Math.round((checkedInCount / attendees.length) * 100) : 0
+
+  function getInitials(name = '') {
+    return name.split(/[ ,]+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'S'
+  }
 
   return (
     <div className="officer-attendance-page">
       <PageHeader
-        description="Record event attendance using the registration code shown on each student's digital pass."
-        eyebrow="WMSU COMPUTER SOCIETY"
+        description={`Record event attendance using the registration code shown on each student's digital pass for ${organization.name}.`}
+        eyebrow={organization.name}
         title="Event Attendance"
       />
 
       {events.length ? (
         <>
-          <Card className="officer-attendance-controls">
-            <label className="form-field" htmlFor="attendance-event">
-              <span>Event</span>
-              <select
-                id="attendance-event"
-                onChange={(event) => {
-                  setSelectedEventId(event.target.value)
-                  setFeedback(null)
-                }}
-                value={selectedEventId}
-              >
-                {events.map((event) => <option key={event.id} value={event.id}>{event.title} · {event.date}</option>)}
-              </select>
-            </label>
-            {selectedEvent && (
-              <div className="officer-attendance-summary" aria-live="polite">
-                <span>{selectedEvent.date}</span>
-                <strong>{checkedInCount} of {attendees.length} recorded registrations checked in</strong>
+          <div className="officer-stats-grid">
+            <Card className="officer-stat-card">
+              <div className="officer-stat-icon tone-crimson">
+                <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                </svg>
               </div>
-            )}
-            <form className="officer-attendance-checkin" onSubmit={handleCheckIn}>
-              <label className="form-field" htmlFor="registration-code">
-                <span>Registration code</span>
-                <input
-                  autoComplete="off"
-                  id="registration-code"
-                  onChange={(event) => setRegistrationCode(event.target.value)}
-                  placeholder="e.g. UNIDOS-REG-1006"
-                  required
-                  value={registrationCode}
-                />
+              <div>
+                <span className="stat-value">{attendees.length}</span>
+                <span className="stat-label">Total Registered</span>
+              </div>
+            </Card>
+
+            <Card className="officer-stat-card">
+              <div className="officer-stat-icon tone-green">
+                <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </div>
+              <div>
+                <span className="stat-value">{checkedInCount}</span>
+                <span className="stat-label">Checked In</span>
+              </div>
+            </Card>
+
+            <Card className="officer-stat-card">
+              <div className="officer-stat-icon tone-gold">
+                <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </div>
+              <div>
+                <span className="stat-value">{attendees.length - checkedInCount}</span>
+                <span className="stat-label">Pending Arrival</span>
+              </div>
+            </Card>
+
+            <Card className="officer-stat-card">
+              <div className="officer-stat-icon tone-blue">
+                <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+                  <line x1="18" x2="18" y1="20" y2="10" />
+                  <line x1="12" x2="12" y1="20" y2="4" />
+                  <line x1="6" x2="6" y1="20" y2="14" />
+                </svg>
+              </div>
+              <div>
+                <span className="stat-value">{attendanceRate}%</span>
+                <span className="stat-label">Turnout Rate</span>
+              </div>
+            </Card>
+          </div>
+
+          <Card className="officer-page-card officer-attendance-controls">
+            <div className="officer-page-card-heading">
+              <div>
+                <h2>Check-in Station</h2>
+                <p>Select the active event and scan or type student registration codes.</p>
+              </div>
+            </div>
+
+            <div className="officer-attendance-grid-form">
+              <label className="form-field" htmlFor="attendance-event">
+                <span>Select Event</span>
+                <select
+                  id="attendance-event"
+                  onChange={(event) => {
+                    setSelectedEventId(event.target.value)
+                    setFeedback(null)
+                  }}
+                  value={selectedEventId}
+                >
+                  {events.map((event) => <option key={event.id} value={event.id}>{event.title} · {event.date}</option>)}
+                </select>
               </label>
-              <button className="button button-primary" type="submit">Record attendance</button>
-            </form>
+
+              <form className="officer-attendance-checkin" onSubmit={handleCheckIn}>
+                <label className="form-field" htmlFor="registration-code">
+                  <span>Student Registration Code</span>
+                  <input
+                    autoComplete="off"
+                    id="registration-code"
+                    onChange={(event) => setRegistrationCode(event.target.value)}
+                    placeholder="e.g. UNIDOS-REG-1006"
+                    required
+                    value={registrationCode}
+                  />
+                </label>
+                <button className="button button-primary" type="submit" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" viewBox="0 0 24 24" width="16">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Record Attendance
+                </button>
+              </form>
+            </div>
+
             {feedback && (
               <p aria-live="polite" className={`attendance-feedback${feedback.ok ? ' is-success' : ' is-error'}`} key={feedback.id} role="status">
                 {feedback.message}
@@ -101,24 +173,33 @@ export default function OfficerAttendancePage() {
             <p className="attendance-checkin-help">The code must belong to a registered student for the selected event. Duplicate check-ins are blocked.</p>
           </Card>
 
-          <Card className="officer-attendance-roster">
-            <div className="adviser-panel-heading">
-              <div><h2>Registration records</h2><p>Student-level records available in this preview for {selectedEvent?.title}.</p></div>
+          <Card className="officer-page-card officer-attendance-roster">
+            <div className="officer-page-card-heading">
+              <div>
+                <h2>Registration Roster</h2>
+                <p>Student registration records for {selectedEvent?.title}.</p>
+              </div>
+              <Badge tone="crimson">{checkedInCount} of {attendees.length} checked in</Badge>
             </div>
             <SearchBar label="Search registration records" onChange={setRosterSearch} placeholder="Search by student name, ID or registration code…" value={rosterSearch} />
             {visibleAttendees.length ? (
               <div className="officer-attendance-list">
                 {visibleAttendees.map((attendee) => (
                   <article className="officer-attendance-row" key={attendee.id}>
-                    <div className="officer-attendee-identity">
-                      <strong>{attendee.studentName}</strong>
-                      <span>{attendee.studentId} · {attendee.id}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span aria-hidden="true" className="officer-person-avatar">
+                        {getInitials(attendee.studentName)}
+                      </span>
+                      <div className="officer-attendee-identity">
+                        <strong>{attendee.studentName}</strong>
+                        <span>{attendee.studentId} · Code: <code>{attendee.id}</code></span>
+                      </div>
                     </div>
                     <div className="officer-attendee-status">
                       <Badge tone={attendee.attendanceStatus === 'ATTENDED' ? 'success' : attendee.attendanceStatus === 'ABSENT' ? 'danger' : 'warning'}>
                         {attendee.attendanceStatus}
                       </Badge>
-                      {attendee.checkInTime && <span>Checked in {attendee.checkInTime}</span>}
+                      {attendee.checkInTime && <span className="officer-checkin-time">Checked in {attendee.checkInTime}</span>}
                     </div>
                   </article>
                 ))}
@@ -136,8 +217,6 @@ export default function OfficerAttendancePage() {
         message={`Are you sure you want to record attendance for code ${registrationCode.trim()} at “${selectedEvent?.title ?? 'this event'}”? Check-ins cannot be undone here.`}
         onCancel={() => setConfirmCheckInOpen(false)}
         onConfirm={confirmCheckIn}
-        open={confirmCheckInOpen}
-        title="Record attendance?"
       />
     </div>
   )

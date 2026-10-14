@@ -8,7 +8,7 @@ function sectionForPage(title) {
   return 'Reports & settings'
 }
 
-export default function Sidebar({ role, pages, onNavigate }) {
+export default function Sidebar({ role, pages, onNavigate, notificationCount = 0 }) {
   const groupedNavigation = role === 'Student Affairs Admin'
   const navigationItems = pages.map((page) => ({
     ...page,
@@ -31,6 +31,9 @@ export default function Sidebar({ role, pages, onNavigate }) {
             >
               <span aria-hidden="true" className="nav-mark" />
               <span>{page.title}</span>
+              {page.path === 'notifications' && notificationCount > 0 && (
+                <span className="sidebar-notif-pill">{notificationCount}</span>
+              )}
             </NavLink>
           </Fragment>
         ))}

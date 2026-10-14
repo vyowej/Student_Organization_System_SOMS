@@ -23,6 +23,7 @@ export { Brand }
 
 export default function Navbar({
   role,
+  notificationCount = 0,
   notificationLink,
   profileLink,
   onMenuClick,
@@ -71,11 +72,21 @@ export default function Navbar({
             Student portal
           </button>
         )}
-        <Link aria-label="Open notifications" className="icon-button" to={notificationLink} title="Notifications">
+        <Link
+          aria-label={notificationCount > 0 ? `Notifications (${notificationCount} unread)` : 'Open notifications'}
+          className="icon-button notification-button"
+          to={notificationLink}
+          title={notificationCount > 0 ? `${notificationCount} unread notification${notificationCount > 1 ? 's' : ''}` : 'Notifications'}
+        >
           <svg aria-hidden="true" className="topbar-icon" viewBox="0 0 24 24">
             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
             <path d="M10 21h4" />
           </svg>
+          {notificationCount > 0 && (
+            <span aria-label={`${notificationCount} unread`} className="notification-badge">
+              {notificationCount > 99 ? '99+' : notificationCount}
+            </span>
+          )}
         </Link>
         <Link aria-label="Open profile or settings" className="icon-button profile-link" to={profileLink} title="Profile">
           <svg aria-hidden="true" className="topbar-icon" viewBox="0 0 24 24">

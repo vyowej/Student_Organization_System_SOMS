@@ -23,6 +23,79 @@
   box-shadow: var(--shadow-card);
 }
 
+/* ---- No-Cover variant (used on Dashboards for a clean, compact header) ---- */
+.fb-cover-card.fb-no-cover .fb-cover {
+  display: none;
+}
+
+.fb-cover-card.fb-no-cover .fb-identity {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 22px 28px 18px;
+}
+
+.fb-cover-card.fb-no-cover .fb-avatar {
+  margin-top: 0;
+  width: 70px;
+  height: 70px;
+  min-width: 70px;
+  border-radius: 50%;
+  font-size: 20px;
+  font-weight: 800;
+  border: 2.5px solid rgba(162, 33, 67, 0.16);
+  background: var(--crimson-soft);
+  color: var(--crimson);
+  box-shadow: 0 4px 12px rgba(162, 33, 67, 0.08);
+}
+
+.fb-cover-card.fb-no-cover .fb-identity-copy {
+  padding-top: 0;
+}
+
+.fb-cover-card.fb-no-cover .fb-eyebrow {
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: var(--text-sm, 13px);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.fb-cover-card.fb-no-cover .fb-identity-copy h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(20px, 2.3vw, 25px);
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.fb-cover-card.fb-no-cover .fb-subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm, 13px);
+  line-height: 1.4;
+}
+
+.fb-cover-card.fb-no-cover .fb-badges {
+  margin-top: 8px;
+  gap: 6px;
+}
+
+.fb-cover-card.fb-no-cover .fb-actions {
+  align-self: center;
+  gap: 8px;
+  padding-bottom: 0;
+}
+
+@media (max-width: 720px) {
+  .fb-cover-card.fb-no-cover .fb-identity {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 20px 16px;
+  }
+}
+
 .fb-cover {
   position: relative;
   height: clamp(150px, 22vw, 240px);
@@ -98,8 +171,15 @@
   margin: 0 20px;
   padding: 4px 0;
   overflow-x: auto;
+  overflow-y: hidden;
   border-top: 1px solid var(--border);
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.fb-tabs::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .fb-tab {
@@ -240,10 +320,18 @@
 .fb-metric {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
+  gap: 13px;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
   background: var(--canvas);
+  border: 1px solid var(--border);
+  transition: all 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.fb-metric:hover {
+  background: var(--surface);
+  border-color: rgba(162, 33, 67, 0.24);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transform: translateY(-1px);
 }
 .fb-metric-icon {
   display: grid;
@@ -251,15 +339,18 @@
   place-items: center;
   width: 38px;
   height: 38px;
-  border-radius: 50%;
+  border-radius: 9px;
   color: var(--crimson);
   background: var(--crimson-soft);
   font-size: 16px;
   font-weight: 800;
+  border: 1px solid rgba(162, 33, 67, 0.12);
+  transition: transform 160ms ease;
 }
-.fb-metric-blue .fb-metric-icon { color: #285fa5; background: #e8f0fb; }
-.fb-metric-gold .fb-metric-icon { color: var(--warning); background: #fbf1d8; }
-.fb-metric-green .fb-metric-icon { color: var(--success); background: #e3f4ea; }
+.fb-metric:hover .fb-metric-icon { transform: scale(1.05); }
+.fb-metric-blue .fb-metric-icon { color: #2563eb; background: #eff6ff; border-color: #bfdbfe; }
+.fb-metric-gold .fb-metric-icon { color: #d97706; background: #fffbeb; border-color: #fde68a; }
+.fb-metric-green .fb-metric-icon { color: #16a34a; background: #f0fdf4; border-color: #bbf7d0; }
 .fb-metric > div { display: grid; min-width: 0; }
 .fb-metric .stat-value { color: var(--text); font-size: 22px; font-weight: 800; line-height: 1.15; }
 .fb-metric .stat-label { color: var(--muted); font-size: var(--text-sm, 13px); }
@@ -274,14 +365,15 @@
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   color: var(--crimson);
   background: var(--crimson-soft);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.3px;
+  border: 1px solid rgba(162, 33, 67, 0.14);
 }
 
 .fb-composer-input {
@@ -292,13 +384,14 @@
   border-radius: 999px;
   color: var(--muted);
   background: var(--canvas);
+  border: 1px solid var(--border);
   font-size: var(--text-base, 14px);
   text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: background 150ms ease;
+  transition: all 150ms ease;
 }
-.fb-composer-input:hover { background: #efedf0; }
+.fb-composer-input:hover { background: var(--surface); border-color: #d1cbd4; color: var(--text); }
 
 .fb-composer-actions {
   display: grid;
@@ -313,6 +406,7 @@
   justify-content: center;
   gap: 8px;
   min-height: 38px;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--radius-control);
   color: var(--muted);
@@ -321,9 +415,14 @@
   font-weight: 700;
   text-decoration: none;
   cursor: pointer;
-  transition: background 150ms ease, color 150ms ease;
+  transition: all 150ms ease;
 }
-.fb-composer-actions a:hover, .fb-composer-actions button:hover { color: var(--crimson); background: var(--crimson-soft); }
+.fb-composer-actions a:hover, .fb-composer-actions button:hover {
+  color: var(--crimson);
+  background: var(--crimson-soft);
+  transform: translateY(-1px);
+}
+.fb-composer-actions svg { color: var(--crimson); flex-shrink: 0; }
 .fb-composer-actions span { color: var(--crimson); }
 
 .fb-composer-actions-4 { grid-template-columns: repeat(4, 1fr); }
@@ -351,6 +450,123 @@
 .fb-card .officer-request-list,
 .fb-card .officer-event-list { display: grid; gap: 10px; }
 .fb-card .officer-panel-actions { margin-top: 14px; }
+
+.fb-card .officer-request-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  transition: all 150ms ease;
+}
+
+.fb-card .officer-request-row:hover {
+  background: var(--surface);
+  border-color: #d1cbd4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.fb-card .officer-request-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fb-card .officer-person-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: #285fa5;
+  background: #e8f0fb;
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.fb-card .officer-person-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fb-card .officer-person-copy strong {
+  font-size: var(--text-sm, 14px);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.fb-card .officer-person-copy span {
+  font-size: var(--text-xs, 12px);
+  color: var(--muted);
+}
+
+.fb-card .officer-request-actions-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.fb-card .officer-request-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fb-card .officer-event-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  transition: all 150ms ease;
+}
+
+.fb-card .officer-event-row:hover {
+  background: var(--surface);
+  border-color: #d1cbd4;
+}
+
+.fb-card .officer-event-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  color: var(--crimson);
+  background: var(--crimson-soft);
+  flex-shrink: 0;
+}
+
+.fb-card .officer-event-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fb-card .officer-event-copy strong {
+  font-size: var(--text-sm, 14px);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.fb-card .officer-event-copy span {
+  font-size: var(--text-xs, 12px);
+  color: var(--muted);
+}
 
 /* ---- Responsive ---------------------------------------------------------- */
 @media (max-width: 1080px) {
@@ -385,3 +601,876 @@
 @media (prefers-reduced-motion: reduce) {
   .fb-tab, .fb-composer-input, .fb-officer-tile > span { transition: none; }
 }
+
+/* ==========================================================================
+   Student Organization Details / Profile Page Enhancements
+   ========================================================================== */
+
+.student-org-top-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm, 13px);
+  color: var(--muted);
+  margin-bottom: -6px;
+}
+
+.student-org-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--crimson);
+  font-weight: 700;
+  text-decoration: none;
+  transition: opacity 150ms ease;
+}
+
+.student-org-back-link:hover {
+  text-decoration: underline;
+}
+
+.student-org-breadcrumb-sep {
+  color: var(--border);
+}
+
+.student-org-breadcrumb-current {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+.student-org-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.student-member-badge-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-control);
+  background: #e3f4ea;
+  color: #15803d;
+  font-weight: 700;
+  font-size: var(--text-sm, 13px);
+  border: 1px solid #bbf7d0;
+}
+
+.student-member-badge-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-control);
+  background: #fef3c7;
+  color: #b45309;
+  font-weight: 700;
+  font-size: var(--text-sm, 13px);
+  border: 1px solid #fde68a;
+}
+
+/* Membership Callouts */
+.student-membership-callout {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-radius: var(--radius-card);
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+}
+
+.student-membership-callout.status-active {
+  background: linear-gradient(135deg, #f0fdf4 0%, #e8f7ee 100%);
+  border-color: #bbf7d0;
+}
+
+.student-membership-callout.status-pending {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border-color: #fde68a;
+}
+
+.student-membership-callout.status-join {
+  background: linear-gradient(135deg, #fdf2f4 0%, #fbe8ec 100%);
+  border-color: #fecdd6;
+}
+
+.student-membership-callout.status-rejected {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border-color: #fca5a5;
+}
+
+.student-membership-callout-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.status-active .student-membership-callout-icon {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.status-pending .student-membership-callout-icon {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.status-join .student-membership-callout-icon {
+  background: var(--crimson-soft);
+  color: var(--crimson);
+}
+
+.status-rejected .student-membership-callout-icon {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.student-membership-callout-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.student-membership-callout-copy strong {
+  display: block;
+  font-size: var(--text-md, 15px);
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.student-membership-callout-copy p {
+  margin: 0;
+  font-size: var(--text-sm, 13px);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* Mission & Vision Styling */
+.student-mission-vision-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.student-mission-box,
+.student-vision-box {
+  padding: 14px 16px;
+  border-radius: var(--radius-control);
+  background: var(--canvas);
+  border-left: 3px solid var(--crimson);
+}
+
+.student-vision-box {
+  border-left-color: #2563eb;
+}
+
+.student-mv-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.student-mv-text {
+  margin: 0;
+  font-size: var(--text-sm, 13px);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* Announcements in Feed */
+.student-announcements-feed {
+  display: grid;
+  gap: 14px;
+}
+
+.student-announcement-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.student-announcement-card:hover {
+  border-color: #e2c0ca;
+  box-shadow: 0 4px 14px rgba(122, 22, 49, 0.05);
+}
+
+.student-announcement-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.student-announcement-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.student-announcement-meta strong {
+  display: block;
+  font-size: var(--text-sm, 13px);
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.student-announcement-meta time {
+  font-size: var(--text-xs, 12px);
+  color: var(--muted);
+}
+
+.student-announcement-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.student-announcement-body {
+  margin: 0;
+  font-size: var(--text-base, 14px);
+  line-height: 1.6;
+  color: #4b4447;
+}
+
+/* Upcoming Events in Student View */
+.student-events-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.student-event-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-decoration: none;
+  transition: all 150ms ease;
+}
+
+.student-event-card:hover {
+  border-color: var(--crimson);
+  background: #fdf8f9;
+  transform: translateX(3px);
+}
+
+.student-event-cal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: var(--crimson-soft);
+  color: var(--crimson);
+  border: 1px solid rgba(162, 33, 67, 0.15);
+}
+
+.student-event-cal-month {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+
+.student-event-cal-day {
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-top: 2px;
+}
+
+.student-event-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.student-event-details strong {
+  display: block;
+  font-size: var(--text-base, 14px);
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.student-event-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--text-xs, 12px);
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.student-event-meta-line span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.student-event-arrow {
+  color: var(--crimson);
+  font-size: 18px;
+  font-weight: 700;
+  padding-right: 4px;
+  transition: transform 150ms ease;
+}
+
+.student-event-card:hover .student-event-arrow {
+  transform: translateX(4px);
+}
+
+/* Public Documents */
+.student-documents-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.student-doc-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.student-doc-card:hover {
+  background: #f7f6f8;
+  border-color: #e2c0ca;
+}
+
+.student-doc-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: var(--crimson-soft);
+  color: var(--crimson);
+  font-size: 18px;
+  flex: 0 0 auto;
+}
+
+.student-doc-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.student-doc-info strong {
+  display: block;
+  font-size: var(--text-sm, 13px);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.student-doc-info small {
+  display: block;
+  font-size: var(--text-xs, 12px);
+  color: var(--muted);
+}
+
+.student-doc-action {
+  font-size: var(--text-xs, 12px);
+  font-weight: 700;
+  color: var(--crimson);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  white-space: nowrap;
+}
+
+.student-doc-action:hover {
+  background: var(--crimson-soft);
+  border-color: var(--crimson);
+}
+
+/* Officers Full Grid in Tab */
+.student-officers-full-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
+}
+
+.student-officer-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 20px 16px;
+  border-radius: var(--radius-card);
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.student-officer-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border-color: #d1cbd4;
+}
+
+.student-officer-avatar-large {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--crimson-soft);
+  color: var(--crimson);
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  border: 2px solid rgba(162, 33, 67, 0.15);
+}
+
+.student-officer-card strong {
+  display: block;
+  font-size: var(--text-sm, 13px);
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.student-officer-card small {
+  display: block;
+  font-size: var(--text-xs, 12px);
+  color: var(--muted);
+}
+
+/* Document preview modal copy */
+.student-doc-preview-body {
+  display: grid;
+  gap: 16px;
+  padding: 10px 0;
+}
+
+.student-doc-preview-callout {
+  padding: 14px 16px;
+  border-radius: var(--radius-control);
+  background: #f7f9fc;
+  border: 1px solid #dbe3ee;
+  font-size: var(--text-sm, 13px);
+  color: #334155;
+  line-height: 1.5;
+}
+
+.student-doc-preview-meta {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.student-doc-preview-item {
+  padding: 10px 14px;
+  border-radius: var(--radius-control);
+  background: var(--canvas);
+}
+
+.student-doc-preview-item dt {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.student-doc-preview-item dd {
+  margin: 0;
+  font-size: var(--text-sm, 13px);
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ==========================================================================
+   Officer Portal Unified Design System
+   ========================================================================== */
+
+.officer-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-section, 24px);
+  max-width: var(--layout-content-width, 1600px);
+  width: 100%;
+}
+
+/* ---- Officer Stats Summary Grid ---- */
+.officer-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.officer-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--radius-card, 14px);
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #e5e0e6);
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.officer-stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+  border-color: #d1cbd4;
+}
+
+.officer-stat-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.officer-stat-icon.tone-crimson {
+  color: var(--crimson, #8f1538);
+  background: var(--crimson-soft, #fbe8ec);
+  border: 1px solid rgba(143, 21, 56, 0.12);
+}
+
+.officer-stat-icon.tone-green {
+  color: #16a34a;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.officer-stat-icon.tone-gold {
+  color: #d97706;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
+.officer-stat-icon.tone-blue {
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.officer-stat-icon.tone-danger {
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.officer-stat-card .stat-value {
+  display: block;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--text, #1e1b1e);
+}
+
+.officer-stat-card .stat-label {
+  display: block;
+  font-size: var(--text-xs, 12px);
+  color: var(--muted, #6f6874);
+  margin-top: 2px;
+}
+
+/* ---- Officer Members Table Enhancements ---- */
+.officer-member-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.officer-member-avatar-chip {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--crimson, #8f1538);
+  background: var(--crimson-soft, #fbe8ec);
+  border: 1px solid rgba(143, 21, 56, 0.14);
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.officer-position-tag {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: var(--crimson-soft, #fbe8ec);
+  color: var(--crimson, #8f1538);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+}
+
+/* ---- Officer Attendance Station ---- */
+.officer-attendance-grid-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 2fr;
+  gap: 16px;
+  align-items: flex-end;
+  margin-top: 14px;
+  padding: 16px 18px;
+  background: var(--canvas, #f7f6f8);
+  border-radius: var(--radius-control, 10px);
+  border: 1px solid var(--border, #e5e0e6);
+}
+
+@media (max-width: 768px) {
+  .officer-attendance-grid-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.officer-checkin-time {
+  font-size: 12px;
+  color: #15803d;
+  font-weight: 600;
+}
+
+/* ---- Officer Documents List & Cards ---- */
+.officer-doc-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.officer-doc-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: var(--radius-control, 10px);
+  background: var(--canvas, #f7f6f8);
+  border: 1px solid var(--border, #e5e0e6);
+  transition: all 150ms ease;
+}
+
+.officer-doc-card:hover {
+  background: var(--surface, #ffffff);
+  border-color: #d1cbd4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.officer-doc-icon-wrap {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: var(--crimson, #8f1538);
+  background: var(--crimson-soft, #fbe8ec);
+  border: 1px solid rgba(143, 21, 56, 0.12);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.officer-doc-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.officer-doc-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.officer-doc-type-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted, #6f6874);
+}
+
+.officer-doc-main h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text, #1e1b1e);
+}
+
+.officer-doc-main p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted, #6f6874);
+}
+
+.officer-doc-feedback {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #fef2f2;
+  border: 1px solid #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+/* ---- Officer Reports List & Cards ---- */
+.officer-report-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.officer-report-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: var(--radius-control, 10px);
+  background: var(--canvas, #f7f6f8);
+  border: 1px solid var(--border, #e5e0e6);
+  transition: all 150ms ease;
+}
+
+.officer-report-card:hover {
+  background: var(--surface, #ffffff);
+  border-color: #d1cbd4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.officer-report-icon-wrap {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: var(--crimson, #8f1538);
+  background: var(--crimson-soft, #fbe8ec);
+  border: 1px solid rgba(143, 21, 56, 0.12);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.officer-report-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.officer-report-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.officer-report-org-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted, #6f6874);
+}
+
+.officer-report-main h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text, #1e1b1e);
+}
+
+.officer-report-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--muted, #6f6874);
+  margin-bottom: 4px;
+}
+
+.officer-report-revision-alert {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #fef2f2;
+  border: 1px solid #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.officer-report-verified-by {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #15803d;
+  font-weight: 600;
+}
+
+/* ---- Officer Settings Icons & Polish ---- */
+.officer-settings-role-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--crimson-soft, #fbe8ec);
+  color: var(--crimson, #8f1538);
+  flex-shrink: 0;
+}
+
+.officer-settings-check-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.officer-event-table-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.officer-event-table-cell strong {
+  font-size: 14px;
+  color: var(--text, #1e1b1e);
+}
+
+.officer-event-table-cell small {
+  font-size: 12px;
+  color: var(--muted, #6f6874);
+}
+
+

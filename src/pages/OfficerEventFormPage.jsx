@@ -33,7 +33,9 @@ function toDisplayTime(value) {
 export default function OfficerEventFormPage() {
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
-  const { captureUndo, officerEvents, saveOfficerEvent } = useOutletContext()
+  const { adminOrganizations, captureUndo, currentUser, officerEvents, saveOfficerEvent } = useOutletContext()
+  const orgId = currentUser?.organizationId || 'wmsu-cs'
+  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society' }
   const existing = officerEvents.find((event) => event.id === editId && event.status === 'RETURNED_FOR_REVISION')
   const initialDateValue = toDateInputValue(existing?.date)
   const existingTimes = existing?.time?.split('–').map((value) => value.trim()) ?? []
@@ -92,22 +94,34 @@ export default function OfficerEventFormPage() {
   return (
     <div className="officer-page">
       <PageHeader
-        description={existing ? 'Address the adviser’s feedback, then resubmit the proposal for review.' : 'Create a proposal for your assigned organization. An adviser and Student Affairs Admin will review it.'}
-        eyebrow="WMSU Computer Society"
+        description={existing ? 'Address the adviser’s feedback, then resubmit the proposal for review.' : `Create a proposal for ${organization.name}. An adviser and Student Affairs Admin will review it.`}
+        eyebrow={organization.name}
         title={existing ? 'Edit Returned Event Proposal' : 'Create Event Proposal'}
       />
-      {existing?.revisionNote && <div className="officer-revision-note"><strong>Adviser feedback</strong><p>{existing.revisionNote}</p></div>}
+      {existing?.revisionNote && (
+        <div className="officer-revision-note">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" x2="12" y1="8" y2="12" />
+              <line x1="12" x2="12.01" y1="16" y2="16" />
+            </svg>
+            <strong>Adviser Feedback & Revision Request</strong>
+          </div>
+          <p>{existing.revisionNote}</p>
+        </div>
+      )}
       <Card className="officer-event-form-card">
         <form className="officer-event-form" onSubmit={(event) => event.preventDefault()}>
           <Input id="officer-event-title" label="Event title" onChange={(event) => setTitle(event.target.value)} placeholder="e.g. WMSU Hackathon 2026" required value={title} />
+          <Input id="officer-event-category" label="Activity category" onChange={(event) => setCategory(event.target.value)} value={category} />
           <Input id="officer-event-date" label="Event date" onChange={(event) => setDate(event.target.value)} required type="date" value={date} />
           <Input id="officer-event-location" label="Location" onChange={(event) => setLocation(event.target.value)} placeholder="Venue or campus location" required value={location} />
-          <Input id="officer-event-capacity" label="Registration capacity" min="1" onChange={(event) => setCapacity(event.target.value)} required type="number" value={capacity} />
-          <Input id="officer-event-category" label="Activity category" onChange={(event) => setCategory(event.target.value)} value={category} />
           <Input id="officer-event-start-time" label="Start time" onChange={(event) => setStartTime(event.target.value)} type="time" value={startTime} />
           <Input id="officer-event-end-time" label="End time" onChange={(event) => setEndTime(event.target.value)} type="time" value={endTime} />
-          <Input id="officer-event-audience" label="Target audience" onChange={(event) => setTargetAudience(event.target.value)} placeholder="e.g. WMSU students" value={targetAudience} />
+          <Input id="officer-event-capacity" label="Registration capacity" min="1" onChange={(event) => setCapacity(event.target.value)} required type="number" value={capacity} />
           <Input id="officer-event-deadline" label="Registration deadline" onChange={(event) => setRegistrationDeadline(event.target.value)} type="date" value={registrationDeadline} />
+          <Input id="officer-event-audience" label="Target audience" onChange={(event) => setTargetAudience(event.target.value)} placeholder="e.g. WMSU students" value={targetAudience} />
           <Input id="officer-event-budget" label="Proposed budget (PHP)" min="0" onChange={(event) => setBudget(event.target.value)} type="number" value={budget} />
           <Input id="officer-event-documents" label="Compliance document names" onChange={(event) => setSupportingDocuments(event.target.value)} placeholder="Venue clearance.pdf, Safety plan.pdf" value={supportingDocuments} />
           <div className="form-field officer-event-description">

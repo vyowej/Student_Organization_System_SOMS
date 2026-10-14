@@ -227,7 +227,7 @@ export default function OfficerSettingsPage() {
     <div className="officer-settings-page">
       <PageHeader
         description="Manage your organization's information, preferences, and account settings."
-        eyebrow="ORGANIZATION MANAGEMENT"
+        eyebrow={organization.name}
         title="Organization Settings"
       />
 
@@ -309,9 +309,26 @@ export default function OfficerSettingsPage() {
       </SettingsSection>
 
       <SettingsSection title="Organization Access / Permissions" description="Access is assigned by the system and cannot be changed here.">
-        <div className="officer-settings-access-role"><span aria-hidden="true">♙</span><div><strong>Organization Officer</strong><small>{currentUser?.organizationId === organization.id ? organization.name : ''}</small></div><Badge tone="crimson">ROLE</Badge></div>
+        <div className="officer-settings-access-role">
+          <span aria-hidden="true" className="officer-settings-role-icon">
+            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+          </span>
+          <div><strong>Organization Officer</strong><small>{currentUser?.organizationId === organization.id ? organization.name : ''}</small></div>
+          <Badge tone="crimson">ROLE</Badge>
+        </div>
         <ul className="officer-settings-permission-list">
-          {['Manage Members', 'Review Membership Requests', 'Create Events', 'Manage Announcements', 'Submit Documents', 'View Organization Reports'].map((permission) => <li key={permission}><span aria-hidden="true">✓</span>{permission}</li>)}
+          {['Manage Members', 'Review Membership Requests', 'Create Events', 'Manage Announcements', 'Submit Documents', 'View Organization Reports'].map((permission) => (
+            <li key={permission}>
+              <span aria-hidden="true" className="officer-settings-check-icon">
+                <svg aria-hidden="true" fill="none" height="13" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" viewBox="0 0 24 24" width="13">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </span>
+              {permission}
+            </li>
+          ))}
         </ul>
         <p className="officer-settings-help">System roles and official organization permissions are managed by Student Affairs.</p>
       </SettingsSection>

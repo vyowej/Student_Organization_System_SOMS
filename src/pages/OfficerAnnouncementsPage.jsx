@@ -117,18 +117,85 @@ export default function OfficerAnnouncementsPage() {
     setConfirmAction(null)
   }
 
+  const counts = useMemo(() => {
+    const total = announcements.length
+    const published = announcements.filter((a) => a.status === 'PUBLISHED').length
+    const drafts = announcements.filter((a) => a.status === 'DRAFT').length
+    const archived = announcements.filter((a) => a.status === 'ARCHIVED').length
+    return { total, published, drafts, archived }
+  }, [announcements])
+
   return (
     <div className="officer-announcements-page">
       <PageHeader
-        description="Create and manage announcements for your organization's members."
-        eyebrow="ORGANIZATION COMMUNICATIONS"
+        description={`Create and manage announcements for ${organization?.name || 'your organization'}'s members.`}
+        eyebrow={organization?.name || 'ORGANIZATION COMMUNICATIONS'}
         title="Announcements"
       />
 
-      <div className="officer-announcements-toolbar">
+      <div className="officer-stats-grid">
+        <Card className="officer-stat-card">
+          <div className="officer-stat-icon tone-crimson">
+            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+              <path d="m3 11 18-5v12L3 14v-3z" />
+              <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+            </svg>
+          </div>
+          <div>
+            <span className="stat-value">{counts.total}</span>
+            <span className="stat-label">Total Announcements</span>
+          </div>
+        </Card>
+
+        <Card className="officer-stat-card">
+          <div className="officer-stat-icon tone-green">
+            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+          </div>
+          <div>
+            <span className="stat-value">{counts.published}</span>
+            <span className="stat-label">Published to Members</span>
+          </div>
+        </Card>
+
+        <Card className="officer-stat-card">
+          <div className="officer-stat-icon tone-gold">
+            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" x2="8" y1="13" y2="13" />
+            </svg>
+          </div>
+          <div>
+            <span className="stat-value">{counts.drafts}</span>
+            <span className="stat-label">Saved Drafts</span>
+          </div>
+        </Card>
+
+        <Card className="officer-stat-card">
+          <div className="officer-stat-icon tone-blue">
+            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+              <polyline points="21 8 21 21 3 21 3 8" />
+              <rect height="5" width="22" x="1" y="3" />
+              <line x1="10" x2="14" y1="12" y2="12" />
+            </svg>
+          </div>
+          <div>
+            <span className="stat-value">{counts.archived}</span>
+            <span className="stat-label">Archived</span>
+          </div>
+        </Card>
+      </div>
+
+      <div className="officer-announcements-toolbar" style={{ marginTop: '12px', marginBottom: '8px' }}>
         <div className="officer-announcements-filters">
           <label className="officer-announcements-search">
-            <span aria-hidden="true">⌕</span>
+            <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" x2="16.65" y1="21" y2="16.65" />
+            </svg>
             <input aria-label="Search announcements" onChange={(event) => setSearch(event.target.value)} placeholder="Search announcements" type="search" value={search} />
           </label>
           <label className="officer-announcements-filter">Status
@@ -143,7 +210,13 @@ export default function OfficerAnnouncementsPage() {
             </select>
           </label>
         </div>
-        <Button onClick={openCreate}>＋ Create Announcement</Button>
+        <Button onClick={openCreate} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" viewBox="0 0 24 24" width="15">
+            <line x1="12" x2="12" y1="5" y2="19" />
+            <line x1="5" x2="19" y1="12" y2="12" />
+          </svg>
+          Create Announcement
+        </Button>
       </div>
 
       {filteredAnnouncements.length ? (
@@ -152,7 +225,12 @@ export default function OfficerAnnouncementsPage() {
             <Card className="officer-announcement-card" key={announcement.id}>
               <div className="officer-announcement-card-header">
                 <div className="officer-announcement-title">
-                  <span aria-hidden="true" className="officer-announcement-mark">▤</span>
+                  <span aria-hidden="true" className="officer-announcement-mark">
+                    <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
+                      <path d="m3 11 18-5v12L3 14v-3z" />
+                      <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+                    </svg>
+                  </span>
                   <div><h2>{announcement.title}</h2><Badge tone={toneForStatus(announcement.status)}>{announcement.status}</Badge></div>
                 </div>
                 <span className="officer-announcement-date">{announcement.status === 'PUBLISHED' ? 'Published' : 'Created'} · {dateLabel(announcement.datePosted)}</span>
@@ -176,7 +254,13 @@ export default function OfficerAnnouncementsPage() {
       ) : (
         <Card className="officer-announcements-empty">
           <EmptyState title="No announcements yet" description="Create your first announcement to keep your organization members informed." />
-          <Button onClick={openCreate}>Create Announcement</Button>
+          <Button onClick={openCreate} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" viewBox="0 0 24 24" width="15">
+              <line x1="12" x2="12" y1="5" y2="19" />
+              <line x1="5" x2="19" y1="12" y2="12" />
+            </svg>
+            Create Announcement
+          </Button>
         </Card>
       )}
 

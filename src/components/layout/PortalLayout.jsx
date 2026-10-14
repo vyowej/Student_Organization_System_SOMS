@@ -107,10 +107,30 @@ export default function PortalLayout({ role }) {
           ? { ...sharedPortalData, captureUndo, currentUser, studentRegistrations }
           : undefined
 
+  const unreadNotificationCount = role === 'Student'
+    ? [
+        ...(sharedPortalData.studentNotifications || []).map((n) => ({
+          id: n.id,
+          read: Boolean(n.read),
+        })),
+        ...studentDashboardNotifications
+          .filter((n) => !(sharedPortalData.studentNotifications || []).some((sn) => sn.id === n.id))
+          .map((n) => ({
+            id: n.id,
+            read: !n.unread || readNotificationIds.includes(n.id),
+          })),
+      ].filter((n) => !n.read).length
+    : role === 'Organization Officer'
+      ? (sharedPortalData.officerNotifications || []).filter((n) => !n.read).length
+      : role === 'Student Affairs Admin'
+        ? (sharedPortalData.adminNotifications || []).filter((n) => !n.read).length
+        : 0
+
   return (
     <div className={`app-shell portal-layout${menuOpen ? ' sidebar-open' : ''}`}>
       <Navbar
         isMenuOpen={menuOpen}
+        notificationCount={unreadNotificationCount}
         notificationLink={navigation.notifications}
         onMenuClick={() => setMenuOpen((open) => !open)}
         profileLink={navigation.profile}
@@ -125,7 +145,7 @@ export default function PortalLayout({ role }) {
             type="button"
           />
         )}
-        <Sidebar onNavigate={() => setMenuOpen(false)} pages={navigation.pages} role={role} />
+        <Sidebar notificationCount={unreadNotificationCount} onNavigate={() => setMenuOpen(false)} pages={navigation.pages} role={role} />
         <main className="portal-main">
           <UndoBar />
           <Outlet context={outletContext} />

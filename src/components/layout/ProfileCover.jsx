@@ -15,17 +15,20 @@ export default function ProfileCover({
   eyebrow = '',
   label = 'Profile',
   logo = '',
+  showCover = true,
   subtitle = null,
   tabs = [],
   tabsLabel = 'Profile sections',
   title,
 }) {
   return (
-    <section aria-label={label} className="fb-cover-card">
-      <div aria-hidden="true" className="fb-cover">
-        <span className="fb-cover-shape fb-cover-shape-a" />
-        <span className="fb-cover-shape fb-cover-shape-b" />
-      </div>
+    <section aria-label={label} className={`fb-cover-card${showCover ? '' : ' fb-no-cover'}`}>
+      {showCover && (
+        <div aria-hidden="true" className="fb-cover">
+          <span className="fb-cover-shape fb-cover-shape-a" />
+          <span className="fb-cover-shape fb-cover-shape-b" />
+        </div>
+      )}
 
       <div className="fb-identity">
         <div aria-hidden="true" className="fb-avatar">

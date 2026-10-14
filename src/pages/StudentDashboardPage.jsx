@@ -5,7 +5,6 @@ import Badge from '../components/ui/Badge.jsx'
 import {
   studentDashboardEvents,
   studentDashboardMetrics,
-  studentDashboardNotifications,
   studentDashboardOrganizations,
 } from '../data/studentDashboard.js'
 
@@ -36,7 +35,7 @@ function SectionHeading({ id, title, to, linkLabel }) {
 }
 
 export default function StudentDashboardPage() {
-  const { currentUser, markNotificationRead, readNotificationIds } = useOutletContext()
+  const { currentUser } = useOutletContext()
   const [metricCounts, setMetricCounts] = useState(() => {
     const reducedMotion = typeof window !== 'undefined'
       && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -84,6 +83,43 @@ export default function StudentDashboardPage() {
       </div>
 
       <div className="student-dashboard-columns">
+        <section aria-labelledby="quick-actions-title" className="student-dashboard-panel student-quick-actions-panel">
+          <div className="student-dashboard-section-heading">
+            <div>
+              <h2 id="quick-actions-title">Quick Actions</h2>
+              <span className="student-section-subhead">Frequent student portal destinations & shortcuts</span>
+            </div>
+          </div>
+          <div className="student-quick-actions-grid">
+            <Link className="student-quick-action-card" to="/student/organizations">
+              <span className="quick-action-icon"><Icon name="organization" /></span>
+              <div className="quick-action-info">
+                <span className="quick-action-title">Explore Organizations</span>
+                <span className="quick-action-desc">Discover recognized student clubs & societies</span>
+              </div>
+              <span className="quick-action-arrow-wrap"><Icon className="quick-action-arrow" name="arrow" /></span>
+            </Link>
+
+            <Link className="student-quick-action-card" to="/student/events">
+              <span className="quick-action-icon"><Icon name="calendar" /></span>
+              <div className="quick-action-info">
+                <span className="quick-action-title">Browse Events</span>
+                <span className="quick-action-desc">Find upcoming summits, workshops & campus activities</span>
+              </div>
+              <span className="quick-action-arrow-wrap"><Icon className="quick-action-arrow" name="arrow" /></span>
+            </Link>
+
+            <Link className="student-quick-action-card" to="/student/registrations">
+              <span className="quick-action-icon"><Icon name="ticket" /></span>
+              <div className="quick-action-info">
+                <span className="quick-action-title">My Registrations</span>
+                <span className="quick-action-desc">View registered events, passes & attendance</span>
+              </div>
+              <span className="quick-action-arrow-wrap"><Icon className="quick-action-arrow" name="arrow" /></span>
+            </Link>
+          </div>
+        </section>
+
         <section aria-labelledby="my-organizations-title" className="student-dashboard-panel">
           <SectionHeading id="my-organizations-title" linkLabel="View all organizations" title="My Organizations" to="/student/my-organizations" />
           <div className="student-organization-list">
@@ -133,42 +169,6 @@ export default function StudentDashboardPage() {
               </Link>
             ))}
           </div>
-        </section>
-      </div>
-
-      <div className="student-dashboard-lower">
-        <section aria-labelledby="recent-notifications-title" className="student-dashboard-panel">
-          <SectionHeading id="recent-notifications-title" linkLabel="View all notifications" title="Recent Notifications" to="/student/notifications" />
-          <div className="student-notification-list">
-            {studentDashboardNotifications.map((notification) => (
-              <Link
-                className={`student-notification${notification.unread && !readNotificationIds.includes(notification.id) ? ' is-unread' : ''}`}
-                key={notification.id}
-                onClick={() => markNotificationRead(notification.id)}
-                to="/student/notifications"
-              >
-                <span className="student-notification-icon"><Icon name={notification.icon} /></span>
-                <span className="student-notification-copy">
-                  <span className="student-notification-meta">
-                    <strong>{notification.type}</strong>
-                    {notification.unread && !readNotificationIds.includes(notification.id) && <span className="student-unread-label">New</span>}
-                  </span>
-                  <span>{notification.message}</span>
-                  <small>{notification.time}</small>
-                </span>
-                {notification.unread && !readNotificationIds.includes(notification.id) && <span aria-label="Unread" className="student-unread-dot" />}
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <section aria-labelledby="quick-actions-title" className="student-dashboard-panel student-quick-actions">
-          <div className="student-dashboard-section-heading">
-            <h2 id="quick-actions-title">Quick Actions</h2>
-          </div>
-          <Link to="/student/organizations"><span className="quick-action-icon"><Icon name="organization" /></span><span>Explore Organizations</span><Icon className="quick-action-arrow" name="arrow" /></Link>
-          <Link to="/student/events"><span className="quick-action-icon"><Icon name="calendar" /></span><span>Browse Events</span><Icon className="quick-action-arrow" name="arrow" /></Link>
-          <Link to="/student/registrations"><span className="quick-action-icon"><Icon name="ticket" /></span><span>My Registrations</span><Icon className="quick-action-arrow" name="arrow" /></Link>
         </section>
       </div>
     </div>
