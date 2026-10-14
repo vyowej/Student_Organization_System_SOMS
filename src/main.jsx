@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.jsx'
 import './styles/polish.css'
 import './styles/refine.css'
+import './styles/facebook-layout.css'
 import { ToastProvider } from './components/ui/Toast.jsx'
 
 createRoot(document.getElementById('root')).render(
