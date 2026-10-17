@@ -4,6 +4,7 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import Modal from '../components/ui/Modal.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import { getEventRegistrationState, isEventAlmostFull, studentEvents } from '../data/studentEvents.js'
@@ -138,7 +139,7 @@ export default function EventDetailsPage() {
 
             <section className="event-info-section event-organizer-section">
               <h3>Organized By</h3>
-              <Link to={`/student/organizations/${event.organizationId}`}>{event.organizationName} <span aria-hidden="true">→</span></Link>
+              <Link to={`/student/organizations/${event.organizationId}`}>{event.organizationName} <Icon name="arrow-right" size={13} /></Link>
             </section>
 
             <section className="event-info-section">
@@ -151,7 +152,9 @@ export default function EventDetailsPage() {
             </section>
           </div>
 
-          <Link className="event-back-link" to="/student/events">← Explore all events</Link>
+          <Link className="event-back-link" to="/student/events">
+            <Icon name="arrow-left" size={14} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '6px' }} /> Explore all events
+          </Link>
         </div>
       </Card>
 

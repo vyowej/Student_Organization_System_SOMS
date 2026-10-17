@@ -3318,6 +3318,23 @@
   justify-content: space-between;
 }
 
+.officer-toolbar-tabs-row,
+.officer-announcements-toolbar:has(.officer-request-tabs) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+.officer-toolbar-tabs-row .officer-request-tabs,
+.officer-announcements-toolbar .officer-request-tabs {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
 .officer-announcements-search {
   display: flex;
   min-width: min(320px, 100%);
@@ -3593,14 +3610,19 @@
 
 .officer-settings-section-heading h2 {
   margin: 0;
-  color: #252832;
-  font-size: 17px;
+  color: var(--text, #1e293b);
+  font-family: Manrope, 'Segoe UI', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .officer-settings-section-heading p {
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: 13px;
+  margin: 4px 0 0;
+  color: var(--muted, #64748b);
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  font-size: 13.5px;
+  font-weight: 400;
   line-height: 1.5;
 }
 
@@ -3620,9 +3642,11 @@
 .officer-settings-request-form>label {
   display: grid;
   gap: 6px;
-  color: #33343b;
+  color: #334155;
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .officer-settings-field-grid input,
@@ -3630,18 +3654,23 @@
 .officer-settings-field-grid textarea,
 .officer-settings-request-form textarea {
   width: 100%;
-  min-height: 40px;
-  padding: 9px 11px;
-  border: 1px solid #dedde1;
+  min-height: 42px;
+  padding: 10px 13px;
+  border: 1px solid #e2e8f0;
   border-radius: 9px;
   background: #fff;
-  color: #292c35;
-  font: inherit;
+  color: #0f172a;
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
   font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .officer-settings-field-grid textarea,
 .officer-settings-request-form textarea {
+  min-height: 84px;
+  line-height: 1.6;
   resize: vertical;
 }
 
@@ -3649,8 +3678,9 @@
 .officer-settings-field-grid select:focus,
 .officer-settings-field-grid textarea:focus,
 .officer-settings-request-form textarea:focus {
-  border-color: var(--crimson);
-  outline: 2px solid #a20d2e1c;
+  border-color: var(--crimson, #8f1538);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(143, 21, 56, 0.12);
 }
 
 .officer-settings-wide {
@@ -3663,6 +3693,12 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.officer-settings-actions .button {
+  font-family: Manrope, 'Segoe UI', sans-serif;
+  font-weight: 600;
+  font-size: 13.5px;
 }
 
 .officer-settings-logo-row {
@@ -4068,7 +4104,8 @@
     grid-template-columns: 1fr;
   }
 
-  .officer-announcements-toolbar {
+  .officer-announcements-toolbar,
+  .officer-toolbar-tabs-row {
     align-items: stretch;
   }
 
@@ -8356,9 +8393,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-bottom: 15px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #f0eef0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .officer-request-tabs button {

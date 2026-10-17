@@ -4,6 +4,7 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
@@ -91,10 +92,7 @@ export default function OfficerDocumentsPage() {
       <div className="officer-stats-grid">
         <Card className="officer-stat-card">
           <div className="officer-stat-icon tone-crimson">
-            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
+            <Icon name="document" size={18} />
           </div>
           <div>
             <span className="stat-value">{counts.total}</span>
@@ -104,10 +102,7 @@ export default function OfficerDocumentsPage() {
 
         <Card className="officer-stat-card">
           <div className="officer-stat-icon tone-green">
-            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
+            <Icon name="check-circle" size={18} />
           </div>
           <div>
             <span className="stat-value">{counts.approved}</span>
@@ -117,10 +112,7 @@ export default function OfficerDocumentsPage() {
 
         <Card className="officer-stat-card">
           <div className="officer-stat-icon tone-gold">
-            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
+            <Icon name="clock" size={18} />
           </div>
           <div>
             <span className="stat-value">{counts.pending}</span>
@@ -130,11 +122,7 @@ export default function OfficerDocumentsPage() {
 
         <Card className="officer-stat-card">
           <div className="officer-stat-icon tone-danger">
-            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" x2="12" y1="8" y2="12" />
-              <line x1="12" x2="12.01" y1="16" y2="16" />
-            </svg>
+            <Icon name="alert-circle" size={18} />
           </div>
           <div>
             <span className="stat-value">{counts.returned}</span>
@@ -143,7 +131,7 @@ export default function OfficerDocumentsPage() {
         </Card>
       </div>
 
-      <div className="officer-announcements-toolbar" style={{ marginTop: '12px', marginBottom: '8px' }}>
+      <div className="officer-toolbar-tabs-row officer-announcements-toolbar">
         <div className="officer-request-tabs" role="group" aria-label="Filter documents by status">
           {[
             { key: 'ALL', label: 'All', count: counts.total },
@@ -162,11 +150,8 @@ export default function OfficerDocumentsPage() {
             </button>
           ))}
         </div>
-        <Button onClick={() => { setFormError(''); setUploadOpen(true) }} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" viewBox="0 0 24 24" width="15">
-            <line x1="12" x2="12" y1="5" y2="19" />
-            <line x1="5" x2="19" y1="12" y2="12" />
-          </svg>
+        <Button onClick={() => { setFormError(''); setUploadOpen(true) }}>
+          <Icon name="plus" size={15} strokeWidth={2.2} />
           Upload Document
         </Button>
       </div>
@@ -186,12 +171,7 @@ export default function OfficerDocumentsPage() {
             {visibleDocuments.map((document) => (
               <article className="officer-doc-card" key={document.id}>
                 <div className="officer-doc-icon-wrap">
-                  <svg aria-hidden="true" fill="none" height="20" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="20">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" x2="8" y1="13" y2="13" />
-                    <line x1="16" x2="8" y1="17" y2="17" />
-                  </svg>
+                  <Icon name="document" size={20} />
                 </div>
                 <div className="officer-doc-main">
                   <div className="officer-doc-header">

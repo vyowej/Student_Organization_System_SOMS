@@ -225,10 +225,22 @@
 
 /* ---------- Organization settings: one field per line, full width ---------- */
 .officer-settings-field-grid { grid-template-columns: minmax(0, 1fr); }
-.officer-settings-field-grid > label { grid-column: 1 / -1; }
+.officer-settings-field-grid > label { 
+  grid-column: 1 / -1; 
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
 .officer-settings-field-grid input,
 .officer-settings-field-grid select,
-.officer-settings-field-grid textarea { width: 100%; }
+.officer-settings-field-grid textarea { 
+  width: 100%; 
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: #0f172a;
+}
 .student-profile-block dt,
 .student-profile-block dd { margin: 0; padding: 0; }
 .student-profile-block dd { margin-top: 4px; }

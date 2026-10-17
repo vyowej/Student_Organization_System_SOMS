@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import Table from '../components/ui/Table.jsx'
@@ -89,7 +90,7 @@ export default function StudentAttendancePage() {
               <div className="attendance-records-heading">
                 <h2 id={headingId}>{section.title}</h2>
                 <Badge tone={attendanceTone[section.status]}>{rows.length}</Badge>
-                {section.status === 'ATTENDED' && <Link to="/student/registrations">View My Registrations →</Link>}
+                {section.status === 'ATTENDED' && <Link to="/student/registrations">View My Registrations <Icon name="arrow-right" size={13} /></Link>}
               </div>
               {rows.length ? (
                 <Table columns={columns} getRowKey={(row) => row.id} rows={rows} />

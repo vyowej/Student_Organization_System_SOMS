@@ -3,6 +3,7 @@ import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import Input from '../components/ui/Input.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
@@ -101,11 +102,7 @@ export default function OfficerEventFormPage() {
       {existing?.revisionNote && (
         <div className="officer-revision-note">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" x2="12" y1="8" y2="12" />
-              <line x1="12" x2="12.01" y1="16" y2="16" />
-            </svg>
+            <Icon name="alert-circle" size={18} />
             <strong>Adviser Feedback & Revision Request</strong>
           </div>
           <p>{existing.revisionNote}</p>

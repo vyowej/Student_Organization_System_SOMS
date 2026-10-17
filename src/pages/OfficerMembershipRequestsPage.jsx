@@ -4,6 +4,7 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
@@ -129,7 +130,7 @@ export default function OfficerMembershipRequestsPage() {
           <Badge tone="warning">{pending.length} Pending</Badge>
         </div>
 
-        <div className="officer-announcements-toolbar" style={{ marginTop: '4px', marginBottom: '16px' }}>
+        <div className="officer-toolbar-tabs-row officer-announcements-toolbar" style={{ marginTop: '4px', marginBottom: '16px' }}>
           <div className="officer-request-tabs" role="group" aria-label="Filter membership requests">
             {requestFilters.map((filter) => {
               const count = filter === 'ALL'
@@ -151,7 +152,7 @@ export default function OfficerMembershipRequestsPage() {
           </div>
           <label className="officer-member-search" style={{ margin: 0, minWidth: '220px' }}>
             <span className="sr-only">Search applicants by name, student ID, or program</span>
-            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m16 16 4 4" /></svg>
+            <Icon name="search" size={16} />
             <input onChange={(event) => setSearch(event.target.value)} placeholder="Search applicants..." type="search" value={search} />
           </label>
         </div>

@@ -3,6 +3,7 @@ import Badge from '../ui/Badge.jsx'
 import Button from '../ui/Button.jsx'
 import ConfirmDialog from '../ui/ConfirmDialog.jsx'
 import Modal from '../ui/Modal.jsx'
+import Icon from '../ui/Icon.jsx'
 
 const statusTone = {
   PENDING: 'warning',
@@ -154,13 +155,13 @@ export default function AdviserReviewDialog({
                 {item.supportingDocuments?.length
                   ? <div className="adviser-report-files">{item.supportingDocuments.map((file, index) => {
                     const fileName = typeof file === 'string' ? file : file.name ?? file.title ?? `Supporting document ${index + 1}`
-                    return <div className="adviser-report-file-card" key={`${fileName}-${index}`}><span aria-hidden="true">▤</span><span><strong>{fileName}</strong><small>{file.type ?? 'Supporting document'}</small></span></div>
+                    return <div className="adviser-report-file-card" key={`${fileName}-${index}`}><Icon name="document" size={16} /><span><strong>{fileName}</strong><small>{file.type ?? 'Supporting document'}</small></span></div>
                   })}</div>
                   : <p>No supporting documents attached.</p>}
               </section>
               {item.status === 'VERIFIED' && (
                 <section className="adviser-report-verification">
-                  <strong><span aria-hidden="true">✓</span> Verified</strong>
+                  <strong><Icon name="check-circle" size={16} style={{ display: 'inline-block', verticalAlign: '-2px', marginRight: '4px' }} /> Verified</strong>
                   <p>Verified by <b>{item.verifiedBy ?? verifiedBy ?? 'Assigned adviser'}</b></p>
                   <p>Verified on <b>{item.decisionDate ?? 'Date not recorded'}</b></p>
                 </section>

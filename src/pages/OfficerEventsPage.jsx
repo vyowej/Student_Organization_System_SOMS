@@ -3,6 +3,7 @@ import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import Table from '../components/ui/Table.jsx'
@@ -87,12 +88,7 @@ export default function OfficerEventsPage() {
       <div className="officer-stats-grid">
         <Card className="officer-stat-card">
           <div className="officer-stat-icon tone-crimson">
-            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-              <rect height="18" rx="2" ry="2" width="18" x="3" y="4" />
-              <line x1="16" x2="16" y1="2" y2="6" />
-              <line x1="8" x2="8" y1="2" y2="6" />
-              <line x1="3" x2="21" y1="10" y2="10" />
-            </svg>
+            <Icon name="event" size={18} />
           </div>
           <div>
             <span className="stat-value">{counts.total}</span>
@@ -102,10 +98,7 @@ export default function OfficerEventsPage() {
 
         <Card className="officer-stat-card">
           <div className="officer-stat-icon tone-green">
-            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
+            <Icon name="check-circle" size={18} />
           </div>
           <div>
             <span className="stat-value">{counts.published}</span>
@@ -115,10 +108,7 @@ export default function OfficerEventsPage() {
 
         <Card className="officer-stat-card">
           <div className="officer-stat-icon tone-gold">
-            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
+            <Icon name="clock" size={18} />
           </div>
           <div>
             <span className="stat-value">{counts.inReview}</span>
@@ -128,11 +118,7 @@ export default function OfficerEventsPage() {
 
         <Card className="officer-stat-card">
           <div className="officer-stat-icon tone-danger">
-            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" x2="12" y1="8" y2="12" />
-              <line x1="12" x2="12.01" y1="16" y2="16" />
-            </svg>
+            <Icon name="alert-circle" size={18} />
           </div>
           <div>
             <span className="stat-value">{counts.returned}</span>
@@ -141,7 +127,7 @@ export default function OfficerEventsPage() {
         </Card>
       </div>
 
-      <div className="officer-announcements-toolbar" style={{ marginTop: '12px', marginBottom: '4px' }}>
+      <div className="officer-toolbar-tabs-row officer-announcements-toolbar">
         <div className="officer-request-tabs" role="group" aria-label="Filter events by status">
           {[
             { key: 'ALL', label: 'All', count: counts.total },
@@ -160,11 +146,8 @@ export default function OfficerEventsPage() {
             </button>
           ))}
         </div>
-        <Link className="button button-primary" to="/officer/events/create" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" viewBox="0 0 24 24" width="15">
-            <line x1="12" x2="12" y1="5" y2="19" />
-            <line x1="5" x2="19" y1="12" y2="12" />
-          </svg>
+        <Link className="button button-primary" to="/officer/events/create">
+          <Icon name="plus" size={15} strokeWidth={2.2} />
           Create Event
         </Link>
       </div>

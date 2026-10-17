@@ -6,23 +6,8 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import { studentDashboardNotifications } from '../data/studentDashboard.js'
-
-const iconPaths = {
-  organization: <><path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 21v-5h6v5" /><path d="M9 9h.01M15 9h.01" /></>,
-  calendar: <><rect height="17" rx="2" width="18" x="3" y="5" /><path d="M16 3v4M8 3v4M3 11h18" /><path d="m9 16 2 2 4-4" /></>,
-  ticket: <><path d="M3 8a2 2 0 0 0 0 4v5h18v-5a2 2 0 0 1 0-4V3H3z" /><path d="M13 3v2M13 9v2M13 15v2" /></>,
-  check: <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16 9" /></>,
-  bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
-}
-
-function Icon({ name, className = '' }) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      {iconPaths[name] || iconPaths.bell}
-    </svg>
-  )
-}
 
 export default function StudentNotificationsPage() {
   const {

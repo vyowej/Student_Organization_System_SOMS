@@ -6,6 +6,7 @@ import 'datatables.net-dt/css/dataTables.dataTables.min.css'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
@@ -146,7 +147,7 @@ export default function OfficerMembersPage() {
           </div>
           <label className="officer-member-search">
             <span className="sr-only">Search members by name, student ID, or program</span>
-            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m16 16 4 4" /></svg>
+            <Icon name="search" size={16} />
             <input onChange={(event) => setSearch(event.target.value)} placeholder="Search members..." type="search" value={search} />
           </label>
         </div>

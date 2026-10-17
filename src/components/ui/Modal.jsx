@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import Button from './Button.jsx'
+import Icon from './Icon.jsx'
 
 const FOCUSABLE = [
   'a[href]',
@@ -93,9 +94,7 @@ export default function Modal({ open, title, onClose, children }) {
         <header className="modal-header">
           <h2 id={titleId}>{title}</h2>
           <Button aria-label="Close dialog" className="modal-close" onClick={onClose} variant="ghost">
-            <svg aria-hidden="true" className="topbar-icon" viewBox="0 0 24 24">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
+            <Icon className="topbar-icon" name="close" size={18} />
           </Button>
         </header>
         <div className="modal-content">{children}</div>

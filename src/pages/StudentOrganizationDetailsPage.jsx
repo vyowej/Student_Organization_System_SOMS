@@ -7,6 +7,7 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import ProfileCover from '../components/layout/ProfileCover.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
+import Icon from '../components/ui/Icon.jsx'
 import { getOrganizationEvents, studentOrganizations } from '../data/studentOrganizations.js'
 import { formatDisplayName } from '../data/displayName.js'
 
@@ -73,7 +74,7 @@ export default function StudentOrganizationDetailsPage() {
       <div className="student-page">
         <div className="student-org-top-nav">
           <Link className="student-org-back-link" to="/student/organizations">
-            <span aria-hidden="true">←</span> Back to Organizations
+            <Icon name="arrow-left" size={14} /> Back to Organizations
           </Link>
         </div>
         <Card className="organization-not-found" style={{ marginTop: '20px' }}>
@@ -117,12 +118,12 @@ export default function StudentOrganizationDetailsPage() {
     <div className="student-org-actions">
       {status === 'ACTIVE' && (
         <span className="student-member-badge-active">
-          <span className="check-icon" aria-hidden="true">✓</span> Member
+          <Icon name="check" size={14} /> Active Member
         </span>
       )}
       {status === 'PENDING' && (
         <span className="student-member-badge-pending">
-          <span aria-hidden="true">⏳</span> Application Pending
+          <Icon name="clock" size={14} /> Application Pending
         </span>
       )}
       {status === 'SUSPENDED' && (
@@ -130,10 +131,10 @@ export default function StudentOrganizationDetailsPage() {
       )}
       {canApply && (
         <Button
-          className="organization-join-button"
+          className="button button-primary"
           onClick={() => setApplicationOpen(true)}
         >
-          <span aria-hidden="true">＋</span> {status === 'REJECTED' ? 'Apply Again' : 'Join Organization'}
+          <Icon name="plus" size={14} /> {status === 'REJECTED' ? 'Apply Again' : 'Join Organization'}
         </Button>
       )}
     </div>
@@ -143,7 +144,7 @@ export default function StudentOrganizationDetailsPage() {
     <div className="student-organization-details fb-page">
       <div className="student-org-top-nav">
         <Link className="student-org-back-link" to="/student/organizations">
-          <span aria-hidden="true">←</span> Organizations
+          <Icon name="back" size={14} /> Organizations
         </Link>
         <span className="student-org-breadcrumb-sep">/</span>
         <span className="student-org-breadcrumb-current">{organization.name}</span>
@@ -154,21 +155,21 @@ export default function StudentOrganizationDetailsPage() {
         avatarText={organization.acronym}
         badges={(
           <>
-            <MembershipBadge status={status} />
+            {status !== 'NOT_MEMBER' && <MembershipBadge status={status} />}
             <Badge tone="crimson">{organization.category}</Badge>
-            <Badge tone="neutral">{organization.acronym}</Badge>
           </>
         )}
-        eyebrow={`UNIDOS STUDENT PORTAL · ${organization.category.toUpperCase()}`}
+        eyebrow={`${organization.category} · ${organization.acronym}`}
         label="Organization Profile"
         logo={organization.logo}
+        showCover={false}
         subtitle={
           <>
             {organization.activeMembers} active members <i aria-hidden="true">·</i> Faculty Adviser: <strong>{organization.adviser}</strong>
           </>
         }
         tabs={tabs}
-        tabsLabel="Organization Sections"
+        tabsLabel="Organization profile sections"
         title={organization.name}
       />
 
@@ -182,19 +183,19 @@ export default function StudentOrganizationDetailsPage() {
             <p className="fb-intro-text">{organization.description}</p>
             <ul className="fb-intro-list">
               <li>
-                <span aria-hidden="true">◈</span>
+                <span aria-hidden="true"><Icon name="category" /></span>
                 <div>Category: <strong>{organization.category}</strong></div>
               </li>
               <li>
-                <span aria-hidden="true">👥</span>
+                <span aria-hidden="true"><Icon name="members" /></span>
                 <div>Active Members: <strong>{organization.activeMembers} students</strong></div>
               </li>
               <li>
-                <span aria-hidden="true">★</span>
+                <span aria-hidden="true"><Icon name="adviser" /></span>
                 <div>Faculty Adviser: <strong>{organization.adviser}</strong></div>
               </li>
               <li>
-                <span aria-hidden="true">🏷</span>
+                <span aria-hidden="true"><Icon name="tag" /></span>
                 <div>Acronym: <strong>{organization.acronym}</strong></div>
               </li>
             </ul>
@@ -248,10 +249,10 @@ export default function StudentOrganizationDetailsPage() {
               <div className="student-documents-stack">
                 {organization.documents.map((doc) => (
                   <div className="student-doc-card" key={doc}>
-                    <span aria-hidden="true" className="student-doc-icon">▤</span>
+                    <span aria-hidden="true" className="student-doc-icon"><Icon name="document" size={16} /></span>
                     <div className="student-doc-info">
                       <strong>{doc}</strong>
-                      <small>Public Student Document</small>
+                      <small>Public Document · On File</small>
                     </div>
                     <button
                       className="student-doc-action"
@@ -271,20 +272,13 @@ export default function StudentOrganizationDetailsPage() {
 
         {/* Right Main Feed */}
         <div className="fb-feed">
-          {/* Membership Status Notice Banner */}
-          {status === 'ACTIVE' && (
-            <div className="student-membership-callout status-active">
-              <div className="student-membership-callout-icon" aria-hidden="true">✓</div>
-              <div className="student-membership-callout-copy">
-                <strong>You are an active member</strong>
-                <p>Welcome! You have full access to official organization announcements, priority event registration, and general assemblies.</p>
-              </div>
-            </div>
-          )}
+
 
           {status === 'PENDING' && (
             <div className="student-membership-callout status-pending">
-              <div className="student-membership-callout-icon" aria-hidden="true">⏳</div>
+              <div className="student-membership-callout-icon" aria-hidden="true">
+                <Icon name="clock" size={20} />
+              </div>
               <div className="student-membership-callout-copy">
                 <strong>Application Pending Review</strong>
                 <p>Your membership application has been submitted and is currently being evaluated by the organization officers.</p>
@@ -294,7 +288,9 @@ export default function StudentOrganizationDetailsPage() {
 
           {status === 'REJECTED' && (
             <div className="student-membership-callout status-rejected">
-              <div className="student-membership-callout-icon" aria-hidden="true">✕</div>
+              <div className="student-membership-callout-icon" aria-hidden="true">
+                <Icon name="alert" size={20} />
+              </div>
               <div className="student-membership-callout-copy">
                 <strong>Application Not Approved</strong>
                 <p>Your previous application was not accepted. You may submit a new application during the open recruitment period.</p>
@@ -305,10 +301,12 @@ export default function StudentOrganizationDetailsPage() {
 
           {canApply && status === 'NOT_MEMBER' && (
             <div className="student-membership-callout status-join">
-              <div className="student-membership-callout-icon" aria-hidden="true">★</div>
+              <div className="student-membership-callout-icon" aria-hidden="true">
+                <Icon name="star" size={20} />
+              </div>
               <div className="student-membership-callout-copy">
                 <strong>Become a Member</strong>
-                <p>Join {organization.name} to connect with computing peers, attend hands-on workshops, and participate in campus hackathons.</p>
+                <p>Join {organization.name} to connect with peers, attend hands-on workshops, and participate in campus activities.</p>
               </div>
               <Button onClick={() => setApplicationOpen(true)}>Join Organization</Button>
             </div>
@@ -376,12 +374,14 @@ export default function StudentOrganizationDetailsPage() {
                           <div className="student-event-details">
                             <strong>{event.title}</strong>
                             <div className="student-event-meta-line">
-                              <span><span aria-hidden="true">📅</span> {event.date}</span>
-                              <span><span aria-hidden="true">⏱</span> {event.time}</span>
-                              {event.location && <span><span aria-hidden="true">📍</span> {event.location}</span>}
+                              <span><Icon name="calendar" size={13} /> {event.date}</span>
+                              <span><Icon name="time" size={13} /> {event.time}</span>
+                              {event.location && <span><Icon name="location" size={13} /> {event.location}</span>}
                             </div>
                           </div>
-                          <span aria-hidden="true" className="student-event-arrow">→</span>
+                          <span aria-hidden="true" className="student-event-arrow">
+                            <Icon name="arrow-right" size={15} />
+                          </span>
                         </Link>
                       )
                     })}
@@ -414,15 +414,15 @@ export default function StudentOrganizationDetailsPage() {
               </div>
               <ul className="fb-intro-list" style={{ marginTop: '16px' }}>
                 <li>
-                  <span aria-hidden="true">◈</span>
+                  <span aria-hidden="true"><Icon name="category" /></span>
                   <div>Organization Category: <strong>{organization.category}</strong></div>
                 </li>
                 <li>
-                  <span aria-hidden="true">👥</span>
+                  <span aria-hidden="true"><Icon name="members" /></span>
                   <div>Active Membership: <strong>{organization.activeMembers} registered members</strong></div>
                 </li>
                 <li>
-                  <span aria-hidden="true">★</span>
+                  <span aria-hidden="true"><Icon name="adviser" /></span>
                   <div>Faculty Adviser: <strong>{organization.adviser}</strong> (Student Affairs & Services Division verified)</div>
                 </li>
               </ul>
@@ -481,12 +481,14 @@ export default function StudentOrganizationDetailsPage() {
                         <div className="student-event-details">
                           <strong>{event.title}</strong>
                           <div className="student-event-meta-line">
-                            <span><span aria-hidden="true">📅</span> {event.date}</span>
-                            <span><span aria-hidden="true">⏱</span> {event.time}</span>
-                            {event.location && <span><span aria-hidden="true">📍</span> {event.location}</span>}
+                            <span><Icon name="calendar" size={13} /> {event.date}</span>
+                            <span><Icon name="time" size={13} /> {event.time}</span>
+                            {event.location && <span><Icon name="location" size={13} /> {event.location}</span>}
                           </div>
                         </div>
-                        <span aria-hidden="true" className="student-event-arrow">→</span>
+                        <span aria-hidden="true" className="student-event-arrow">
+                          <Icon name="arrow-right" size={15} />
+                        </span>
                       </Link>
                     )
                   })}
@@ -511,7 +513,7 @@ export default function StudentOrganizationDetailsPage() {
                         {getInitials(officer.name)}
                       </span>
                       <strong>{officer.name}</strong>
-                      <small>{officer.position}</small>
+                      <small>Executive Officer</small>
                       <Badge style={{ marginTop: '8px' }} tone="crimson">{officer.position}</Badge>
                     </div>
                   ))}
@@ -532,7 +534,7 @@ export default function StudentOrganizationDetailsPage() {
                 <div className="student-documents-stack">
                   {organization.documents.map((doc) => (
                     <div className="student-doc-card" key={doc}>
-                      <span aria-hidden="true" className="student-doc-icon">▤</span>
+                      <span aria-hidden="true" className="student-doc-icon"><Icon name="document" size={16} /></span>
                       <div className="student-doc-info">
                         <strong>{doc}</strong>
                         <small>Public Student Document · Verified by Student Affairs</small>

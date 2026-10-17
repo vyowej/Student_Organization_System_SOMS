@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import Badge from '../ui/Badge.jsx'
+import Icon from '../ui/Icon.jsx'
 
 export function LeaderCard({ leader }) {
   return (
@@ -32,7 +33,7 @@ export function OrganizationCard({ organization }) {
         <p>{organization.description}</p>
       </div>
       <Link className="button button-secondary organization-view" to={`/student/organizations/${organization.id}`}>
-        View Organization <span aria-hidden="true">→</span>
+        View Organization <Icon name="arrow-right" size={13} />
       </Link>
     </article>
   )
@@ -61,11 +62,17 @@ export function EventCard({ event }) {
         <p className="event-organization">{event.organization}</p>
         <Badge className="event-category">{event.category}</Badge>
         <div className="event-details">
-          <span><b aria-hidden="true">◷</b>{event.time}</span>
-          <span><b aria-hidden="true">⌖</b>{event.location}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <Icon name="clock" size={13} />
+            {event.time}
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <Icon name="location" size={13} />
+            {event.location}
+          </span>
         </div>
         <Link className="event-view-link" to={`/student/events/${event.id}`}>
-          View Event <span aria-hidden="true">→</span>
+          View Event <Icon name="arrow-right" size={13} />
         </Link>
       </div>
     </article>

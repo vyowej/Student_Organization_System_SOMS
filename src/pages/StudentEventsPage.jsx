@@ -3,6 +3,7 @@ import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import FilterSelect from '../components/ui/FilterSelect.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { eventCategories, getEventRegistrationState, isEventAlmostFull, studentEvents } from '../data/studentEvents.js'
 import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
@@ -116,8 +117,8 @@ export default function StudentEventsPage() {
                     <h2>{event.title}</h2>
                     <p className="campus-event-organization">{event.organizationName}</p>
                     <div className="campus-event-facts">
-                      <span><b aria-hidden="true">◷</b>{event.time}</span>
-                      <span><b aria-hidden="true">⌖</b>{event.location}</span>
+                      <span><Icon name="clock" size={13} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '4px' }} />{event.time}</span>
+                      <span><Icon name="location" size={13} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '4px' }} />{event.location}</span>
                     </div>
                     <div className="campus-event-availability">
                       <span>Availability</span>
@@ -128,7 +129,7 @@ export default function StudentEventsPage() {
                       </strong>
                     </div>
                     <span className="button button-secondary campus-event-view-button">
-                      View Event <span aria-hidden="true">→</span>
+                      View Event <Icon name="arrow-right" size={13} />
                     </span>
                   </div>
                 </Link>

@@ -8,6 +8,7 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import Table from '../components/ui/Table.jsx'
 import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import { adminPrograms, adminYears } from '../data/adminPortal.js'
 import { studentEvents } from '../data/studentEvents.js'
@@ -349,7 +350,7 @@ function DateRangeFilter({ startDate, endDate, onStartChange, onEndChange, onRes
           title="Reset date filter"
           aria-label="Reset date filter"
         >
-          ✕
+          <Icon name="close" size={13} />
         </button>
       )}
     </div>
@@ -911,8 +912,9 @@ function OrganizationStandingChart({ rows, total, organizations = [] }) {
                 className="admin-standing-search-clear"
                 onClick={() => setSearchQuery('')}
                 title="Clear search"
+                aria-label="Clear search"
               >
-                ✕
+                <Icon name="close" size={13} />
               </button>
             )}
           </div>

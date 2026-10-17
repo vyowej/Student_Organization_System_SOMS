@@ -3,6 +3,7 @@ import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import FilterSelect from '../components/ui/FilterSelect.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { organizationCategories, studentOrganizations } from '../data/studentOrganizations.js'
 
@@ -77,7 +78,7 @@ export default function StudentOrganizationsPage() {
                 <span><small>Active members</small><strong>{organization.activeMembers}</strong></span>
               </div>
               <Link className="button button-secondary organization-view-button" to={`/student/organizations/${organization.id}`}>
-                View Organization <span aria-hidden="true">→</span>
+                View Organization <Icon name="arrow-right" size={13} />
               </Link>
             </article>
           ))}

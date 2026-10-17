@@ -7,106 +7,13 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import ProfileCover from '../components/layout/ProfileCover.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
+import Icon from '../components/ui/Icon.jsx'
 import { officerActivity, officerOrganization } from '../data/officerPortal.js'
 import { formatDisplayName } from '../data/displayName.js'
 
 const editableFields = ['name', 'acronym', 'category', 'mission', 'vision']
 const categories = ['Academic', 'Technology', 'Leadership', 'Socio-Civic', 'Cultural', 'Sports', 'Other']
 const documentTypes = ['Constitution & By-Laws', 'Accreditation Document', 'Officer Roster', 'Event Proposal', 'Safety Plan', 'Financial Statement', 'Accomplishment Report', 'Other']
-
-function OrgIcon({ name }) {
-  if (name === 'edit') {
-    return (
-      <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
-        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-      </svg>
-    )
-  }
-  if (name === 'category') {
-    return (
-      <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
-        <rect height="18" rx="2" ry="2" width="18" x="3" y="3" />
-        <line x1="3" x2="21" y1="9" y2="9" />
-        <line x1="9" x2="9" y1="21" y2="9" />
-      </svg>
-    )
-  }
-  if (name === 'members') {
-    return (
-      <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
-        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    )
-  }
-  if (name === 'requests') {
-    return (
-      <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
-        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="8.5" cy="7" r="4" />
-        <line x1="20" x2="20" y1="8" y2="14" />
-        <line x1="23" x2="17" y1="11" y2="11" />
-      </svg>
-    )
-  }
-  if (name === 'adviser') {
-    return (
-      <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-      </svg>
-    )
-  }
-  if (name === 'document') {
-    return (
-      <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="16" x2="8" y1="13" y2="13" />
-        <line x1="16" x2="8" y1="17" y2="17" />
-        <polyline points="10 9 9 9 8 9" />
-      </svg>
-    )
-  }
-  if (name === 'event') {
-    return (
-      <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
-        <rect height="18" rx="2" ry="2" width="18" x="3" y="4" />
-        <line x1="16" x2="16" y1="2" y2="6" />
-        <line x1="8" x2="8" y1="2" y2="6" />
-        <line x1="3" x2="21" y1="10" y2="10" />
-      </svg>
-    )
-  }
-  if (name === 'announcement') {
-    return (
-      <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
-        <path d="m3 11 18-5v12L3 14v-3z" />
-        <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
-      </svg>
-    )
-  }
-  if (name === 'upload') {
-    return (
-      <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="15">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="17 8 12 3 7 8" />
-        <line x1="12" x2="12" y1="3" y2="15" />
-      </svg>
-    )
-  }
-  if (name === 'plus') {
-    return (
-      <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" viewBox="0 0 24 24" width="15">
-        <line x1="12" x2="12" y1="5" y2="19" />
-        <line x1="5" x2="19" y1="12" y2="12" />
-      </svg>
-    )
-  }
-  return null
-}
 
 function statusTone(status = '') {
   if (['ACTIVE', 'ACCREDITED', 'APPROVED', 'PUBLISHED', 'ONGOING'].includes(status)) return 'success'
@@ -137,18 +44,18 @@ function formatTime(event) {
 
 export default function OfficerOrganizationProfilePage() {
   const {
-    addOfficerDocument,
-    captureUndo,
+    addOfficerDocument = () => {},
+    captureUndo = () => {},
     currentUser,
-    adminOrganizations,
-    adminAuditLogs,
-    adviserDocuments,
-    officerEvents,
-    officerMembers,
-    officerMemberCount,
-    officerMembershipRequests,
-    updateOfficerOrganizationProfile,
-  } = useOutletContext()
+    adminOrganizations = [],
+    adminAuditLogs = [],
+    adviserDocuments = [],
+    officerEvents = [],
+    officerMembers = [],
+    officerMemberCount = 0,
+    officerMembershipRequests = [],
+    updateOfficerOrganizationProfile = () => {},
+  } = useOutletContext() || {}
   const { showToast } = useToast()
   const orgId = currentUser?.organizationId || officerOrganization.id
   const organization = adminOrganizations.find((item) => item.id === orgId) || officerOrganization
@@ -255,14 +162,14 @@ export default function OfficerOrganizationProfilePage() {
     <div className="officer-org-document-list">
       {(organization.documents ?? []).map((name) => (
         <div className="officer-org-document" key={`on-file-${name}`}>
-          <span aria-hidden="true" className="officer-org-document-icon"><OrgIcon name="document" /></span>
+          <span aria-hidden="true" className="officer-org-document-icon"><Icon name="document" /></span>
           <div><strong>{name}</strong><small>ORGANIZATION DOCUMENT · On file</small></div>
           <Badge tone="success">ON FILE</Badge>
         </div>
       ))}
       {documents.map((document) => (
         <div className="officer-org-document" key={document.id}>
-          <span aria-hidden="true" className="officer-org-document-icon"><OrgIcon name="document" /></span>
+          <span aria-hidden="true" className="officer-org-document-icon"><Icon name="document" /></span>
           <div><strong>{document.title}</strong><small>{document.type} · Submitted {document.submittedDate}</small></div>
           <Badge tone={statusTone(document.status)}>{document.status}</Badge>
         </div>
@@ -274,7 +181,7 @@ export default function OfficerOrganizationProfilePage() {
     <div className="officer-org-event-list">
       {upcomingEvents.map((event) => (
         <article className="officer-org-event" key={event.id}>
-          <span aria-hidden="true" className="officer-org-event-icon"><OrgIcon name="event" /></span>
+          <span aria-hidden="true" className="officer-org-event-icon"><Icon name="event" /></span>
           <div><strong>{event.title}</strong><small>{event.date} · {formatTime(event)} · {event.location || event.venue || 'Venue not set'}</small></div>
           <Badge tone={statusTone(event.status)}>{event.status.replaceAll('_', ' ')}</Badge>
         </article>
@@ -298,7 +205,7 @@ export default function OfficerOrganizationProfilePage() {
       <ProfileCover
         actions={(
           <>
-            <Button onClick={openEdit}><OrgIcon name="edit" /> Edit Profile</Button>
+            <Button onClick={openEdit}><Icon name="edit" /> Edit Profile</Button>
             <Link className="button button-secondary" to="/officer/members">Members</Link>
           </>
         )}
@@ -325,10 +232,10 @@ export default function OfficerOrganizationProfilePage() {
             <SectionHeading title="Intro" />
             <p className="fb-intro-text">{organization.mission}</p>
             <ul className="fb-intro-list">
-              <li><span aria-hidden="true"><OrgIcon name="category" /></span><div>Category <strong>{organization.category}</strong></div></li>
-              <li><span aria-hidden="true"><OrgIcon name="members" /></span><div><strong>{officerMemberCount}</strong> active members</div></li>
-              <li><span aria-hidden="true"><OrgIcon name="requests" /></span><div><strong>{pendingRequests.length}</strong> pending requests</div></li>
-              <li><span aria-hidden="true"><OrgIcon name="adviser" /></span><div>Adviser <strong>{organization.adviser}</strong></div></li>
+              <li><span aria-hidden="true"><Icon name="category" /></span><div>Category <strong>{organization.category}</strong></div></li>
+              <li><span aria-hidden="true"><Icon name="members" /></span><div><strong>{officerMemberCount}</strong> active members</div></li>
+              <li><span aria-hidden="true"><Icon name="requests" /></span><div><strong>{pendingRequests.length}</strong> pending requests</div></li>
+              <li><span aria-hidden="true"><Icon name="adviser" /></span><div>Adviser <strong>{organization.adviser}</strong></div></li>
             </ul>
             <Button className="fb-wide-button" onClick={openEdit} variant="secondary">Edit details</Button>
           </Card>
@@ -351,7 +258,7 @@ export default function OfficerOrganizationProfilePage() {
           <Card className="fb-card">
             <SectionHeading action={<button className="fb-link-button" onClick={() => setActiveTab('documents')} type="button">See all</button>} title="Documents" />
             <p className="fb-muted">{documents.length + (organization.documents?.length ?? 0)} files on record for this organization.</p>
-            <Button className="fb-wide-button" onClick={() => { setFormError(''); setUploadOpen(true) }} variant="secondary"><OrgIcon name="plus" /> Upload Document</Button>
+            <Button className="fb-wide-button" onClick={() => { setFormError(''); setUploadOpen(true) }} variant="secondary"><Icon name="plus" /> Upload Document</Button>
           </Card>
         </aside>
 
@@ -364,9 +271,9 @@ export default function OfficerOrganizationProfilePage() {
                   <Link className="fb-composer-input" to="/officer/announcements">Share an update with your members…</Link>
                 </div>
                 <div className="fb-composer-actions">
-                  <Link to="/officer/announcements"><OrgIcon name="announcement" /> Announcement</Link>
-                  <Link to="/officer/events/create"><OrgIcon name="event" /> Event</Link>
-                  <button onClick={() => { setFormError(''); setUploadOpen(true) }} type="button"><OrgIcon name="upload" /> Document</button>
+                  <Link to="/officer/announcements"><Icon name="announcement" /> Announcement</Link>
+                  <Link to="/officer/events/create"><Icon name="event" /> Event</Link>
+                  <button onClick={() => { setFormError(''); setUploadOpen(true) }} type="button"><Icon name="upload" /> Document</button>
                 </div>
               </Card>
 
@@ -378,7 +285,7 @@ export default function OfficerOrganizationProfilePage() {
                   </div>
                   <h3>{announcement.title}</h3>
                   <p>{announcement.description || 'Official update shared with organization members.'}</p>
-                  <div className="fb-post-foot"><Link to="/officer/announcements">Manage announcements <span aria-hidden="true">→</span></Link></div>
+                  <div className="fb-post-foot"><Link to="/officer/announcements">Manage announcements <Icon name="arrow-right" size={13} /></Link></div>
                 </Card>
               )) : (
                 <Card className="fb-card"><EmptyState title="No announcements yet" description="Post an update for your organization members." /></Card>
@@ -407,23 +314,23 @@ export default function OfficerOrganizationProfilePage() {
 
           {activeTab === 'officers' && (
             <Card className="fb-card">
-              <SectionHeading title="Executive Officers" action={<Link className="officer-org-text-link" to="/officer/members">Manage Officers <span aria-hidden="true">→</span></Link>} />
+              <SectionHeading title="Executive Officers" action={<Link className="officer-org-text-link" to="/officer/members">Manage Officers <Icon name="arrow-right" size={13} /></Link>} />
               {officerList}
             </Card>
           )}
 
           {activeTab === 'events' && (
             <Card className="fb-card">
-              <SectionHeading title="Upcoming Events" action={<Link className="officer-org-text-link" to="/officer/events">View All Events <span aria-hidden="true">→</span></Link>} />
+              <SectionHeading title="Upcoming Events" action={<Link className="officer-org-text-link" to="/officer/events">View All Events <Icon name="arrow-right" size={13} /></Link>} />
               {eventList}
             </Card>
           )}
 
           {activeTab === 'documents' && (
             <Card className="fb-card">
-              <SectionHeading title="Official Documents" action={<Link className="officer-org-text-link" to="/officer/documents">View Documents <span aria-hidden="true">→</span></Link>} />
+              <SectionHeading title="Official Documents" action={<Link className="officer-org-text-link" to="/officer/documents">View Documents <Icon name="arrow-right" size={13} /></Link>} />
               {documentList}
-              <Button className="officer-org-section-action" onClick={() => { setFormError(''); setUploadOpen(true) }} variant="secondary"><OrgIcon name="plus" /> Upload Document</Button>
+              <Button className="officer-org-section-action" onClick={() => { setFormError(''); setUploadOpen(true) }} variant="secondary"><Icon name="plus" /> Upload Document</Button>
             </Card>
           )}
         </div>

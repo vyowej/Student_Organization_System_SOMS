@@ -5,6 +5,7 @@ import Card from '../components/ui/Card.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 
@@ -69,10 +70,7 @@ export default function OfficerAttendancePage() {
           <div className="officer-stats-grid">
             <Card className="officer-stat-card">
               <div className="officer-stat-icon tone-crimson">
-                <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                </svg>
+                <Icon name="members" size={18} />
               </div>
               <div>
                 <span className="stat-value">{attendees.length}</span>
@@ -82,10 +80,7 @@ export default function OfficerAttendancePage() {
 
             <Card className="officer-stat-card">
               <div className="officer-stat-icon tone-green">
-                <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                  <polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
+                <Icon name="check-circle" size={18} />
               </div>
               <div>
                 <span className="stat-value">{checkedInCount}</span>
@@ -95,10 +90,7 @@ export default function OfficerAttendancePage() {
 
             <Card className="officer-stat-card">
               <div className="officer-stat-icon tone-gold">
-                <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
+                <Icon name="clock" size={18} />
               </div>
               <div>
                 <span className="stat-value">{attendees.length - checkedInCount}</span>
@@ -108,11 +100,7 @@ export default function OfficerAttendancePage() {
 
             <Card className="officer-stat-card">
               <div className="officer-stat-icon tone-blue">
-                <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-                  <line x1="18" x2="18" y1="20" y2="10" />
-                  <line x1="12" x2="12" y1="20" y2="4" />
-                  <line x1="6" x2="6" y1="20" y2="14" />
-                </svg>
+                <Icon name="reports" size={18} />
               </div>
               <div>
                 <span className="stat-value">{attendanceRate}%</span>

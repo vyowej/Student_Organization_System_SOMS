@@ -5,106 +5,16 @@ import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import ProfileCover from '../components/layout/ProfileCover.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import { officerActivity, officerEventStatuses } from '../data/officerPortal.js'
 import { formatDisplayName, formatGreetingName, getTimeGreeting } from '../data/displayName.js'
-
-function MetricIcon({ name }) {
-  if (name === 'members') {
-    return (
-      <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    )
-  }
-  if (name === 'requests') {
-    return (
-      <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="8.5" cy="7" r="4" />
-        <line x1="20" x2="20" y1="8" y2="14" />
-        <line x1="23" x2="17" y1="11" y2="11" />
-      </svg>
-    )
-  }
-  if (name === 'events') {
-    return (
-      <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-        <rect height="18" rx="2" ry="2" width="18" x="3" y="4" />
-        <line x1="16" x2="16" y1="2" y2="6" />
-        <line x1="8" x2="8" y1="2" y2="6" />
-        <line x1="3" x2="21" y1="10" y2="10" />
-      </svg>
-    )
-  }
-  return (
-    <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="12" x2="12" y1="18" y2="12" />
-      <polyline points="9 15 12 12 15 15" />
-    </svg>
-  )
-}
-
-function ActionIcon({ name }) {
-  if (name === 'announcement') {
-    return (
-      <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
-        <path d="m3 11 18-5v12L3 14v-3z" />
-        <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
-      </svg>
-    )
-  }
-  if (name === 'event') {
-    return (
-      <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
-        <rect height="18" rx="2" ry="2" width="18" x="3" y="4" />
-        <line x1="16" x2="16" y1="2" y2="6" />
-        <line x1="8" x2="8" y1="2" y2="6" />
-        <line x1="3" x2="21" y1="10" y2="10" />
-        <line x1="12" x2="12" y1="14" y2="18" />
-        <line x1="10" x2="14" y1="16" y2="16" />
-      </svg>
-    )
-  }
-  if (name === 'members') {
-    return (
-      <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    )
-  }
-  return (
-    <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="12" x2="12" y1="18" y2="12" />
-      <polyline points="9 15 12 12 15 15" />
-    </svg>
-  )
-}
 
 const metricItems = [
   { key: 'members', label: 'Total Members', tone: 'crimson' },
   { key: 'requests', label: 'Pending Membership Requests', tone: 'blue' },
   { key: 'events', label: 'Upcoming Events', tone: 'gold' },
   { key: 'submissions', label: 'Pending Submissions', tone: 'green' },
-]
-
-const dashboardTabs = [
-  { key: 'overview', label: 'Overview', to: '/officer/dashboard' },
-  { key: 'requests', label: 'Membership Requests', to: '/officer/membership-requests' },
-  { key: 'members', label: 'Members', to: '/officer/members' },
-  { key: 'events', label: 'Events', to: '/officer/events' },
-  { key: 'announcements', label: 'Announcements', to: '/officer/announcements' },
-  { key: 'documents', label: 'Documents', to: '/officer/documents' },
 ]
 
 function useCountUp(values) {
@@ -146,16 +56,16 @@ function useCountUp(values) {
 
 export default function OfficerDashboardPage() {
   const {
-    adminOrganizations,
-    approveOfficerMembershipRequest,
-    captureUndo,
-    officerEvents,
-    officerMemberCount,
-    officerMembershipRequests,
-    officerNotifications,
-    rejectOfficerMembershipRequest,
+    adminOrganizations = [],
+    approveOfficerMembershipRequest = () => {},
+    captureUndo = () => {},
+    officerEvents = [],
+    officerMemberCount = 0,
+    officerMembershipRequests = [],
+    officerNotifications = [],
+    rejectOfficerMembershipRequest = () => {},
     currentUser,
-  } = useOutletContext()
+  } = useOutletContext() || {}
   const organization = adminOrganizations.find((item) => item.id === currentUser?.organizationId)
   const { showToast } = useToast()
   const [selectedRequest, setSelectedRequest] = useState(null)
@@ -208,8 +118,6 @@ export default function OfficerDashboardPage() {
         logo={organization?.logo}
         showCover={false}
         subtitle="Manage your organization, members, activities, and submissions."
-        tabs={dashboardTabs}
-        tabsLabel="Officer dashboard sections"
         title={organization?.name ?? 'Your Organization'}
       />
 
@@ -221,7 +129,7 @@ export default function OfficerDashboardPage() {
               {metricItems.map((metric, index) => (
                 <div className={`fb-metric fb-metric-${metric.tone}`} key={metric.key}>
                   <span aria-hidden="true" className="fb-metric-icon">
-                    <MetricIcon name={metric.key} />
+                    <Icon name={metric.key} size={18} />
                   </span>
                   <div>
                     <strong className="stat-value">{counts[index]}</strong>
@@ -240,10 +148,10 @@ export default function OfficerDashboardPage() {
               <Link className="fb-composer-input" to="/officer/announcements">What would you like to do today?</Link>
             </div>
             <div aria-label="Quick actions" className="fb-composer-actions fb-composer-actions-4">
-              <Link to="/officer/announcements"><ActionIcon name="announcement" /> Post Announcement</Link>
-              <Link to="/officer/events/create"><ActionIcon name="event" /> Create Event</Link>
-              <Link to="/officer/members"><ActionIcon name="members" /> Manage Members</Link>
-              <Link to="/officer/documents"><ActionIcon name="document" /> Upload Document</Link>
+              <Link to="/officer/announcements"><Icon name="announcement" size={16} /> Post Announcement</Link>
+              <Link to="/officer/events/create"><Icon name="event" size={16} /> Create Event</Link>
+              <Link to="/officer/members"><Icon name="members" size={16} /> Manage Members</Link>
+              <Link to="/officer/documents"><Icon name="document" size={16} /> Upload Document</Link>
             </div>
           </Card>
 
@@ -257,7 +165,7 @@ export default function OfficerDashboardPage() {
                 <Badge tone={pendingRequests.length ? 'warning' : 'success'}>
                   {pendingRequests.length} awaiting review
                 </Badge>
-                <Link to="/officer/membership-requests">View all <span aria-hidden="true">→</span></Link>
+                <Link to="/officer/membership-requests">View all <Icon name="arrow-right" size={13} /></Link>
               </div>
             </div>
             <div className="officer-request-list">
@@ -294,13 +202,13 @@ export default function OfficerDashboardPage() {
                 <span className="officer-panel-eyebrow">ACTIVITIES</span>
                 <h2>Recent Events</h2>
               </div>
-              <Link className="officer-org-text-link" to="/officer/events">View events <span aria-hidden="true">→</span></Link>
+              <Link className="officer-org-text-link" to="/officer/events">View events <Icon name="arrow-right" size={13} /></Link>
             </div>
             <div className="officer-event-list">
               {officerEvents.slice(0, 3).map((event) => (
                 <article className="officer-event-row" key={event.id}>
                   <span aria-hidden="true" className="officer-event-icon">
-                    <MetricIcon name="events" />
+                    <Icon name="event" size={18} />
                   </span>
                   <div className="officer-event-copy">
                     <strong>{event.title}</strong>
@@ -324,7 +232,7 @@ export default function OfficerDashboardPage() {
                 <span className="officer-panel-eyebrow">ORGANIZATION LOG</span>
                 <h2>Recent Activity</h2>
               </div>
-              <Link className="officer-org-text-link" to="/officer/reports">View reports <span aria-hidden="true">→</span></Link>
+              <Link className="officer-org-text-link" to="/officer/reports">View reports <Icon name="arrow-right" size={13} /></Link>
             </div>
             <ol className="officer-activity-list">
               {recentActivity.map((activity) => (

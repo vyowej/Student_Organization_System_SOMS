@@ -8,6 +8,7 @@ import { useAuth } from '../../context/useAuth.js'
 import Navbar from './Navbar.jsx'
 import Sidebar from './Sidebar.jsx'
 import UndoBar from '../ui/UndoBar.jsx'
+import ErrorBoundary from '../ui/ErrorBoundary.jsx'
 
 export default function PortalLayout({ role }) {
   const sharedPortalData = usePortalData()
@@ -148,7 +149,9 @@ export default function PortalLayout({ role }) {
         <Sidebar notificationCount={unreadNotificationCount} onNavigate={() => setMenuOpen(false)} pages={navigation.pages} role={role} />
         <main className="portal-main">
           <UndoBar />
-          <Outlet context={outletContext} />
+          <ErrorBoundary>
+            <Outlet context={outletContext} />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

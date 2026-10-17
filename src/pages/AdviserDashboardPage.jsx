@@ -1,6 +1,7 @@
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Card from '../components/ui/Card.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { adviserAssignedOrganizations } from '../data/adviserPortal.js'
 
@@ -10,7 +11,7 @@ function StatCard({ label, value, to }) {
       <Card className="adviser-stat-card">
         <span className="stat-label">{label}</span>
         <strong className="stat-value">{value}</strong>
-        <small className="stat-note">View details <span aria-hidden="true">→</span></small>
+        <small className="stat-note">View details <Icon name="arrow-right" size={13} /></small>
       </Card>
     </Link>
   )

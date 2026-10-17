@@ -4,6 +4,7 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
@@ -234,11 +235,28 @@ export default function OfficerSettingsPage() {
       <SettingsSection title="Organization Information" description="Update the public profile shared across UNIDOS.">
         <form className="officer-settings-form" onSubmit={saveOrganization}>
           <div className="officer-settings-field-grid">
-            <label>Official Organization Name<input onChange={(event) => changeOrganizationField('name', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).name} /></label>
-            <label>Acronym<input onChange={(event) => changeOrganizationField('acronym', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).acronym} /></label>
-            <label>Organization Category<select onChange={(event) => changeOrganizationField('category', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).category}>{[...new Set([...organizationCategories, savedOrganizationForm.category])].map((category) => <option key={category}>{category}</option>)}</select></label>
-            <label className="officer-settings-wide">Mission<textarea onChange={(event) => changeOrganizationField('mission', event.target.value)} required rows="3" value={(organizationForm ?? savedOrganizationForm).mission} /></label>
-            <label className="officer-settings-wide">Vision<textarea onChange={(event) => changeOrganizationField('vision', event.target.value)} required rows="3" value={(organizationForm ?? savedOrganizationForm).vision} /></label>
+            <label>
+              <span>Official Organization Name</span>
+              <input onChange={(event) => changeOrganizationField('name', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).name} />
+            </label>
+            <label>
+              <span>Acronym</span>
+              <input onChange={(event) => changeOrganizationField('acronym', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).acronym} />
+            </label>
+            <label>
+              <span>Organization Category</span>
+              <select onChange={(event) => changeOrganizationField('category', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).category}>
+                {[...new Set([...organizationCategories, savedOrganizationForm.category])].map((category) => <option key={category}>{category}</option>)}
+              </select>
+            </label>
+            <label className="officer-settings-wide">
+              <span>Mission</span>
+              <textarea onChange={(event) => changeOrganizationField('mission', event.target.value)} required rows="3" value={(organizationForm ?? savedOrganizationForm).mission} />
+            </label>
+            <label className="officer-settings-wide">
+              <span>Vision</span>
+              <textarea onChange={(event) => changeOrganizationField('vision', event.target.value)} required rows="3" value={(organizationForm ?? savedOrganizationForm).vision} />
+            </label>
           </div>
           {organizationError && <p className="auth-error" role="alert">{organizationError}</p>}
           <div className="officer-settings-actions">
@@ -285,9 +303,18 @@ export default function OfficerSettingsPage() {
       <SettingsSection title="Organization Contact Information" description="Keep official contact details available to your members.">
         <form className="officer-settings-form" onSubmit={saveContact}>
           <div className="officer-settings-field-grid">
-            <label>Official Email<input autoComplete="email" onChange={(event) => changeContactField('officialEmail', event.target.value)} type="email" value={(contactForm ?? savedContactForm).officialEmail} /></label>
-            <label>Contact Number<input autoComplete="tel" onChange={(event) => changeContactField('contactNumber', event.target.value)} type="tel" value={(contactForm ?? savedContactForm).contactNumber} /></label>
-            <label className="officer-settings-wide">Official Social Media / Page<input onChange={(event) => changeContactField('socialMedia', event.target.value)} placeholder="https://..." type="url" value={(contactForm ?? savedContactForm).socialMedia} /></label>
+            <label>
+              <span>Official Email</span>
+              <input autoComplete="email" onChange={(event) => changeContactField('officialEmail', event.target.value)} type="email" value={(contactForm ?? savedContactForm).officialEmail} />
+            </label>
+            <label>
+              <span>Contact Number</span>
+              <input autoComplete="tel" onChange={(event) => changeContactField('contactNumber', event.target.value)} type="tel" value={(contactForm ?? savedContactForm).contactNumber} />
+            </label>
+            <label className="officer-settings-wide">
+              <span>Official Social Media / Page</span>
+              <input onChange={(event) => changeContactField('socialMedia', event.target.value)} placeholder="https://..." type="url" value={(contactForm ?? savedContactForm).socialMedia} />
+            </label>
           </div>
           {contactError && <p className="auth-error" role="alert">{contactError}</p>}
           <div className="officer-settings-actions">
@@ -311,9 +338,7 @@ export default function OfficerSettingsPage() {
       <SettingsSection title="Organization Access / Permissions" description="Access is assigned by the system and cannot be changed here.">
         <div className="officer-settings-access-role">
           <span aria-hidden="true" className="officer-settings-role-icon">
-            <svg aria-hidden="true" fill="none" height="18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="18">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
+            <Icon name="shield" size={18} />
           </span>
           <div><strong>Organization Officer</strong><small>{currentUser?.organizationId === organization.id ? organization.name : ''}</small></div>
           <Badge tone="crimson">ROLE</Badge>
@@ -322,9 +347,7 @@ export default function OfficerSettingsPage() {
           {['Manage Members', 'Review Membership Requests', 'Create Events', 'Manage Announcements', 'Submit Documents', 'View Organization Reports'].map((permission) => (
             <li key={permission}>
               <span aria-hidden="true" className="officer-settings-check-icon">
-                <svg aria-hidden="true" fill="none" height="13" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" viewBox="0 0 24 24" width="13">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
+                <Icon name="check" size={13} strokeWidth={2.5} />
               </span>
               {permission}
             </li>
@@ -352,7 +375,10 @@ export default function OfficerSettingsPage() {
           <p>{requestType === 'ADVISER_CHANGE'
             ? 'Changing the assigned faculty adviser requires Student Affairs/Admin approval. This request will not change your adviser immediately.'
             : 'Organization deactivation requires Student Affairs/Admin approval. Submitting this request will not immediately deactivate or delete your organization.'}</p>
-          <label>Reason for request<textarea onChange={(event) => setRequestReason(event.target.value)} required rows="5" value={requestReason} /></label>
+          <label>
+            <span>Reason for request</span>
+            <textarea onChange={(event) => setRequestReason(event.target.value)} required rows="5" value={requestReason} />
+          </label>
           {requestError && <p className="auth-error" role="alert">{requestError}</p>}
           <div className="officer-settings-actions"><Button onClick={() => { setRequestType(''); setRequestReason(''); setRequestError('') }} type="button" variant="secondary">Cancel</Button><Button type="submit">Submit Request</Button></div>
         </form>

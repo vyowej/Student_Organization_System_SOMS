@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import Icon from './Icon.jsx'
 
 /**
  * Shared search field used across every portal. `sticky` pins it under the top bar
@@ -17,10 +18,7 @@ export default function SearchBar({
   return (
     <div className={`search-bar ${sticky ? 'search-bar-sticky' : ''}`.trim()} role="search">
       <label className="search-bar-field" htmlFor={id}>
-        <svg aria-hidden="true" className="search-bar-icon" viewBox="0 0 24 24">
-          <circle cx="10.8" cy="10.8" r="6.8" />
-          <path d="m16 16 4.5 4.5" />
-        </svg>
+        <Icon className="search-bar-icon" name="search" size={18} />
         <span className="visually-hidden">{label}</span>
         <input
           autoComplete="off"
