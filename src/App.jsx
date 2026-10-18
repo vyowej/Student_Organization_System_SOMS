@@ -40,6 +40,7 @@ import StudentProfilePage from './pages/StudentProfilePage.jsx'
 import { adminPages, officerPages, studentPages } from './data/navigation.js'
 import { PortalDataProvider } from './context/PortalDataContext.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
+import ErrorBoundary from './components/ui/ErrorBoundary.jsx'
 import './App.css'
 
 const pageTitles = {
@@ -111,7 +112,8 @@ function App() {
     <AuthProvider>
       <PortalDataProvider>
         <DocumentTitle />
-        <Routes>
+        <ErrorBoundary>
+          <Routes>
           <Route element={<PublicLayout />}>
             <Route index element={<PublicPage page="home" />} />
             <Route path="login" element={<PublicOnly><PublicPage page="login" /></PublicOnly>} />
@@ -174,6 +176,7 @@ function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </ErrorBoundary>
       </PortalDataProvider>
     </AuthProvider>
   )

@@ -7,8 +7,6 @@ const publicLinks = [
   { label: 'Organizations', to: '/#organizations' },
   { label: 'Events', to: '/#events' },
   { label: 'About', to: '/#about' },
-  { label: 'Community Feed', to: '/#community-feed' },
-  { label: 'Leaderboard', to: '/#leaderboard' },
 ]
 
 export default function PublicLayout() {
@@ -41,7 +39,7 @@ export default function PublicLayout() {
     window.addEventListener('scroll', updateScrollState, { passive: true })
 
     const sections = document.querySelectorAll(
-      '#organizations, #events, #about, #community-feed, #leaderboard',
+      '#organizations, #events, #about',
     )
     if (!('IntersectionObserver' in window) || sections.length === 0) {
       return () => window.removeEventListener('scroll', updateScrollState)
@@ -71,7 +69,7 @@ export default function PublicLayout() {
           <WmsuLogo className="brand-seal" />
           <span className="public-brand-copy">
             <strong>UNIDOS</strong>
-            <span>WESTERN MINDANAO STATE UNIVERSITY · Student Organization Management System</span>
+            <span>WMSU Student Organization Management System</span>
           </span>
         </Link>
         <button
@@ -82,12 +80,14 @@ export default function PublicLayout() {
           onClick={() => setMenuOpen((open) => !open)}
           type="button"
         >
-          {menuOpen ? '×' : '☰'}
+          <svg aria-hidden="true" className="menu-toggle-icon" viewBox="0 0 24 24">
+            {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+          </svg>
         </button>
         <nav aria-label="Main navigation" className={`public-links${menuOpen ? ' public-links-open' : ''}`} id="public-navigation">
           {publicLinks.map((item, index) => {
             const sectionId = item.to.split('#')[1]
-            const isHome = !sectionId && index === 0 && location.pathname === '/' && !location.hash
+            const isHome = !sectionId && index === 0 && location.pathname === '/' && !location.hash && !activeSection
             const isActive = sectionId ? activeSection === sectionId : isHome
 
             return (

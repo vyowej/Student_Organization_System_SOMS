@@ -1,11 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useOutletContext } from 'react-router-dom'
+import DataTable from 'datatables.net-dt'
+import { useStickyOffset } from '../components/ui/useStickyColumns.js'
+import 'datatables.net-dt/css/dataTables.dataTables.min.css'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { officerPositions } from '../data/officerPortal.js'
 import { formatDisplayName } from '../data/displayName.js'
 
@@ -19,12 +23,17 @@ function formatStatus(status) {
 
 export default function OfficerMembersPage() {
   const {
+    adminOrganizations,
     assignOfficerPosition,
+    captureUndo,
+    currentUser,
     officerMemberCount,
     officerMembers,
     updateOfficerMemberStatus,
   } = useOutletContext()
   const { showToast } = useToast()
+  const orgId = currentUser?.organizationId || 'wmsu-cs'
+  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society', acronym: 'CS' }
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [positionFilter, setPositionFilter] = useState('All Positions')
@@ -36,6 +45,8 @@ export default function OfficerMembersPage() {
   const [positionTarget, setPositionTarget] = useState(null)
   const [assignedMemberId, setAssignedMemberId] = useState('')
   const [assignedPosition, setAssignedPosition] = useState('')
+  const tableRef = useRef(null)
+  useStickyOffset(tableRef)
 
   const filteredMembers = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
@@ -48,6 +59,31 @@ export default function OfficerMembersPage() {
     })
   }, [officerMembers, positionFilter, search, statusFilter])
 
+  useEffect(() => {
+    if (tableRef.current) {
+      const dt = new DataTable(tableRef.current, {
+        destroy: true,
+        paging: true,
+        searching: false,
+        ordering: true,
+        info: true,
+        autoWidth: false,
+        layout: {
+          topStart: null,
+          topEnd: null,
+          bottomStart: ['pageLength', 'info'],
+          bottomEnd: 'paging'
+        },
+        columnDefs: [
+          { orderable: false, targets: -1 }
+        ],
+      })
+      return () => {
+        dt.destroy()
+      }
+    }
+  }, [filteredMembers])
+
   function startEdit(member) {
     setEditingMember(member)
     setEditPosition(member.position)
@@ -55,9 +91,10 @@ export default function OfficerMembersPage() {
 
   function confirmEdit() {
     if (!editingMember) return
+    const undo = captureUndo()
     const result = assignOfficerPosition(editingMember.id, editPosition)
     if (result.ok) {
-      showToast(`${formatDisplayName(editingMember)}'s position is now ${editPosition}.`, 'success')
+      showToast(`${formatDisplayName(editingMember)}'s position is now ${editPosition}.`, 'success', undoAction(undo))
       setEditingMember(null)
     } else {
       showToast(result.reason, 'error')
@@ -66,8 +103,9 @@ export default function OfficerMembersPage() {
 
   function confirmStatusChange() {
     if (!statusTarget) return
+    const undo = captureUndo()
     const changed = updateOfficerMemberStatus(statusTarget.id, nextStatus)
-    if (changed) showToast(`${formatDisplayName(statusTarget)}'s membership status is now ${formatStatus(nextStatus)}.`, 'success')
+    if (changed) showToast(`${formatDisplayName(statusTarget)}'s membership status is now ${formatStatus(nextStatus)}.`, 'success', undoAction(undo))
     setStatusTarget(null)
   }
 
@@ -75,9 +113,10 @@ export default function OfficerMembersPage() {
     if (!positionTarget) return
     const selectedMember = officerMembers.find((member) => member.id === assignedMemberId && member.status === 'ACTIVE')
     if (!selectedMember) return
+    const undo = captureUndo()
     const result = assignOfficerPosition(selectedMember.id, assignedPosition)
     if (result.ok) {
-      showToast(`${formatDisplayName(selectedMember)} is now ${assignedPosition}.`, 'success')
+      showToast(`${formatDisplayName(selectedMember)} is now ${assignedPosition}.`, 'success', undoAction(undo))
       setPositionTarget(null)
     } else {
       showToast(result.reason, 'error')
@@ -89,22 +128,26 @@ export default function OfficerMembersPage() {
     member: officerMembers.find((member) => member.status === 'ACTIVE' && member.position === position),
   }))
 
+  function getMemberInitials(member) {
+    return formatDisplayName(member).split(/[ ,]+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'M'
+  }
+
   return (
     <div className="officer-members-page">
       <PageHeader
-        description="Manage the members and officers of WMSU Computer Society."
-        eyebrow="WMSU Computer Society"
+        description={`Manage the members and officers of ${organization.name}.`}
+        eyebrow={organization.name}
         title="Organization Members"
       />
       <Card className="officer-member-management">
         <div className="officer-member-toolbar">
           <div>
-            <h2>WMSU Computer Society</h2>
+            <h2>{organization.name}</h2>
             <p>{officerMemberCount} total members <span aria-hidden="true">·</span> Search and manage this organization&apos;s roster</p>
           </div>
           <label className="officer-member-search">
             <span className="sr-only">Search members by name, student ID, or program</span>
-            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m16 16 4 4" /></svg>
+            <Icon name="search" size={16} />
             <input onChange={(event) => setSearch(event.target.value)} placeholder="Search members..." type="search" value={search} />
           </label>
         </div>
@@ -132,12 +175,12 @@ export default function OfficerMembersPage() {
           </label>
         </div>
 
-        <div className="officer-member-table-wrap">
-          <table className="officer-member-table">
+        <div className="officer-member-table-wrap using-datatables" key={filteredMembers.length + '-' + filteredMembers.map(m => m.id).join('-').slice(0, 50)}>
+          <table className="officer-member-table" ref={tableRef}>
             <thead>
               <tr>
-                <th>Student</th>
-                <th>Student ID</th>
+                <th className="cell-sticky cell-sticky-1">Student</th>
+                <th className="cell-sticky cell-sticky-2 cell-sticky-last">Student ID</th>
                 <th>Program</th>
                 <th>Position</th>
                 <th>Membership Status</th>
@@ -148,16 +191,23 @@ export default function OfficerMembersPage() {
             <tbody>
               {filteredMembers.map((member) => (
                 <tr key={member.id}>
-                  <td data-label="Student"><strong>{formatDisplayName(member)}</strong></td>
-                  <td data-label="Student ID">{member.studentId}</td>
+                  <td className="cell-sticky cell-sticky-1" data-label="Student">
+                    <div className="officer-member-cell">
+                      <span aria-hidden="true" className="officer-member-avatar-chip">
+                        {getMemberInitials(member)}
+                      </span>
+                      <strong>{formatDisplayName(member)}</strong>
+                    </div>
+                  </td>
+                  <td className="cell-sticky cell-sticky-2 cell-sticky-last" data-label="Student ID">{member.studentId}</td>
                   <td data-label="Program">{member.program}</td>
                   <td data-label="Position">{member.position}</td>
                   <td data-label="Membership Status"><Badge tone={statusTones[member.status]}>{formatStatus(member.status)}</Badge></td>
                   <td data-label="Date Joined">{member.dateJoined}</td>
                   <td className="officer-member-row-actions" data-label="Actions">
-                    <Button onClick={() => setViewingMember(member)} variant="ghost">View</Button>
-                    <Button disabled={member.status !== 'ACTIVE'} onClick={() => startEdit(member)} variant="ghost">Edit</Button>
-                    <Button onClick={() => { setStatusTarget(member); setNextStatus(member.status) }} variant="ghost">Manage Status</Button>
+                    <Button onClick={() => setViewingMember(member)} variant="secondary">View</Button>
+                    <Button disabled={member.status !== 'ACTIVE'} onClick={() => startEdit(member)} variant="secondary">Edit</Button>
+                    <Button onClick={() => { setStatusTarget(member); setNextStatus(member.status) }} variant="outline">Manage status</Button>
                   </td>
                 </tr>
               ))}
@@ -171,13 +221,13 @@ export default function OfficerMembersPage() {
 
       <Card className="officer-page-card officer-officers-card">
         <div className="officer-page-card-heading">
-          <div><h2>Organization Officers</h2><p>Only current WMSU Computer Society officers are listed.</p></div>
+          <div><h2>Organization Officers</h2><p>Only current {organization.name} officers are listed.</p></div>
           <Badge tone="crimson">President-managed</Badge>
         </div>
         <div className="officer-position-grid">
           {officers.map(({ position, member }) => (
             <article className="officer-position-card" key={position}>
-              <span>{position}</span>
+              <span className="officer-position-tag">{position}</span>
               <strong>{member ? formatDisplayName(member) : 'Position unassigned'}</strong>
               {member && <small>{member.studentId}</small>}
               <Button
@@ -206,7 +256,7 @@ export default function OfficerMembersPage() {
               <div><dt>Student ID</dt><dd>{viewingMember.studentId}</dd></div>
               <div><dt>Program</dt><dd>{viewingMember.program}</dd></div>
               <div><dt>Email</dt><dd>{viewingMember.email}</dd></div>
-              <div><dt>Organization</dt><dd>WMSU Computer Society</dd></div>
+              <div><dt>Organization</dt><dd>{organization.name}</dd></div>
               <div><dt>Position</dt><dd>{viewingMember.position}</dd></div>
               <div><dt>Membership status</dt><dd><Badge tone={statusTones[viewingMember.status]}>{formatStatus(viewingMember.status)}</Badge></dd></div>
               <div><dt>Date joined</dt><dd>{viewingMember.dateJoined}</dd></div>
@@ -255,7 +305,7 @@ export default function OfficerMembersPage() {
             ))}
           </select>
         </label>
-        <p>Assign {formatDisplayName(officerMembers.find((member) => member.id === assignedMemberId))} as {assignedPosition} for WMSU Computer Society?</p>
+        <p>Assign {formatDisplayName(officerMembers.find((member) => member.id === assignedMemberId))} as {assignedPosition} for {organization.name}?</p>
         <p className="officer-permission-note">Only active members of your assigned organization can be officers. This position will be unassigned from its current holder.</p>
         <div className="officer-modal-actions">
           <Button onClick={() => setPositionTarget(null)} variant="secondary">Cancel</Button>

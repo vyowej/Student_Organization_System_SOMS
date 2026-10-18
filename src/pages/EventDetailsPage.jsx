@@ -4,8 +4,9 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import Modal from '../components/ui/Modal.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { getEventRegistrationState, isEventAlmostFull, studentEvents } from '../data/studentEvents.js'
 import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
 
@@ -19,7 +20,7 @@ const stateTone = {
 
 export default function EventDetailsPage() {
   const { id } = useParams()
-  const { eventRegisteredCounts, officerEvents, registerForEvent, studentRegistrations } = useOutletContext()
+  const { captureUndo, eventRegisteredCounts, officerEvents, registerForEvent, studentRegistrations } = useOutletContext()
   const { showToast } = useToast()
   const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false)
   const baseEvent = studentEvents.find((item) => item.id === id)
@@ -36,7 +37,7 @@ export default function EventDetailsPage() {
 
   if (!event) {
     return (
-      <>
+      <div className="event-details-page">
         <PageHeader
           description="The event may have been removed or the link may be incorrect."
           eyebrow="UNIDOS STUDENT PORTAL"
@@ -46,7 +47,7 @@ export default function EventDetailsPage() {
           <p>We could not find that event in the current preview.</p>
           <Link className="button button-primary" to="/student/events">Explore all events</Link>
         </Card>
-      </>
+      </div>
     )
   }
 
@@ -58,13 +59,14 @@ export default function EventDetailsPage() {
 
   function confirmRegistration() {
     if (!canRegister) return
+    const undo = captureUndo()
     const registrationResult = registerForEvent(event.id)
     if (!registrationResult) {
       showToast('Unable to complete registration. Please refresh the event and try again.', 'error')
       return
     }
     setRegistrationDialogOpen(false)
-    showToast('You are registered for this event.', 'success')
+    showToast('You are registered for this event.', 'success', undoAction(undo))
   }
 
   const actionLabel = registrationState === 'REGISTERED' ? 'Registered ✓'
@@ -137,7 +139,7 @@ export default function EventDetailsPage() {
 
             <section className="event-info-section event-organizer-section">
               <h3>Organized By</h3>
-              <Link to={`/student/organizations/${event.organizationId}`}>{event.organizationName} <span aria-hidden="true">→</span></Link>
+              <Link to={`/student/organizations/${event.organizationId}`}>{event.organizationName} <Icon name="arrow-right" size={13} /></Link>
             </section>
 
             <section className="event-info-section">
@@ -150,7 +152,9 @@ export default function EventDetailsPage() {
             </section>
           </div>
 
-          <Link className="event-back-link" to="/student/events">← Explore all events</Link>
+          <Link className="event-back-link" to="/student/events">
+            <Icon name="arrow-left" size={14} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '6px' }} /> Explore all events
+          </Link>
         </div>
       </Card>
 

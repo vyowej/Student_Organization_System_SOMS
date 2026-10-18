@@ -27,20 +27,20 @@ export default function StudentProfilePage() {
   return (
     <div className="student-profile">
       <PageHeader description="Review your student and academic account information." eyebrow="UNIDOS STUDENT PORTAL" title="My Profile" />
-      <Card className="student-profile-identity">
-        <div aria-hidden="true" className="student-profile-avatar">{initials || 'S'}</div>
-        <div className="student-profile-identity-copy">
-          <span className="student-profile-eyebrow">Student account</span>
-          <h2>{formatDisplayName(currentUser)}</h2>
-          <p>{currentUser.program || 'Student'}{currentUser.yearLevel ? ` · ${currentUser.yearLevel}` : ''}</p>
+      <Card className="student-profile-card">
+        <div className="student-profile-identity">
+          <div aria-hidden="true" className="student-profile-avatar">{initials || 'S'}</div>
+          <div className="student-profile-identity-copy">
+            <span className="student-profile-eyebrow">Student account</span>
+            <h2>{formatDisplayName(currentUser)}</h2>
+            <p>{currentUser.program || 'Student'}{currentUser.yearLevel ? ` · ${currentUser.yearLevel}` : ''}</p>
+          </div>
+          <Badge tone={currentUser.status === 'ACTIVE' ? 'success' : 'neutral'}>
+            {currentUser.status === 'ACTIVE' ? 'Active account' : currentUser.status || 'Student'}
+          </Badge>
         </div>
-        <Badge tone={currentUser.status === 'ACTIVE' ? 'success' : 'neutral'}>
-          {currentUser.status === 'ACTIVE' ? 'Active account' : currentUser.status || 'Student'}
-        </Badge>
-      </Card>
 
-      <div className="student-profile-details">
-        <Card className="student-profile-section">
+        <section className="student-profile-block">
           <div className="student-profile-section-heading">
             <span aria-hidden="true" className="student-profile-section-mark">01</span>
             <div>
@@ -56,9 +56,9 @@ export default function StudentProfilePage() {
               </div>
             ))}
           </dl>
-        </Card>
+        </section>
 
-        <Card className="student-profile-section">
+        <section className="student-profile-block">
           <div className="student-profile-section-heading">
             <span aria-hidden="true" className="student-profile-section-mark">02</span>
             <div>
@@ -74,8 +74,8 @@ export default function StudentProfilePage() {
               </div>
             ))}
           </dl>
-        </Card>
-      </div>
+        </section>
+      </Card>
       <p className="student-profile-note">This information is associated with your student account.</p>
     </div>
   )

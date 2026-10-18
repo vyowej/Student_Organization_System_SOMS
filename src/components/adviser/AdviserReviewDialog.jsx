@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import Badge from '../ui/Badge.jsx'
 import Button from '../ui/Button.jsx'
+import ConfirmDialog from '../ui/ConfirmDialog.jsx'
 import Modal from '../ui/Modal.jsx'
+import Icon from '../ui/Icon.jsx'
 
 const statusTone = {
   PENDING: 'warning',
@@ -15,33 +17,93 @@ const statusTone = {
   PENDING_VERIFICATION: 'warning',
 }
 
-export default function AdviserReviewDialog({ item, onClose, onDecision, report = false, initialDecision = '', verifiedBy, turnout }) {
+export default function AdviserReviewDialog({
+  item,
+  onClose,
+  onDecision,
+  report = false,
+  initialDecision = '',
+  verifiedBy,
+  turnout,
+  approvalConfirmationTitle = 'Confirm Event Approval',
+  approvalConfirmationMessage = 'Are you sure you want to approve this event proposal? Please review the event details before proceeding.',
+  approvalConfirmationLabel = 'Yes, Approve Event',
+}) {
   const [decision, setDecision] = useState(initialDecision)
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
+  const [approvalConfirmationOpen, setApprovalConfirmationOpen] = useState(false)
+  const [approvalProcessing, setApprovalProcessing] = useState(false)
 
   function close() {
     setDecision('')
     setComment('')
     setError('')
+    setApprovalConfirmationOpen(false)
+    setApprovalProcessing(false)
     onClose()
   }
 
-  function submitDecision() {
+  function requestDecision(nextDecision) {
+    setDecision(nextDecision)
+    setError('')
+    setApprovalConfirmationOpen(true)
+  }
+
+  function confirmDecision() {
+    if (approvalProcessing) return
     if (decision === 'RETURNED' || decision === 'REJECTED') {
       if (!comment.trim()) {
         setError(decision === 'REJECTED' ? 'Enter a reason before rejecting this submission.' : 'Enter revision comments before returning this submission.')
         return
       }
     }
-    onDecision(decision, comment)
-    close()
+    setApprovalProcessing(true)
+    const saved = onDecision(decision, comment)
+    if (saved) close()
+    else setApprovalProcessing(false)
   }
 
+  function confirmationCopy() {
+    if (decision === 'APPROVED') {
+      return {
+        title: approvalConfirmationTitle,
+        message: approvalConfirmationMessage,
+        label: approvalConfirmationLabel,
+        icon: '?',
+      }
+    }
+    if (decision === 'VERIFIED') {
+      return {
+        title: 'Confirm Report Verification',
+        message: 'Are you sure you want to verify this accomplishment report? Please make sure you have reviewed all the report details and supporting documents before proceeding.',
+        label: 'Yes, Verify Report',
+        icon: '!',
+      }
+    }
+    if (decision === 'REJECTED') {
+      return {
+        title: 'Confirm Rejection',
+        message: 'Are you sure you want to reject this request? Please review the details and provide a reason before proceeding.',
+        label: 'Yes, Reject',
+        icon: '!',
+      }
+    }
+    return {
+      title: 'Confirm Return for Revision',
+      message: 'Are you sure you want to return this request for revision? Please review the details and provide feedback before proceeding.',
+      label: 'Yes, Return for Revision',
+      icon: '!',
+    }
+  }
+
+  const confirmation = confirmationCopy()
+
   return (
-    <Modal onClose={close} open={Boolean(item)} title={report ? 'Accomplishment Report' : 'Submission Review'}>
-      {item && (
-        <div className={`adviser-review-dialog${report ? ' adviser-review-dialog--report' : ''}`}>
+    <>
+      <Modal onClose={close} open={Boolean(item)} title={report ? 'Accomplishment Report' : 'Submission Review'}>
+        {item && (
+          <div className={`adviser-review-dialog${report ? ' adviser-review-dialog--report' : ''}`}>
           <div className="adviser-review-summary">
             <div>
               <span className="adviser-muted-label">{item.organizationName}</span>
@@ -93,13 +155,13 @@ export default function AdviserReviewDialog({ item, onClose, onDecision, report 
                 {item.supportingDocuments?.length
                   ? <div className="adviser-report-files">{item.supportingDocuments.map((file, index) => {
                     const fileName = typeof file === 'string' ? file : file.name ?? file.title ?? `Supporting document ${index + 1}`
-                    return <div className="adviser-report-file-card" key={`${fileName}-${index}`}><span aria-hidden="true">▤</span><span><strong>{fileName}</strong><small>{file.type ?? 'Supporting document'}</small></span></div>
+                    return <div className="adviser-report-file-card" key={`${fileName}-${index}`}><Icon name="document" size={16} /><span><strong>{fileName}</strong><small>{file.type ?? 'Supporting document'}</small></span></div>
                   })}</div>
                   : <p>No supporting documents attached.</p>}
               </section>
               {item.status === 'VERIFIED' && (
                 <section className="adviser-report-verification">
-                  <strong><span aria-hidden="true">✓</span> Verified</strong>
+                  <strong><Icon name="check-circle" size={16} style={{ display: 'inline-block', verticalAlign: '-2px', marginRight: '4px' }} /> Verified</strong>
                   <p>Verified by <b>{item.verifiedBy ?? verifiedBy ?? 'Assigned adviser'}</b></p>
                   <p>Verified on <b>{item.decisionDate ?? 'Date not recorded'}</b></p>
                 </section>
@@ -135,6 +197,35 @@ export default function AdviserReviewDialog({ item, onClose, onDecision, report 
 
           {item.status === 'PENDING_VERIFICATION' || (report && item.status === 'RETURNED') || ['PENDING', 'SUBMITTED', 'UNDER_REVIEW'].includes(item.status) ? (
             <>
+              <div className="adviser-review-actions">
+                {report ? (
+                  <>
+                    <Button onClick={() => requestDecision('RETURNED')} variant="secondary">Return for Revision</Button>
+                    <Button onClick={() => requestDecision('VERIFIED')} variant="primary">Verify Report</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button onClick={() => requestDecision('REJECTED')} variant="danger">Reject</Button>
+                    <Button onClick={() => requestDecision('RETURNED')} variant="secondary">Return for Revision</Button>
+                    <Button onClick={() => requestDecision('APPROVED')} variant="primary">Approve</Button>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="adviser-review-actions"><Button onClick={close} variant="secondary">Close</Button></div>
+          )}
+          </div>
+        )}
+      </Modal>
+      <ConfirmDialog
+        confirmDisabled={approvalProcessing}
+        confirmLabel={approvalProcessing ? 'Processing…' : confirmation.label}
+        details={(
+          <div className="adviser-action-confirmation">
+            <span aria-hidden="true" className="adviser-verification-confirmation-icon">{confirmation.icon}</span>
+            <div>
+              <p>{confirmation.message}</p>
               {(decision === 'RETURNED' || decision === 'REJECTED') && (
                 <div className="form-field adviser-review-comment">
                   <label htmlFor="adviser-review-comment">{decision === 'REJECTED' ? 'Rejection reason (required)' : 'Revision comments (required)'}</label>
@@ -148,38 +239,17 @@ export default function AdviserReviewDialog({ item, onClose, onDecision, report 
                   {error && <span className="adviser-form-error" role="alert">{error}</span>}
                 </div>
               )}
-              <div className="adviser-review-actions">
-                {!decision ? (
-                  report ? (
-                    <>
-                      <Button onClick={() => setDecision('RETURNED')} variant="secondary">Return for Revision</Button>
-                      <Button onClick={() => setDecision('VERIFIED')} variant="primary">Verify Report</Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button onClick={() => setDecision('REJECTED')} variant="danger">Reject</Button>
-                      <Button onClick={() => setDecision('RETURNED')} variant="secondary">Return for Revision</Button>
-                      <Button onClick={() => setDecision('APPROVED')} variant="primary">Approve</Button>
-                    </>
-                  )
-                ) : (
-                  <>
-                    <Button onClick={() => setDecision('')} variant="secondary">Back</Button>
-                    <Button onClick={submitDecision} variant="primary">
-                      {decision === 'APPROVED' ? 'Confirm Approval'
-                        : decision === 'VERIFIED' ? 'Confirm Verification'
-                          : decision === 'REJECTED' ? 'Confirm Rejection'
-                            : 'Send Back to Officer'}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="adviser-review-actions"><Button onClick={close} variant="secondary">Close</Button></div>
-          )}
-        </div>
-      )}
-    </Modal>
+            </div>
+          </div>
+        )}
+        message=""
+        onCancel={() => {
+          if (!approvalProcessing) setApprovalConfirmationOpen(false)
+        }}
+        onConfirm={confirmDecision}
+        open={approvalConfirmationOpen}
+        title={confirmation.title}
+      />
+    </>
   )
 }

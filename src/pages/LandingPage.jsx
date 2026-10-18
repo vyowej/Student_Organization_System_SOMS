@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import FilterSelect from '../components/ui/FilterSelect.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import { EventCard, LeaderCard, OrganizationCard } from '../components/public/LandingCards.jsx'
 import AnimatedStatistic from '../components/public/AnimatedStatistic.jsx'
@@ -45,10 +47,10 @@ function LandingPage() {
           </p>
           <div className="hero-actions">
             <Link className="button button-primary" to="/student/organizations">
-              Explore Organizations <span aria-hidden="true">→</span>
+              Explore Organizations <Icon name="arrow-right" size={14} />
             </Link>
-            <Link className="button button-secondary" to="/student/events">
-              <span aria-hidden="true">▣</span> View Upcoming Events
+            <Link className="button button-secondary" to="/student/events" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <Icon name="event" size={16} /> View Upcoming Events
             </Link>
           </div>
           <div className="hero-social-proof">
@@ -63,8 +65,8 @@ function LandingPage() {
             <WmsuLogo className="hero-art-seal" />
             <span className="hero-art-center-label">One campus<br />many communities</span>
           </div>
-          <div className="hero-float-card float-organizations"><span className="float-icon">✳</span><span><strong>50+</strong><small>Organizations</small></span></div>
-          <div className="hero-float-card float-events"><span className="float-icon">▣</span><span><strong>Campus life</strong><small>Happening here</small></span></div>
+          <div className="hero-float-card float-organizations"><span className="float-icon"><Icon name="organization" size={16} /></span><span><strong>50+</strong><small>Organizations</small></span></div>
+          <div className="hero-float-card float-events"><span className="float-icon"><Icon name="calendar" size={16} /></span><span><strong>Campus life</strong><small>Happening here</small></span></div>
           <span className="hero-spark spark-one">✦</span>
           <span className="hero-spark spark-two">✦</span>
         </div>
@@ -92,26 +94,19 @@ function LandingPage() {
 
       <Reveal as="section" aria-labelledby="organizations-title" className="landing-section organizations-section reveal-group" id="organizations">
         <SectionTitle
-          action={<Link className="text-link" to="/student/organizations">Explore all organizations <span aria-hidden="true">→</span></Link>}
+          action={<Link className="text-link" to="/student/organizations">Explore all organizations <Icon name="arrow-right" size={13} /></Link>}
           description="Whatever you are passionate about, there is a place for you here."
           eyebrow="Find your people"
           id="organizations-title"
           title="Student organizations"
         />
-        <div aria-label="Filter organizations by category" className="category-filters">
-          {organizationCategories.map((category) => (
-            <button
-              aria-controls="organization-results"
-              aria-pressed={activeCategory === category}
-              className={`category-filter${activeCategory === category ? ' selected' : ''}`}
-              key={category}
-              onClick={() => setActiveCategory(category)}
-              type="button"
-            >
-              {category}
-            </button>
-          ))}
-        </div>
+        <FilterSelect
+          className="landing-category-select"
+          label="Category"
+          onChange={setActiveCategory}
+          options={organizationCategories}
+          value={activeCategory}
+        />
         <div className="organization-grid" id="organization-results">
           {filteredOrganizations.map((organization) => (
             <OrganizationCard key={organization.id} organization={organization} />
@@ -121,7 +116,7 @@ function LandingPage() {
 
       <Reveal as="section" aria-labelledby="events-title" className="landing-section events-section reveal-group" id="events">
         <SectionTitle
-          action={<Link className="text-link" to="/student/events">Explore all events <span aria-hidden="true">→</span></Link>}
+          action={<Link className="text-link" to="/student/events">Explore all events <Icon name="arrow-right" size={13} /></Link>}
           description="Make plans, meet new people, and be part of what is happening at WMSU."
           eyebrow="Mark your calendar"
           id="events-title"
@@ -137,14 +132,14 @@ function LandingPage() {
           <span className="landing-eyebrow">Around WMSU</span>
           <h2 id="community-title">The community is always moving.</h2>
           <p>Keep up with what student organizations are sharing and discover a new way to get involved.</p>
-          <Link className="text-link" to="/student/notifications">Visit your community feed <span aria-hidden="true">→</span></Link>
+          <Link className="text-link" to="/student/notifications">Visit your community feed <Icon name="arrow-right" size={13} /></Link>
         </div>
         <div className="community-updates">
           {communityUpdates.map((update, index) => (
             <Link className="community-update" key={update.title} to={update.link}>
               <span className="update-number">0{index + 1}</span>
               <span className="update-copy"><small>{update.label}</small><strong>{update.title}</strong></span>
-              <span aria-hidden="true" className="update-arrow">↗</span>
+              <span aria-hidden="true" className="update-arrow"><Icon name="arrow-up-right" size={13} /></span>
             </Link>
           ))}
         </div>
@@ -204,7 +199,7 @@ function LandingPage() {
         <h2 id="cta-title">Create Your WMSU Community Experience</h2>
         <p>Discover organizations, join campus communities, and participate in activities that make an impact.</p>
         <div className="cta-actions">
-          <Link className="button button-primary" to="/register">Get Started <span aria-hidden="true">→</span></Link>
+          <Link className="button button-primary" to="/register">Get Started <Icon name="arrow-right" size={13} /></Link>
           <Link className="button button-secondary" to="/student/organizations">Explore Organizations</Link>
         </div>
       </Reveal>
@@ -225,6 +220,8 @@ function LandingPage() {
             <Link to="/student/organizations">Organizations</Link>
             <Link to="/student/events">Events</Link>
             <Link to="/#about">About</Link>
+            <Link to="/#community-feed">Community Feed</Link>
+            <Link to="/#leaderboard">Leaderboard</Link>
           </nav>
           <nav aria-label="Student links" className="footer-column">
             <strong>Student</strong>
@@ -240,8 +237,8 @@ function LandingPage() {
           </nav>
           <div className="footer-column footer-contact">
             <strong>Contact</strong>
-            <span><span aria-hidden="true">⌖</span> Western Mindanao State University</span>
-            <span><span aria-hidden="true">✉</span> Student Affairs</span>
+            <span><Icon name="location" size={14} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '6px' }} /> Western Mindanao State University</span>
+            <span><Icon name="mail" size={14} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '6px' }} /> Student Affairs</span>
           </div>
         </div>
         <div className="footer-bottom">

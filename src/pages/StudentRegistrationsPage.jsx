@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
+import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
+import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { studentEvents } from '../data/studentEvents.js'
 import { findStudentEvent } from '../data/officerStudentEvent.js'
 
@@ -13,8 +16,11 @@ function isPastEvent(event) {
 }
 
 export default function StudentRegistrationsPage() {
-  const { officerEvents, studentRegistrations } = useOutletContext()
+  const { cancelRegistration, captureUndo, officerEvents, studentRegistrations } = useOutletContext()
+  const { showToast } = useToast()
+  const [cancelTarget, setCancelTarget] = useState(null)
   const [activeTab, setActiveTab] = useState('Upcoming')
+  const [search, setSearch] = useState('')
 
   const registrations = studentRegistrations
     .map((registration) => ({
@@ -27,6 +33,7 @@ export default function StudentRegistrationsPage() {
       if (activeTab === 'Past') return registration.status === 'COMPLETED' || (registration.status === 'REGISTERED' && isPastEvent(registration.event))
       return registration.status === 'REGISTERED' && !isPastEvent(registration.event)
     })
+    .filter((registration) => matchesQuery(search, registration.event.title, registration.event.organizationName, registration.event.date, registration.event.location))
     .sort((a, b) => new Date(a.event.date) - new Date(b.event.date))
 
   return (
@@ -36,6 +43,8 @@ export default function StudentRegistrationsPage() {
         eyebrow="UNIDOS STUDENT PORTAL"
         title="My Registrations"
       />
+
+      <SearchBar label="Search registrations" onChange={setSearch} placeholder="Search registrations by event, organization or venue…" value={search} />
 
       <div aria-label="Registration groups" className="registration-tabs" role="tablist">
         {tabs.map((tab) => (
@@ -86,6 +95,9 @@ export default function StudentRegistrationsPage() {
                   {registration.status === 'REGISTERED' && !isPastEvent(event) && (
                     <Link className="button button-primary" to={`/student/registrations/${registration.id}/pass`}>View Pass</Link>
                   )}
+                  {registration.status === 'REGISTERED' && registration.attendanceStatus !== 'ATTENDED' && !isPastEvent(event) && (
+                    <button className="button button-danger" onClick={() => setCancelTarget(registration)} type="button">Cancel</button>
+                  )}
                 </div>
               </article>
             )
@@ -99,6 +111,20 @@ export default function StudentRegistrationsPage() {
           title={`No ${activeTab.toLowerCase()} registrations`}
         />
       )}
+      <ConfirmDialog
+        cancelLabel="Keep registration"
+        confirmLabel="Cancel registration"
+        message={`Are you sure you want to cancel your registration for “${cancelTarget?.event.title ?? ''}”? Your digital pass will stop working and your slot will be released.`}
+        onCancel={() => setCancelTarget(null)}
+        onConfirm={() => {
+          const undo = captureUndo()
+          if (cancelRegistration(cancelTarget.id)) showToast('Registration cancelled.', 'success', undoAction(undo))
+          setCancelTarget(null)
+        }}
+        open={Boolean(cancelTarget)}
+        title="Cancel registration?"
+        tone="danger"
+      />
     </div>
   )
 }

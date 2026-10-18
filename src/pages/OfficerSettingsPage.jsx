@@ -3,9 +3,11 @@ import { useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
+import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 
 const organizationCategories = ['Academic', 'Socio-Civic', 'Cultural', 'Sports']
 const preferenceOptions = [
@@ -34,6 +36,7 @@ function SettingsSection({ children, description, title, variant = '' }) {
 export default function OfficerSettingsPage() {
   const {
     adminOrganizations,
+    captureUndo,
     currentUser,
     adminSettings,
     updateOfficerOrganizationProfile,
@@ -47,6 +50,7 @@ export default function OfficerSettingsPage() {
   const [organizationForm, setOrganizationForm] = useState(null)
   const [contactForm, setContactForm] = useState(null)
   const [logoOpen, setLogoOpen] = useState(false)
+  const [removeLogoOpen, setRemoveLogoOpen] = useState(false)
   const [pendingLogo, setPendingLogo] = useState('')
   const [logoError, setLogoError] = useState('')
   const [requestType, setRequestType] = useState('')
@@ -55,13 +59,15 @@ export default function OfficerSettingsPage() {
   const [preferences, setPreferences] = useState(null)
   const [organizationError, setOrganizationError] = useState('')
   const [contactError, setContactError] = useState('')
+  const [saveConfirm, setSaveConfirm] = useState('')
+  const [discardConfirm, setDiscardConfirm] = useState('')
 
   if (!organization) {
     return (
-      <>
+      <div className="officer-page">
         <PageHeader title="Organization Settings" description="Manage your organization's information, preferences, and account settings." eyebrow="ORGANIZATION MANAGEMENT" />
         <Card className="officer-settings-card"><p>Your officer account does not have an assigned organization to configure.</p></Card>
-      </>
+      </div>
     )
   }
 
@@ -93,23 +99,26 @@ export default function OfficerSettingsPage() {
     setContactForm((current) => ({ ...(current ?? savedContactForm), [key]: value }))
   }
 
-  function saveOrganization(event) {
+  function saveOrganization(event, confirmed = false) {
     event.preventDefault()
     const values = organizationForm ?? savedOrganizationForm
     if (Object.values(values).some((value) => !value.trim())) {
       setOrganizationError('Organization name, acronym, category, mission, and vision are required.')
       return
     }
+    if (!confirmed) { setOrganizationError(''); setSaveConfirm('organization'); return }
+    setSaveConfirm('')
+    const undo = captureUndo()
     if (!updateOfficerOrganizationProfile(values)) {
       setOrganizationError('Unable to save organization information. Verify your officer access and try again.')
       return
     }
     setOrganizationForm(null)
     setOrganizationError('')
-    showToast('Organization information saved.', 'success')
+    showToast('Organization information saved.', 'success', undoAction(undo))
   }
 
-  function saveContact(event) {
+  function saveContact(event, confirmed = false) {
     event.preventDefault()
     const values = contactForm ?? savedContactForm
     if (values.officialEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.officialEmail)) {
@@ -124,23 +133,27 @@ export default function OfficerSettingsPage() {
       setContactError('Enter a valid page URL beginning with https:// or www.')
       return
     }
+    if (!confirmed) { setContactError(''); setSaveConfirm('contact'); return }
+    setSaveConfirm('')
+    const undo = captureUndo()
     if (!updateOfficerOrganizationContact(values)) {
       setContactError('Unable to save contact information. Try again.')
       return
     }
     setContactForm(null)
     setContactError('')
-    showToast('Organization contact information saved.', 'success')
+    showToast('Organization contact information saved.', 'success', undoAction(undo))
   }
 
   function savePreferences() {
     const values = preferences ?? savedPreferences
+    const undo = captureUndo()
     if (!saveOfficerNotificationPreferences(values)) {
       showToast('Unable to save notification preferences.', 'error')
       return
     }
     setPreferences(null)
-    showToast('Notification preferences updated.', 'success')
+    showToast('Notification preferences updated.', 'success', undoAction(undo))
   }
 
   function chooseLogo(event) {
@@ -167,21 +180,24 @@ export default function OfficerSettingsPage() {
   }
 
   function commitLogo() {
+    const undo = captureUndo()
     if (!pendingLogo || !updateOfficerOrganizationLogo(pendingLogo)) {
       setLogoError('Unable to save the logo. Choose another image and try again.')
       return
     }
     setLogoOpen(false)
     setPendingLogo('')
-    showToast('Organization logo updated.', 'success')
+    showToast('Organization logo updated.', 'success', undoAction(undo))
   }
 
   function removeLogo() {
+    const undo = captureUndo()
+    setRemoveLogoOpen(false)
     if (!updateOfficerOrganizationLogo(null)) {
       showToast('Unable to remove the organization logo.', 'error')
       return
     }
-    showToast('Organization logo removed.', 'success')
+    showToast('Organization logo removed.', 'success', undoAction(undo))
   }
 
   function submitRequest(event) {
@@ -190,6 +206,7 @@ export default function OfficerSettingsPage() {
       setRequestError('A reason is required to submit this request.')
       return
     }
+    const undo = captureUndo()
     if (!submitOfficerOrganizationRequest(requestType, requestReason)) {
       setRequestError('Unable to submit the request. Please try again.')
       return
@@ -199,7 +216,7 @@ export default function OfficerSettingsPage() {
     setRequestError('')
     showToast(requestType === 'ADVISER_CHANGE'
       ? 'Adviser change request submitted for Student Affairs review.'
-      : 'Organization deactivation request submitted for Student Affairs review.', 'success')
+      : 'Organization deactivation request submitted for Student Affairs review.', 'success', undoAction(undo))
   }
 
   const statusTone = organization.status === 'ACTIVE' ? 'success'
@@ -211,23 +228,40 @@ export default function OfficerSettingsPage() {
     <div className="officer-settings-page">
       <PageHeader
         description="Manage your organization's information, preferences, and account settings."
-        eyebrow="ORGANIZATION MANAGEMENT"
+        eyebrow={organization.name}
         title="Organization Settings"
       />
 
       <SettingsSection title="Organization Information" description="Update the public profile shared across UNIDOS.">
         <form className="officer-settings-form" onSubmit={saveOrganization}>
           <div className="officer-settings-field-grid">
-            <label>Official Organization Name<input onChange={(event) => changeOrganizationField('name', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).name} /></label>
-            <label>Acronym<input onChange={(event) => changeOrganizationField('acronym', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).acronym} /></label>
-            <label>Organization Category<select onChange={(event) => changeOrganizationField('category', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).category}>{[...new Set([...organizationCategories, savedOrganizationForm.category])].map((category) => <option key={category}>{category}</option>)}</select></label>
-            <label className="officer-settings-wide">Mission<textarea onChange={(event) => changeOrganizationField('mission', event.target.value)} required rows="3" value={(organizationForm ?? savedOrganizationForm).mission} /></label>
-            <label className="officer-settings-wide">Vision<textarea onChange={(event) => changeOrganizationField('vision', event.target.value)} required rows="3" value={(organizationForm ?? savedOrganizationForm).vision} /></label>
+            <label>
+              <span>Official Organization Name</span>
+              <input onChange={(event) => changeOrganizationField('name', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).name} />
+            </label>
+            <label>
+              <span>Acronym</span>
+              <input onChange={(event) => changeOrganizationField('acronym', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).acronym} />
+            </label>
+            <label>
+              <span>Organization Category</span>
+              <select onChange={(event) => changeOrganizationField('category', event.target.value)} required value={(organizationForm ?? savedOrganizationForm).category}>
+                {[...new Set([...organizationCategories, savedOrganizationForm.category])].map((category) => <option key={category}>{category}</option>)}
+              </select>
+            </label>
+            <label className="officer-settings-wide">
+              <span>Mission</span>
+              <textarea onChange={(event) => changeOrganizationField('mission', event.target.value)} required rows="3" value={(organizationForm ?? savedOrganizationForm).mission} />
+            </label>
+            <label className="officer-settings-wide">
+              <span>Vision</span>
+              <textarea onChange={(event) => changeOrganizationField('vision', event.target.value)} required rows="3" value={(organizationForm ?? savedOrganizationForm).vision} />
+            </label>
           </div>
           {organizationError && <p className="auth-error" role="alert">{organizationError}</p>}
           <div className="officer-settings-actions">
             <Button onClick={() => { setOrganizationForm({ ...savedOrganizationForm }); setOrganizationError('') }} type="button" variant="ghost">Reset</Button>
-            <Button onClick={() => { setOrganizationForm(null); setOrganizationError('') }} type="button" variant="secondary">Cancel</Button>
+            <Button onClick={() => (organizationForm ? setDiscardConfirm('organization') : setOrganizationError(''))} type="button" variant="secondary">Cancel</Button>
             <Button type="submit">Save Changes</Button>
           </div>
         </form>
@@ -241,7 +275,7 @@ export default function OfficerSettingsPage() {
               {organization.logo ? <><strong>Current organization logo</strong><span>Displayed in organization spaces across UNIDOS.</span></> : <><strong>No organization logo uploaded.</strong><span>The acronym mark is shown until an image is uploaded.</span></>}
               <div className="officer-settings-actions">
                 <Button onClick={() => { setPendingLogo(''); setLogoError(''); setLogoOpen(true) }} variant="secondary">Upload Logo</Button>
-                {organization.logo && <Button onClick={removeLogo} variant="danger">Remove Logo</Button>}
+                {organization.logo && <Button onClick={() => setRemoveLogoOpen(true)} variant="danger">Remove Logo</Button>}
               </div>
             </div>
           </div>
@@ -269,14 +303,23 @@ export default function OfficerSettingsPage() {
       <SettingsSection title="Organization Contact Information" description="Keep official contact details available to your members.">
         <form className="officer-settings-form" onSubmit={saveContact}>
           <div className="officer-settings-field-grid">
-            <label>Official Email<input autoComplete="email" onChange={(event) => changeContactField('officialEmail', event.target.value)} type="email" value={(contactForm ?? savedContactForm).officialEmail} /></label>
-            <label>Contact Number<input autoComplete="tel" onChange={(event) => changeContactField('contactNumber', event.target.value)} type="tel" value={(contactForm ?? savedContactForm).contactNumber} /></label>
-            <label className="officer-settings-wide">Official Social Media / Page<input onChange={(event) => changeContactField('socialMedia', event.target.value)} placeholder="https://..." type="url" value={(contactForm ?? savedContactForm).socialMedia} /></label>
+            <label>
+              <span>Official Email</span>
+              <input autoComplete="email" onChange={(event) => changeContactField('officialEmail', event.target.value)} type="email" value={(contactForm ?? savedContactForm).officialEmail} />
+            </label>
+            <label>
+              <span>Contact Number</span>
+              <input autoComplete="tel" onChange={(event) => changeContactField('contactNumber', event.target.value)} type="tel" value={(contactForm ?? savedContactForm).contactNumber} />
+            </label>
+            <label className="officer-settings-wide">
+              <span>Official Social Media / Page</span>
+              <input onChange={(event) => changeContactField('socialMedia', event.target.value)} placeholder="https://..." type="url" value={(contactForm ?? savedContactForm).socialMedia} />
+            </label>
           </div>
           {contactError && <p className="auth-error" role="alert">{contactError}</p>}
           <div className="officer-settings-actions">
             <Button onClick={() => { setContactForm({ ...savedContactForm }); setContactError('') }} type="button" variant="ghost">Reset</Button>
-            <Button onClick={() => { setContactForm(null); setContactError('') }} type="button" variant="secondary">Cancel</Button>
+            <Button onClick={() => (contactForm ? setDiscardConfirm('contact') : setContactError(''))} type="button" variant="secondary">Cancel</Button>
             <Button type="submit">Save Changes</Button>
           </div>
         </form>
@@ -289,13 +332,26 @@ export default function OfficerSettingsPage() {
             return <label className="officer-settings-preference" key={key}><span>{label}</span><span className={`officer-settings-toggle${selected ? ' is-on' : ''}`}><span>{selected ? 'ON' : 'OFF'}</span><input aria-label={label} checked={selected} onChange={(event) => setPreferences((current) => ({ ...(current ?? savedPreferences), [key]: event.target.checked }))} type="checkbox" /></span></label>
           })}
         </div>
-        <div className="officer-settings-actions"><Button onClick={() => setPreferences({ ...savedPreferences })} variant="ghost">Reset</Button><Button onClick={() => { setPreferences(null); showToast('Unsaved preference changes discarded.', 'info') }} variant="secondary">Cancel</Button><Button onClick={savePreferences}>Save Preferences</Button></div>
+        <div className="officer-settings-actions"><Button onClick={() => setPreferences({ ...savedPreferences })} variant="ghost">Reset</Button><Button onClick={() => (preferences ? setDiscardConfirm('preferences') : null)} variant="secondary">Cancel</Button><Button onClick={savePreferences}>Save Preferences</Button></div>
       </SettingsSection>
 
       <SettingsSection title="Organization Access / Permissions" description="Access is assigned by the system and cannot be changed here.">
-        <div className="officer-settings-access-role"><span aria-hidden="true">♙</span><div><strong>Organization Officer</strong><small>{currentUser?.organizationId === organization.id ? organization.name : ''}</small></div><Badge tone="crimson">ROLE</Badge></div>
+        <div className="officer-settings-access-role">
+          <span aria-hidden="true" className="officer-settings-role-icon">
+            <Icon name="shield" size={18} />
+          </span>
+          <div><strong>Organization Officer</strong><small>{currentUser?.organizationId === organization.id ? organization.name : ''}</small></div>
+          <Badge tone="crimson">ROLE</Badge>
+        </div>
         <ul className="officer-settings-permission-list">
-          {['Manage Members', 'Review Membership Requests', 'Create Events', 'Manage Announcements', 'Submit Documents', 'View Organization Reports'].map((permission) => <li key={permission}><span aria-hidden="true">✓</span>{permission}</li>)}
+          {['Manage Members', 'Review Membership Requests', 'Create Events', 'Manage Announcements', 'Submit Documents', 'View Organization Reports'].map((permission) => (
+            <li key={permission}>
+              <span aria-hidden="true" className="officer-settings-check-icon">
+                <Icon name="check" size={13} strokeWidth={2.5} />
+              </span>
+              {permission}
+            </li>
+          ))}
         </ul>
         <p className="officer-settings-help">System roles and official organization permissions are managed by Student Affairs.</p>
       </SettingsSection>
@@ -319,11 +375,49 @@ export default function OfficerSettingsPage() {
           <p>{requestType === 'ADVISER_CHANGE'
             ? 'Changing the assigned faculty adviser requires Student Affairs/Admin approval. This request will not change your adviser immediately.'
             : 'Organization deactivation requires Student Affairs/Admin approval. Submitting this request will not immediately deactivate or delete your organization.'}</p>
-          <label>Reason for request<textarea onChange={(event) => setRequestReason(event.target.value)} required rows="5" value={requestReason} /></label>
+          <label>
+            <span>Reason for request</span>
+            <textarea onChange={(event) => setRequestReason(event.target.value)} required rows="5" value={requestReason} />
+          </label>
           {requestError && <p className="auth-error" role="alert">{requestError}</p>}
           <div className="officer-settings-actions"><Button onClick={() => { setRequestType(''); setRequestReason(''); setRequestError('') }} type="button" variant="secondary">Cancel</Button><Button type="submit">Submit Request</Button></div>
         </form>
       </Modal>
+      <ConfirmDialog
+        confirmLabel="Save changes"
+        message={saveConfirm === 'contact'
+          ? 'Are you sure you want to save these changes to your organization’s contact information?'
+          : 'Are you sure you want to save these changes to your organization’s official information? Students will see the updated details.'}
+        onCancel={() => setSaveConfirm('')}
+        onConfirm={() => (saveConfirm === 'contact' ? saveContact({ preventDefault() { } }, true) : saveOrganization({ preventDefault() { } }, true))}
+        open={Boolean(saveConfirm)}
+        title="Save changes?"
+      />
+      <ConfirmDialog
+        cancelLabel="Keep editing"
+        confirmLabel="Discard changes"
+        message="You have unsaved changes. Are you sure you want to discard them?"
+        onCancel={() => setDiscardConfirm('')}
+        onConfirm={() => {
+          if (discardConfirm === 'organization') { setOrganizationForm(null); setOrganizationError('') }
+          if (discardConfirm === 'contact') { setContactForm(null); setContactError('') }
+          if (discardConfirm === 'preferences') { setPreferences(null) }
+          setDiscardConfirm('')
+          showToast('Unsaved changes discarded.', 'info')
+        }}
+        open={Boolean(discardConfirm)}
+        tone="danger"
+        title="Discard unsaved changes?"
+      />
+      <ConfirmDialog
+        confirmLabel="Remove logo"
+        message="Are you sure you want to remove the organization logo? Your acronym will be shown instead."
+        onCancel={() => setRemoveLogoOpen(false)}
+        onConfirm={removeLogo}
+        open={removeLogoOpen}
+        title="Remove organization logo"
+        tone="danger"
+      />
     </div>
   )
 }

@@ -13,7 +13,7 @@ export default function PlaceholderPage({ page, role }) {
     .slice(0, 3)
 
   return (
-    <>
+    <div className="placeholder-page">
       <PageHeader
         description={page.description}
         eyebrow="WESTERN MINDANAO STATE UNIVERSITY"
@@ -41,6 +41,6 @@ export default function PlaceholderPage({ page, role }) {
           </p>
         </Card>
       </div>
-    </>
+    </div>
   )
 }

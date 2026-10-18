@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import FilterSelect from '../components/ui/FilterSelect.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { organizationCategories, studentOrganizations } from '../data/studentOrganizations.js'
 
@@ -35,7 +37,7 @@ export default function StudentOrganizationsPage() {
         title="Student Organizations"
       />
 
-      <div className="organization-directory-controls">
+      <div className="directory-toolbar">
         <label className="organization-search">
           <span aria-hidden="true">⌕</span>
           <input
@@ -46,19 +48,10 @@ export default function StudentOrganizationsPage() {
             value={search}
           />
         </label>
-        <div aria-label="Filter organizations by category" className="organization-category-filters" role="group">
-          {organizationCategories.map((item) => (
-            <button
-              aria-pressed={category === item}
-              className={`organization-category-filter${category === item ? ' is-active' : ''}`}
-              key={item}
-              onClick={() => setCategory(item)}
-              type="button"
-            >
-              {item}
-            </button>
-          ))}
-        </div>
+        <FilterSelect label="Category" onChange={setCategory} options={organizationCategories} value={category} />
+        {(category !== 'All' || search) && (
+          <button className="directory-toolbar-reset" onClick={() => { setCategory('All'); setSearch('') }} type="button">Clear</button>
+        )}
       </div>
 
       <div aria-live="polite" className="organization-results-label">
@@ -85,7 +78,7 @@ export default function StudentOrganizationsPage() {
                 <span><small>Active members</small><strong>{organization.activeMembers}</strong></span>
               </div>
               <Link className="button button-secondary organization-view-button" to={`/student/organizations/${organization.id}`}>
-                View Organization <span aria-hidden="true">→</span>
+                View Organization <Icon name="arrow-right" size={13} />
               </Link>
             </article>
           ))}
