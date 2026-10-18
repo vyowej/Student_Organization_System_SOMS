@@ -619,6 +619,29 @@
   margin-bottom: -10px;
 }
 
+.student-organization-details .fb-body {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 20px;
+}
+
+.student-organization-details {
+  container-type: inline-size;
+}
+
+@container (max-width: 760px) {
+  .student-organization-details .fb-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .student-organization-details .fb-side {
+    order: 2;
+  }
+
+  .student-organization-details .fb-feed {
+    order: 1;
+  }
+}
+
 .student-org-back-link {
   display: inline-flex;
   align-items: center;
@@ -826,6 +849,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -833,6 +857,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+}
+
+.student-announcement-meta > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .student-announcement-meta strong {
@@ -1483,5 +1513,3 @@
   font-size: 12px;
   color: var(--muted, #6f6874);
 }
-
-

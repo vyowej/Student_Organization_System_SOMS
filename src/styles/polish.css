@@ -741,7 +741,7 @@ table.dataTable.no-footer { border-bottom: 0; }
   position: sticky;
   top: 72px;
   z-index: 8;
-  padding: 10px 0;
+  padding: 0px 0;  /* 0px top border + 0px bottom shadow */
   background: var(--canvas);
   box-shadow: 0 10px 12px -12px rgba(31, 26, 29, 0.25);
 }
