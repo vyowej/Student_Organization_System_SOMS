@@ -17,6 +17,7 @@ export const officerPages = [
   { path: 'members', title: 'Members', description: 'View and manage your organization’s member roster.', to: '/officer/members' },
   { path: 'membership-requests', title: 'Membership Requests', description: 'Review students applying to join your organization.', to: '/officer/membership-requests' },
   { path: 'events', title: 'Events', description: 'Manage event proposals and your organization’s activities.', to: '/officer/events' },
+  { path: 'attendance', title: 'Attendance', description: 'Record and review check-ins for your organization’s events.', to: '/officer/attendance' },
   { path: 'events/create', title: 'Create Event Proposal', description: 'Prepare an event proposal for review and approval.', to: '/officer/events/create' },
   { path: 'announcements', title: 'Announcements', description: 'Prepare updates for your organization’s members.', to: '/officer/announcements' },
   { path: 'documents', title: 'Documents', description: 'View organizational documents and submission statuses.', to: '/officer/documents' },

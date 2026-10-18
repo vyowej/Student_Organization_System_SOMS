@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import FilterSelect from '../components/ui/FilterSelect.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { eventCategories, getEventRegistrationState, isEventAlmostFull, studentEvents } from '../data/studentEvents.js'
 import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
@@ -75,7 +77,7 @@ export default function StudentEventsPage() {
         title="Campus Events"
       />
 
-      <div className="event-directory-controls">
+      <div className="directory-toolbar">
         <label className="organization-search event-search">
           <span aria-hidden="true">⌕</span>
           <input
@@ -86,32 +88,11 @@ export default function StudentEventsPage() {
             value={search}
           />
         </label>
-        <div aria-label="Filter events by category" className="organization-category-filters" role="group">
-          {eventCategories.map((item) => (
-            <button
-              aria-pressed={category === item}
-              className={`organization-category-filter${category === item ? ' is-active' : ''}`}
-              key={item}
-              onClick={() => setCategory(item)}
-              type="button"
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-        <div aria-label="Filter events by registration status" className="event-status-filters" role="group">
-          {eventStatusFilters.map((item) => (
-            <button
-              aria-pressed={statusFilter === item}
-              className={`event-status-filter${statusFilter === item ? ' is-active' : ''}`}
-              key={item}
-              onClick={() => setStatusFilter(item)}
-              type="button"
-            >
-              {item}
-            </button>
-          ))}
-        </div>
+        <FilterSelect label="Category" onChange={setCategory} options={eventCategories} value={category} />
+        <FilterSelect label="Status" onChange={setStatusFilter} options={eventStatusFilters} value={statusFilter} />
+        {(category !== 'All' || statusFilter !== 'All' || search) && (
+          <button className="directory-toolbar-reset" onClick={() => { setCategory('All'); setStatusFilter('All'); setSearch('') }} type="button">Clear</button>
+        )}
       </div>
 
       <p aria-live="polite" className="organization-results-label">
@@ -136,8 +117,8 @@ export default function StudentEventsPage() {
                     <h2>{event.title}</h2>
                     <p className="campus-event-organization">{event.organizationName}</p>
                     <div className="campus-event-facts">
-                      <span><b aria-hidden="true">◷</b>{event.time}</span>
-                      <span><b aria-hidden="true">⌖</b>{event.location}</span>
+                      <span><Icon name="clock" size={13} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '4px' }} />{event.time}</span>
+                      <span><Icon name="location" size={13} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '4px' }} />{event.location}</span>
                     </div>
                     <div className="campus-event-availability">
                       <span>Availability</span>
@@ -148,7 +129,7 @@ export default function StudentEventsPage() {
                       </strong>
                     </div>
                     <span className="button button-secondary campus-event-view-button">
-                      View Event <span aria-hidden="true">→</span>
+                      View Event <Icon name="arrow-right" size={13} />
                     </span>
                   </div>
                 </Link>

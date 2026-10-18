@@ -15,6 +15,7 @@ import AdviserReportsPage from './pages/AdviserReportsPage.jsx'
 import AdminPortalPage from './pages/AdminPortalPages.jsx'
 import OfficerDashboardPage from './pages/OfficerDashboardPage.jsx'
 import OfficerAnnouncementsPage from './pages/OfficerAnnouncementsPage.jsx'
+import OfficerAttendancePage from './pages/OfficerAttendancePage.jsx'
 import OfficerDocumentsPage from './pages/OfficerDocumentsPage.jsx'
 import OfficerEventFormPage from './pages/OfficerEventFormPage.jsx'
 import OfficerEventsPage from './pages/OfficerEventsPage.jsx'
@@ -39,6 +40,7 @@ import StudentProfilePage from './pages/StudentProfilePage.jsx'
 import { adminPages, officerPages, studentPages } from './data/navigation.js'
 import { PortalDataProvider } from './context/PortalDataContext.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
+import ErrorBoundary from './components/ui/ErrorBoundary.jsx'
 import './App.css'
 
 const pageTitles = {
@@ -61,6 +63,7 @@ const pageTitles = {
   '/officer/membership-requests': 'Membership Requests',
   '/officer/events': 'Organization Events',
   '/officer/events/create': 'Create Event Proposal',
+  '/officer/attendance': 'Event Attendance',
   '/officer/announcements': 'Announcements',
   '/officer/documents': 'Organization Documents',
   '/officer/reports': 'Activity Reports',
@@ -109,7 +112,8 @@ function App() {
     <AuthProvider>
       <PortalDataProvider>
         <DocumentTitle />
-        <Routes>
+        <ErrorBoundary>
+          <Routes>
           <Route element={<PublicLayout />}>
             <Route index element={<PublicPage page="home" />} />
             <Route path="login" element={<PublicOnly><PublicPage page="login" /></PublicOnly>} />
@@ -144,11 +148,12 @@ function App() {
               <Route path="membership-requests" element={<OfficerMembershipRequestsPage />} />
               <Route path="events" element={<OfficerEventsPage />} />
               <Route path="events/create" element={<OfficerEventFormPage />} />
+              <Route path="attendance" element={<OfficerAttendancePage />} />
               <Route path="announcements" element={<OfficerAnnouncementsPage />} />
               <Route path="settings" element={<OfficerSettingsPage />} />
               <Route path="documents" element={<OfficerDocumentsPage />} />
               <Route path="reports" element={<OfficerReportsPage />} />
-              {pageRoutes(officerPages.filter((page) => !['dashboard', 'organization', 'members', 'membership-requests', 'events', 'events/create', 'announcements', 'documents', 'reports', 'settings'].includes(page.path)), 'Organization Officer')}
+              {pageRoutes(officerPages.filter((page) => !['dashboard', 'organization', 'members', 'membership-requests', 'events', 'events/create', 'attendance', 'announcements', 'documents', 'reports', 'settings'].includes(page.path)), 'Organization Officer')}
             </Route>
           </Route>
           <Route element={<RequireRole role="ADVISER" />}>
@@ -171,6 +176,7 @@ function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </ErrorBoundary>
       </PortalDataProvider>
     </AuthProvider>
   )

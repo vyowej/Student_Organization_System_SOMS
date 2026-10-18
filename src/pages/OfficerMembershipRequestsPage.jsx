@@ -1,67 +1,100 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { formatDisplayName } from '../data/displayName.js'
 
 const statusTones = { PENDING: 'warning', APPROVED: 'success', REJECTED: 'danger' }
-const requestFilters = ['ALL', 'APPROVED', 'REJECTED', 'PENDING']
+const requestFilters = ['ALL', 'PENDING', 'APPROVED', 'REJECTED']
 
 export default function OfficerMembershipRequestsPage() {
   const {
+    adminOrganizations,
     approveOfficerMembershipRequest,
+    captureUndo,
+    currentUser,
     officerMembershipRequests,
     rejectOfficerMembershipRequest,
   } = useOutletContext()
   const { showToast } = useToast()
+  const orgId = currentUser?.organizationId || 'wmsu-cs'
+  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society', acronym: 'CS' }
   const [activeFilter, setActiveFilter] = useState('PENDING')
+  const [search, setSearch] = useState('')
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [approveTarget, setApproveTarget] = useState(null)
   const [rejectTarget, setRejectTarget] = useState(null)
   const [rejectionReason, setRejectionReason] = useState('')
+
   const pending = officerMembershipRequests.filter((request) => request.status === 'PENDING')
-  const history = officerMembershipRequests.filter((request) => ['APPROVED', 'REJECTED'].includes(request.status))
-  const visibleRequests = activeFilter === 'ALL'
-    ? officerMembershipRequests
-    : officerMembershipRequests.filter((request) => request.status === activeFilter)
   const nameOf = formatDisplayName
+
+  const visibleRequests = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return officerMembershipRequests
+      .filter((request) => activeFilter === 'ALL' || request.status === activeFilter)
+      .filter((request) => {
+        if (!query) return true
+        const text = `${nameOf(request)} ${request.studentId} ${request.program} ${request.applicationDate}`.toLowerCase()
+        return text.includes(query)
+      })
+  }, [activeFilter, officerMembershipRequests, search])
 
   function approve() {
     if (!approveTarget) return
+    const undo = captureUndo()
     if (approveOfficerMembershipRequest(approveTarget.id)) {
-      showToast(`${nameOf(approveTarget)} is now an active member.`, 'success')
+      showToast(`${nameOf(approveTarget)} is now an active member.`, 'success', undoAction(undo))
     }
     setApproveTarget(null)
   }
 
   function reject() {
     if (!rejectTarget) return
+    const undo = captureUndo()
     if (rejectOfficerMembershipRequest(rejectTarget.id, rejectionReason)) {
-      showToast(`${nameOf(rejectTarget)}'s application was rejected.`, 'success')
+      showToast(`${nameOf(rejectTarget)}'s application was rejected.`, 'success', undoAction(undo))
     }
     setRejectTarget(null)
     setRejectionReason('')
   }
 
   function requestList(requests) {
+    if (requests.length === 0) {
+      return (
+        <EmptyState
+          title={search ? 'No matching applications' : activeFilter === 'PENDING' ? 'No pending applications' : 'No membership applications'}
+          description={search ? 'Try adjusting your search keywords.' : activeFilter === 'PENDING' ? 'All student membership requests have been processed.' : 'No applications found in this category.'}
+        />
+      )
+    }
+
     return (
       <div className="officer-request-history-list">
         {requests.map((request) => (
           <article className="officer-request-history-card" key={request.id}>
             <div className="officer-request-history-avatar" aria-hidden="true">
-              {nameOf(request).split(/[ ,]+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join('')}
+              {nameOf(request).split(/[ ,]+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()}
             </div>
             <div className="officer-request-history-info">
               <strong>{nameOf(request)}</strong>
               <span>{request.studentId} <i aria-hidden="true">·</i> {request.program}</span>
-              <small>{request.organizationName}</small>
-              <small>Applied {request.applicationDate}</small>
-              {request.status !== 'PENDING' && (
-                <small>Decision: {request.status} on {request.decisionDate} · Processed by {request.processedBy ?? 'Organization Officer'}{request.decisionReason && ` · ${request.decisionReason}`}</small>
+            </div>
+            <div className="officer-request-history-meta">
+              <span>Applied {request.applicationDate}</span>
+              {request.status !== 'PENDING' ? (
+                <small>
+                  {request.status === 'APPROVED' ? 'Approved' : 'Rejected'} {request.decisionDate} · by {request.processedBy ?? 'Organization Officer'}
+                  {request.decisionReason && ` · “${request.decisionReason}”`}
+                </small>
+              ) : (
+                <small>{request.organizationName || organization.name}</small>
               )}
             </div>
             <Badge tone={statusTones[request.status]}>{request.status}</Badge>
@@ -70,56 +103,60 @@ export default function OfficerMembershipRequestsPage() {
               {request.status === 'PENDING' && request.studentId !== 'WMSU-OFFICER-0142' && (
                 <>
                   <Button onClick={() => setApproveTarget(request)} variant="primary">Approve</Button>
-                  <Button onClick={() => { setRejectTarget(request); setRejectionReason('') }} variant="secondary">Reject</Button>
+                  <Button onClick={() => { setRejectTarget(request); setRejectionReason('') }} variant="danger">Reject</Button>
                 </>
               )}
               {request.status === 'PENDING' && request.studentId === 'WMSU-OFFICER-0142' && <span className="officer-readonly-label">Cannot process your own application</span>}
             </div>
           </article>
         ))}
-        {requests.length === 0 && (
-          <p className="officer-inline-empty">
-            {activeFilter === 'PENDING'
-              ? 'There are no membership requests waiting for review.'
-              : 'No membership applications match this filter.'}
-          </p>
-        )}
       </div>
     )
   }
 
   return (
-    <>
+    <div className="officer-page">
       <PageHeader
-        description="Review membership applications for WMSU Computer Society. Decisions affect only your assigned organization."
-        eyebrow="WMSU Computer Society"
+        description={`Review membership applications for ${organization.name}. Decisions affect only your assigned organization.`}
+        eyebrow={organization.name}
         title="Membership Requests"
       />
       <Card className="officer-page-card officer-membership-requests-card">
         <div className="officer-request-filter-heading">
-          <div><h2>{activeFilter === 'PENDING' ? 'Pending Applications' : 'Request History'}</h2><p>Review and track membership applications for WMSU Computer Society.</p></div>
+          <div>
+            <h2>{activeFilter === 'PENDING' ? 'Pending Applications' : activeFilter === 'ALL' ? 'All Applications' : 'Request History'}</h2>
+            <p>Review and track membership applications for {organization.name}.</p>
+          </div>
           <Badge tone="warning">{pending.length} Pending</Badge>
         </div>
-        <div className="officer-request-tabs" role="group" aria-label="Filter membership requests">
-          {requestFilters.map((filter) => {
-            const count = filter === 'ALL'
-              ? officerMembershipRequests.length
-              : officerMembershipRequests.filter((request) => request.status === filter).length
-            const label = filter === 'ALL' ? 'All' : filter.charAt(0) + filter.slice(1).toLowerCase()
-            return (
-              <button
-                aria-pressed={activeFilter === filter}
-                className={activeFilter === filter ? 'is-selected' : ''}
-                key={filter}
-                onClick={() => setActiveFilter(filter)}
-                type="button"
-              >
-                {label} <span>{count}</span>
-              </button>
-            )
-          })}
-          <span className="officer-request-history-label">Request History includes approved and rejected applications ({history.length})</span>
+
+        <div className="officer-toolbar-tabs-row officer-announcements-toolbar" style={{ marginTop: '4px', marginBottom: '16px' }}>
+          <div className="officer-request-tabs" role="group" aria-label="Filter membership requests">
+            {requestFilters.map((filter) => {
+              const count = filter === 'ALL'
+                ? officerMembershipRequests.length
+                : officerMembershipRequests.filter((request) => request.status === filter).length
+              const label = filter === 'ALL' ? 'All' : filter.charAt(0) + filter.slice(1).toLowerCase()
+              return (
+                <button
+                  aria-pressed={activeFilter === filter}
+                  className={activeFilter === filter ? 'is-selected' : ''}
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  type="button"
+                >
+                  {label} <span>{count}</span>
+                </button>
+              )
+            })}
+          </div>
+          <label className="officer-member-search" style={{ margin: 0, minWidth: '220px' }}>
+            <span className="sr-only">Search applicants by name, student ID, or program</span>
+            <Icon name="search" size={16} />
+            <input onChange={(event) => setSearch(event.target.value)} placeholder="Search applicants..." type="search" value={search} />
+          </label>
         </div>
+
         {requestList(visibleRequests)}
       </Card>
 
@@ -130,7 +167,7 @@ export default function OfficerMembershipRequestsPage() {
               <div><dt>Student</dt><dd>{nameOf(selectedRequest)}</dd></div>
               <div><dt>Student ID</dt><dd>{selectedRequest.studentId}</dd></div>
               <div><dt>Program</dt><dd>{selectedRequest.program}</dd></div>
-              <div><dt>Organization</dt><dd>{selectedRequest.organizationName}</dd></div>
+              <div><dt>Organization</dt><dd>{selectedRequest.organizationName || organization.name}</dd></div>
               <div><dt>Applied</dt><dd>{selectedRequest.applicationDate}</dd></div>
               <div><dt>Status</dt><dd><Badge tone={statusTones[selectedRequest.status]}>{selectedRequest.status}</Badge></dd></div>
               {selectedRequest.decisionDate && <div><dt>Decision date</dt><dd>{selectedRequest.decisionDate}</dd></div>}
@@ -153,7 +190,7 @@ export default function OfficerMembershipRequestsPage() {
       </Modal>
 
       <Modal onClose={() => setApproveTarget(null)} open={Boolean(approveTarget)} title="Approve Membership?">
-        <p>{approveTarget && nameOf(approveTarget)} will become an active member of {approveTarget?.organizationName}.</p>
+        <p>{approveTarget && nameOf(approveTarget)} will become an active member of {approveTarget?.organizationName || organization.name}.</p>
         <p className="officer-permission-note">Their position will be set to General Member and the decision will appear in request history.</p>
         <div className="officer-modal-actions">
           <Button onClick={() => setApproveTarget(null)} variant="secondary">Cancel</Button>
@@ -162,7 +199,7 @@ export default function OfficerMembershipRequestsPage() {
       </Modal>
 
       <Modal onClose={() => { setRejectTarget(null); setRejectionReason('') }} open={Boolean(rejectTarget)} title="Reject Membership Application?">
-        <p>Reject {rejectTarget && nameOf(rejectTarget)}&apos;s application to {rejectTarget?.organizationName}?</p>
+        <p>Reject {rejectTarget && nameOf(rejectTarget)}&apos;s application to {rejectTarget?.organizationName || organization.name}?</p>
         <label className="officer-modal-field">
           <span>Optional reason</span>
           <textarea
@@ -175,9 +212,9 @@ export default function OfficerMembershipRequestsPage() {
         </label>
         <div className="officer-modal-actions">
           <Button onClick={() => { setRejectTarget(null); setRejectionReason('') }} variant="secondary">Cancel</Button>
-          <Button onClick={reject} variant="primary">Reject Application</Button>
+          <Button onClick={reject} variant="danger">Reject Application</Button>
         </div>
       </Modal>
-    </>
+    </div>
   )
 }

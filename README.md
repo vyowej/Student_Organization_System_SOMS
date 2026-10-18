@@ -1,16 +1,54 @@
-# React + Vite
+# Student Organization Management System (SOMS)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Welcome to the SOMS project repository! Below are the instructions to set up and run the project locally on your machine.
 
-Currently, two official plugins are available:
+## Getting Started
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+To run this project locally, you will need to set up and start both the frontend and backend servers.
 
-## React Compiler
+### 1. Frontend Setup
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+First, install the necessary dependencies for the frontend project:
 
-## Expanding the ESLint configuration
+```bash
+npm install
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Once the dependencies are installed, start the frontend development server:
+
+```bash
+npm run dev
+```
+
+> [!NOTE]
+> **Work in Progress:** The backend and frontend are not fully configured to work together yet. The following backend instructions are here just in case and also i'm not sure if this is needed 😁
+
+### 2. Backend Setup
+
+Open a new integrated terminal specifically for the `backend` folder. You can do this by right-clicking the `backend` folder and selecting **Open in Integrated Terminal**, or by navigating to it via command line:
+
+```bash
+cd backend
+```
+
+Install the backend dependencies:
+
+```bash
+npm install
+```
+
+> [!WARNING]
+> **Missing Packages?**
+> If you encounter an error stating that a package was not found, manually install the required packages by running the following commands:
+> 
+> ```bash
+> npm install pg express dotenv cors
+> npm install -g nodemon
+> ```
+> *(Note: The `-g` flag installs `nodemon` globally. If you prefer to install it only for this project, omit the `-g` flag.)*
+
+Finally, start the backend development server. This command uses `nodemon`, which will automatically restart the server whenever you make changes to the code:
+
+```bash
+npm run dev
+```

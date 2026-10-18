@@ -1,34 +1,50 @@
+import { initialOfficerMembers } from './officerPortal.js'
+import { studentOrganizations } from './studentOrganizations.js'
+
+function getOrganizationRoles(studentId) {
+  const assignments = initialOfficerMembers.filter((member) => (
+    member.studentId === studentId
+    && member.status === 'ACTIVE'
+    && member.position !== 'General Member'
+  ))
+  return assignments.reduce((roles, member) => {
+    const organization = studentOrganizations.find((item) => item.id === member.organizationId)
+    if (!organization) return roles
+    const existing = roles.find((role) => role.organizationId === member.organizationId)
+    if (existing) existing.positions.push(member.position)
+    else roles.push({
+      organizationId: member.organizationId,
+      organizationName: organization.name,
+      positions: [member.position],
+    })
+    return roles
+  }, [])
+}
+
+const studentOfficerRoles = getOrganizationRoles('WMSU-2026-0142')
+
 export const mockAuthUsers = [
   {
     id: 'auth-student',
     firstName: 'Juan',
     middleName: '',
     lastName: 'Dela Cruz',
-    email: 'student@unidos.test',
+    email: 'student@wmsu.edu.ph',
     password: 'student123',
     role: 'STUDENT',
+    roles: ['STUDENT', ...(studentOfficerRoles.length ? ['OFFICER'] : [])],
+    organizationRoles: studentOfficerRoles,
     status: 'ACTIVE',
     studentId: 'WMSU-2026-0142',
-    organizationId: null,
-  },
-  {
-    id: 'auth-officer',
-    firstName: 'Maria',
-    middleName: '',
-    lastName: 'Santos',
-    email: 'officer@unidos.test',
-    password: 'officer123',
-    role: 'OFFICER',
-    status: 'ACTIVE',
-    studentId: 'WMSU-OFFICER-0142',
-    organizationId: 'computer-society',
+    program: 'BSCS',
+    yearLevel: '2nd Year',
   },
   {
     id: 'auth-adviser',
     firstName: 'Ana',
     middleName: '',
     lastName: 'Reyes',
-    email: 'adviser@unidos.test',
+    email: 'adviser@wmsu.edu.ph',
     password: 'adviser123',
     role: 'ADVISER',
     status: 'ACTIVE',
@@ -39,7 +55,7 @@ export const mockAuthUsers = [
     firstName: 'John',
     middleName: '',
     lastName: 'Garcia',
-    email: 'admin@unidos.test',
+    email: 'admin@wmsu.edu.ph',
     password: 'admin123',
     role: 'ADMIN',
     status: 'ACTIVE',

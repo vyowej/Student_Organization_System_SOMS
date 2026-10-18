@@ -5,12 +5,14 @@ import PageHeader from '../components/layout/PageHeader.jsx'
 import { formatDisplayName } from '../data/displayName.js'
 import { useOutletContext } from 'react-router-dom'
 import { studentEvents } from '../data/studentEvents.js'
+import { findStudentEvent } from '../data/officerStudentEvent.js'
+import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 
 export default function StudentEventPassPage() {
   const { registrationId } = useParams()
-  const { currentUser, studentRegistrations } = useOutletContext()
+  const { currentUser, officerEvents, studentRegistrations } = useOutletContext()
   const registration = studentRegistrations.find((item) => item.id === registrationId)
-  const event = registration && studentEvents.find((item) => item.id === registration.eventId)
+  const event = registration && findStudentEvent(registration.eventId, officerEvents, studentEvents)
 
   if (!registration || !event || registration.status === 'CANCELLED') {
     return (
@@ -33,12 +35,14 @@ export default function StudentEventPassPage() {
       />
       <Card className="student-event-pass">
         <div className="event-pass-brand">
-          <span aria-hidden="true" className="event-pass-seal">WMSU</span>
+          <WmsuLogo className="event-pass-seal" />
           <span><strong>UNIDOS</strong><small>Student Organization Management System</small></span>
         </div>
         <div className="event-pass-heading">
           <span>EVENT PASS</span>
-          <Badge tone="success">REGISTERED</Badge>
+          <Badge tone={registration.attendanceStatus === 'ATTENDED' ? 'success' : registration.attendanceStatus === 'ABSENT' ? 'danger' : 'warning'}>
+            {registration.attendanceStatus}
+          </Badge>
         </div>
         <h2>{event.title}</h2>
         <div className="event-pass-facts">
@@ -46,10 +50,11 @@ export default function StudentEventPassPage() {
           <div><span>Date</span><strong>{event.date}</strong></div>
           <div><span>Time</span><strong>{event.time}</strong></div>
           <div><span>Location</span><strong>{event.location}</strong></div>
-          <div><span>Registration ID</span><strong>{registration.id}</strong></div>
+          <div className="event-pass-registration-code"><span>Registration code</span><strong>{registration.id}</strong></div>
+          {registration.checkInTime && <div><span>Checked in</span><strong>{registration.checkInTime}</strong></div>}
         </div>
         <div className="event-pass-footer">
-          <span>This mock digital pass does not include QR scanning.</span>
+          <span>Show this registration code to the event organizer for attendance check-in.</span>
           <Link to="/student/registrations">Back to My Registrations</Link>
         </div>
       </Card>

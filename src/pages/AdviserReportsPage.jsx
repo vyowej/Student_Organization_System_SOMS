@@ -4,8 +4,9 @@ import AdviserReviewDialog from '../components/adviser/AdviserReviewDialog.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { useToast } from '../components/ui/useToast.js'
+import { undoAction, useToast } from '../components/ui/useToast.js'
 import { useAuth } from '../context/useAuth.js'
 import { formatDisplayName } from '../data/displayName.js'
 
@@ -17,20 +18,16 @@ const statusLabels = {
 
 const statusTone = { PENDING_VERIFICATION: 'warning', VERIFIED: 'success', RETURNED: 'danger' }
 
-function ReportIcon({ name }) {
-  const paths = {
-    calendar: <><rect height="15" rx="2" width="16" x="4" y="5" /><path d="M8 3v4m8-4v4M4 10h16" /></>,
-    attendance: <><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1a5.5 5.5 0 0 1 11 0v1zm12-8a3 3 0 1 0 0-6m1.5 8a5.5 5.5 0 0 1 3.5 5" /></>,
-    organization: <><path d="M4 20V7l8-4 8 4v13M2 20h20M8 10h2m4 0h2m-8 4h2m4 0h2m-5 6v-4h2v4" /></>,
-    document: <><path d="M7 3h7l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M14 3v5h5M9 13h6m-6 4h6" /></>,
-    search: <><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.5 4.5" /></>,
-  }
-
-  return <svg aria-hidden="true" className="adviser-report-icon" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" viewBox="0 0 24 24">{paths[name]}</svg>
-}
-
 function ReportFact({ icon, label, value }) {
-  return <span className="adviser-report-fact"><ReportIcon name={icon} /><span><small>{label}</small><strong>{value || 'Not provided'}</strong></span></span>
+  return (
+    <span className="adviser-report-fact">
+      <Icon className="adviser-report-icon" name={icon} size={16} />
+      <span>
+        <small>{label}</small>
+        <strong>{value || 'Not provided'}</strong>
+      </span>
+    </span>
+  )
 }
 
 function getTurnout(report) {
@@ -42,7 +39,7 @@ function getTurnout(report) {
 }
 
 export default function AdviserReportsPage() {
-  const { adviserReports, reviewAccomplishmentReport } = useOutletContext()
+  const { adviserReports, captureUndo, reviewAccomplishmentReport } = useOutletContext()
   const { currentUser } = useAuth()
   const { showToast } = useToast()
   const [selected, setSelected] = useState(null)
@@ -82,11 +79,13 @@ export default function AdviserReportsPage() {
 
   function decide(decision, comment) {
     if (!selected) return
+    const undo = captureUndo()
     const saved = reviewAccomplishmentReport(selected.id, decision, comment)
     if (saved) showToast(decision === 'VERIFIED'
-      ? `${selected.eventTitle} report verified.`
-      : `${selected.eventTitle} report returned for revision.`, 'success')
+      ? 'Accomplishment report verified successfully.'
+      : `${selected.eventTitle} report returned for revision.`, 'success', undoAction(undo))
     else showToast('The report decision could not be saved.', 'error')
+    return saved
   }
 
   const summaries = [
@@ -97,20 +96,22 @@ export default function AdviserReportsPage() {
   ]
 
   return (
-    <>
+    <div className="adviser-page">
       <PageHeader
         description="Review, verify, and monitor activity reports submitted by your assigned organizations."
         eyebrow="UNIDOS · FACULTY ADVISER"
         title="Activity & Accomplishment Reports"
-      />
-      <section aria-label="Report summary" className="adviser-report-summary-grid">
-        {summaries.map((summary) => (
-          <article className={`adviser-report-summary-card adviser-report-summary-${summary.key}`} key={summary.key}>
-            <span className="adviser-report-summary-icon"><ReportIcon name={summary.icon} /></span>
-            <div><span>{summary.label}</span><strong>{summary.value}</strong><small>{summary.support}</small></div>
-          </article>
-        ))}
-      </section>
+      >
+        <section aria-label="Report summary" className="adviser-report-summary-grid">
+          {summaries.map((summary) => (
+            <article className={`adviser-report-summary-card adviser-report-summary-${summary.key}`} key={summary.key}>
+              <span className="stat-label">{summary.label}</span>
+              <strong className="stat-value">{summary.value}</strong>
+              <small className="stat-note">{summary.support}</small>
+            </article>
+          ))}
+        </section>
+      </PageHeader>
 
       <section aria-label="Activity reports" className="adviser-reports-section">
         <div className="adviser-reports-heading">
@@ -119,7 +120,7 @@ export default function AdviserReportsPage() {
         </div>
         <div className="adviser-report-toolbar">
           <label className="adviser-report-search">
-            <ReportIcon name="search" />
+            <Icon name="search" />
             <span className="visually-hidden">Search reports</span>
             <input onChange={(event) => setSearch(event.target.value)} placeholder="Search Reports" type="search" value={search} />
           </label>
@@ -145,7 +146,7 @@ export default function AdviserReportsPage() {
             {visibleReports.map((report) => (
               <article className="adviser-report-card-modern" key={report.id}>
                 <div className="adviser-report-card-top">
-                  <span className="adviser-report-organization"><ReportIcon name="organization" />{report.organizationName}</span>
+                  <span className="adviser-report-organization"><Icon name="organization" />{report.organizationName}</span>
                   <Badge tone={statusTone[report.status] ?? 'neutral'}>{statusLabels[report.status] ?? report.status?.replaceAll('_', ' ')}</Badge>
                 </div>
                 <h3>{report.eventTitle}</h3>
@@ -156,9 +157,9 @@ export default function AdviserReportsPage() {
                 </div>
                 <div className={`adviser-report-card-state adviser-report-state-${report.status?.toLowerCase()}`}>
                   {report.status === 'VERIFIED'
-                    ? <><span className="adviser-report-state-mark">✓</span><span>Verified by {report.verifiedBy || adviserName}{report.decisionDate ? ` · ${report.decisionDate}` : ''}</span></>
+                    ? <><span className="adviser-report-state-mark"><Icon name="check" size={14} strokeWidth={2.5} /></span><span>Verified by {report.verifiedBy || adviserName}{report.decisionDate ? ` · ${report.decisionDate}` : ''}</span></>
                     : report.status === 'RETURNED'
-                      ? <><span className="adviser-report-state-mark">!</span><span>Returned for revision{report.revisionNote ? ` · ${report.revisionNote}` : ''}</span></>
+                      ? <><span className="adviser-report-state-mark"><Icon name="alert-circle" size={14} /></span><span>Returned for revision{report.revisionNote ? ` · ${report.revisionNote}` : ''}</span></>
                       : <><span className="adviser-report-state-mark">•</span><span>Awaiting adviser verification</span></>}
                 </div>
                 <div className="adviser-report-card-footer">
@@ -187,6 +188,6 @@ export default function AdviserReportsPage() {
         verifiedBy={adviserName}
         turnout={selected ? getTurnout(selected) : null}
       />
-    </>
+    </div>
   )
 }

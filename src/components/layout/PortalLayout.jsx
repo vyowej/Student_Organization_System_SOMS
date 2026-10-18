@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { roleNavigation } from '../../data/navigation.js'
 import { studentDashboardNotifications } from '../../data/studentDashboard.js'
-import { initialStudentRegistrations, studentEvents } from '../../data/studentEvents.js'
+import { studentEvents } from '../../data/studentEvents.js'
 import { usePortalData } from '../../context/usePortalData.js'
 import { useAuth } from '../../context/useAuth.js'
 import Navbar from './Navbar.jsx'
 import Sidebar from './Sidebar.jsx'
+import UndoBar from '../ui/UndoBar.jsx'
+import ErrorBoundary from '../ui/ErrorBoundary.jsx'
 
 export default function PortalLayout({ role }) {
   const sharedPortalData = usePortalData()
@@ -15,11 +17,27 @@ export default function PortalLayout({ role }) {
   const [readNotificationIds, setReadNotificationIds] = useState(() =>
     studentDashboardNotifications.filter((notification) => !notification.unread).map((notification) => notification.id),
   )
-  const [studentRegistrations, setStudentRegistrations] = useState(initialStudentRegistrations)
   const [eventRegisteredCounts, setEventRegisteredCounts] = useState(() =>
     Object.fromEntries(studentEvents.map((event) => [event.id, event.registeredCount])),
   )
+  const studentId = currentUser?.studentId ?? currentUser?.id
+  const studentRegistrations = role === 'Student'
+    ? sharedPortalData.studentRegistrations.filter((registration) => registration.studentId === studentId)
+    : sharedPortalData.studentRegistrations
   const navigation = roleNavigation[role]
+
+  // While the mobile drawer is open: lock page scroll and let Escape close it.
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const closeOnEscape = (event) => { if (event.key === 'Escape') setMenuOpen(false) }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [menuOpen])
 
   function markNotificationRead(id) {
     setReadNotificationIds((currentIds) => (
@@ -28,33 +46,41 @@ export default function PortalLayout({ role }) {
   }
 
   function registerForEvent(eventId) {
-    const existingRegistration = studentRegistrations.find((registration) => (
-      registration.eventId === eventId && registration.status === 'REGISTERED'
-    ))
-    if (existingRegistration) return existingRegistration
-
-    const registrationDate = new Intl.DateTimeFormat('en-US', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    }).format(new Date())
-    const registrationNumber = String(Date.now()).slice(-6)
-    const registration = {
-      id: `UNIDOS-REG-${registrationNumber}`,
+    const currentRegisteredCount = eventRegisteredCounts[eventId]
+      ?? sharedPortalData.officerEvents.find((event) => event.id === eventId)?.registrations
+      ?? 0
+    const registration = sharedPortalData.registerStudentForEvent(
       eventId,
-      studentId: currentUser?.studentId ?? currentUser?.id ?? 'WMSU-2026-0142',
-      registrationDate,
-      status: 'REGISTERED',
-      attendanceStatus: 'PENDING',
-      checkInTime: null,
+      currentRegisteredCount,
+    )
+    if (registration && !studentRegistrations.some((item) => item.id === registration.id)) {
+      setEventRegisteredCounts((currentCounts) => ({
+        ...currentCounts,
+        [eventId]: currentRegisteredCount + 1,
+      }))
     }
-
-    setStudentRegistrations((currentRegistrations) => [...currentRegistrations, registration])
-    setEventRegisteredCounts((currentCounts) => ({
-      ...currentCounts,
-      [eventId]: (currentCounts[eventId] ?? 0) + 1,
-    }))
     return registration
+  }
+
+  function cancelRegistration(registrationId) {
+    const cancelled = sharedPortalData.cancelStudentRegistration(registrationId)
+    if (cancelled) {
+      setEventRegisteredCounts((currentCounts) => ({
+        ...currentCounts,
+        [cancelled.eventId]: Math.max(0, (currentCounts[cancelled.eventId] ?? 1) - 1),
+      }))
+    }
+    return cancelled
+  }
+
+  // Undo must also restore the per-event registration counts kept in this layout.
+  function captureUndo() {
+    const restoreSharedData = sharedPortalData.captureUndo()
+    const countsSnapshot = eventRegisteredCounts
+    return function undo() {
+      restoreSharedData()
+      setEventRegisteredCounts(countsSnapshot)
+    }
   }
 
   const outletContext = role === 'Student'
@@ -65,24 +91,47 @@ export default function PortalLayout({ role }) {
       markStudentNotificationRead: sharedPortalData.markStudentNotificationRead,
       readNotificationIds,
       registerForEvent,
+      cancelRegistration,
       studentRegistrations,
       currentUser,
     }
     : role === 'Organization Officer'
       ? {
         ...sharedPortalData,
+        captureUndo,
         studentRegistrations,
-          currentUser,
-        }
+        currentUser,
+      }
       : role === 'Organization Adviser'
-          ? { ...sharedPortalData, currentUser }
+        ? { ...sharedPortalData, captureUndo, currentUser }
         : role === 'Student Affairs Admin'
-            ? { ...sharedPortalData, currentUser, studentRegistrations }
+          ? { ...sharedPortalData, captureUndo, currentUser, studentRegistrations }
           : undefined
+
+  const unreadNotificationCount = role === 'Student'
+    ? [
+        ...(sharedPortalData.studentNotifications || []).map((n) => ({
+          id: n.id,
+          read: Boolean(n.read),
+        })),
+        ...studentDashboardNotifications
+          .filter((n) => !(sharedPortalData.studentNotifications || []).some((sn) => sn.id === n.id))
+          .map((n) => ({
+            id: n.id,
+            read: !n.unread || readNotificationIds.includes(n.id),
+          })),
+      ].filter((n) => !n.read).length
+    : role === 'Organization Officer'
+      ? (sharedPortalData.officerNotifications || []).filter((n) => !n.read).length
+      : role === 'Student Affairs Admin'
+        ? (sharedPortalData.adminNotifications || []).filter((n) => !n.read).length
+        : 0
 
   return (
     <div className={`app-shell portal-layout${menuOpen ? ' sidebar-open' : ''}`}>
       <Navbar
+        isMenuOpen={menuOpen}
+        notificationCount={unreadNotificationCount}
         notificationLink={navigation.notifications}
         onMenuClick={() => setMenuOpen((open) => !open)}
         profileLink={navigation.profile}
@@ -97,9 +146,12 @@ export default function PortalLayout({ role }) {
             type="button"
           />
         )}
-        <Sidebar onNavigate={() => setMenuOpen(false)} pages={navigation.pages} role={role} />
+        <Sidebar notificationCount={unreadNotificationCount} onNavigate={() => setMenuOpen(false)} pages={navigation.pages} role={role} />
         <main className="portal-main">
-          <Outlet context={outletContext} />
+          <UndoBar />
+          <ErrorBoundary>
+            <Outlet context={outletContext} />
+          </ErrorBoundary>
         </main>
       </div>
     </div>
