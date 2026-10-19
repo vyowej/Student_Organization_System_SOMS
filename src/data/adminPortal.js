@@ -1,3 +1,10 @@
+/**
+ * Student Affairs Admin Portal Seed Data
+ *
+ * Initial organizations, accreditation applications, users, audit logs,
+ * notifications, and system settings corresponding to `/api/organizations`,
+ * `/api/users`, `/api/audit-logs`, and `/api/notifications`.
+ */
 import { adviserProfile } from './adviserPortal.js'
 import { studentOrganizations } from './studentOrganizations.js'
 import { officerOrganization } from './officerPortal.js'

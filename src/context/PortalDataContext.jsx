@@ -1,3 +1,11 @@
+/**
+ * Portal Data Context Provider
+ *
+ * Centralizes state and actions across the Student, Officer, Adviser, and
+ * Admin portals (memberships, event proposals/registrations, document/report
+ * reviews, notifications, and audit logs), corresponding to the tables in
+ * `database/student_org_db.sql` and REST routes in `backend/routes/`.
+ */
 import { useEffect, useRef, useState } from 'react'
 import { initialStudentMemberships, studentOrganizations } from '../data/studentOrganizations.js'
 import {
@@ -21,10 +29,12 @@ import PortalDataContext from './PortalData.js'
 import { useAuth } from './useAuth.js'
 import { formatDisplayName } from '../data/displayName.js'
 
+// Officer positions that can only be assigned to one active member per organization
 const exclusiveOfficerPositions = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor', 'PIO']
 const legacyOfficerStudentId = 'WMSU-OFFICER-0142'
 const membershipSessionKey = 'unidos-membership-state'
 
+// Normalizes stored session records to ensure consistent display names and emails
 function normalizeLegacyDemoNames(value, parentKey = '') {
   if (Array.isArray(value)) return value.map((item) => normalizeLegacyDemoNames(item, parentKey))
   if (!value || typeof value !== 'object') return value

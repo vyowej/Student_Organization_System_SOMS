@@ -1,3 +1,10 @@
+/**
+ * Shared Portal Layout Shell
+ *
+ * Wraps authenticated role portals (Student, Officer, Adviser, Admin) with
+ * the top Navbar, collapsible Sidebar, UndoBar, ErrorBoundary, and role-scoped
+ * React Router Outlet context.
+ */
 import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { roleNavigation } from '../../data/navigation.js'

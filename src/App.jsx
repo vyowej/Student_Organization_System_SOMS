@@ -90,6 +90,7 @@ function DocumentTitle() {
     pageTitle = pageKey.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Student Organization Management System'
   }
 
+  // Synchronize browser tab title with current route
   useEffect(() => {
     document.title = `UNIDOS | ${pageTitle}`
   }, [pageTitle])
@@ -97,6 +98,7 @@ function DocumentTitle() {
   return null
 }
 
+// Helper for rendering fallback placeholder routes for pages under construction
 function pageRoutes(pages, role) {
   return pages.map((page) => (
     <Route
@@ -107,6 +109,12 @@ function pageRoutes(pages, role) {
   ))
 }
 
+/**
+ * Root Application Router (src/App.jsx)
+ *
+ * Wraps the application in AuthProvider and PortalDataProvider and defines
+ * role-protected route trees for Public, Student, Officer, Adviser, and Admin portals.
+ */
 function App() {
   return (
     <AuthProvider>
@@ -114,6 +122,7 @@ function App() {
         <DocumentTitle />
         <ErrorBoundary>
           <Routes>
+          {/* Public landing and authentication routes */}
           <Route element={<PublicLayout />}>
             <Route index element={<PublicPage page="home" />} />
             <Route path="login" element={<PublicOnly><PublicPage page="login" /></PublicOnly>} />
@@ -122,6 +131,7 @@ function App() {
             <Route path="access-denied" element={<AccessDeniedPage />} />
           </Route>
 
+          {/* Student portal routes */}
           <Route element={<RequireRole role="STUDENT" />}>
             <Route path="student" element={<StudentLayout />}>
               <Route index element={<Navigate to="dashboard" replace />} />
@@ -139,6 +149,7 @@ function App() {
               {pageRoutes(studentPages.filter((page) => !['dashboard', 'organizations', 'organizations/:id', 'my-organizations', 'events', 'events/:id', 'registrations', 'attendance', 'notifications', 'profile'].includes(page.path)), 'Student')}
             </Route>
           </Route>
+          {/* Organization Officer portal routes */}
           <Route element={<RequireRole role="OFFICER" />}>
             <Route path="officer" element={<OfficerLayout />}>
               <Route index element={<Navigate to="dashboard" replace />} />
@@ -156,6 +167,7 @@ function App() {
               {pageRoutes(officerPages.filter((page) => !['dashboard', 'organization', 'members', 'membership-requests', 'events', 'events/create', 'attendance', 'announcements', 'documents', 'reports', 'settings'].includes(page.path)), 'Organization Officer')}
             </Route>
           </Route>
+          {/* Faculty Adviser portal routes */}
           <Route element={<RequireRole role="ADVISER" />}>
             <Route path="adviser" element={<AdviserLayout />}>
               <Route index element={<Navigate to="dashboard" replace />} />
@@ -167,6 +179,7 @@ function App() {
               <Route path="reports" element={<AdviserReportsPage />} />
             </Route>
           </Route>
+          {/* Student Affairs Admin portal routes */}
           <Route element={<RequireRole role="ADMIN" />}>
             <Route path="admin" element={<AdminLayout />}>
               <Route index element={<Navigate to="dashboard" replace />} />

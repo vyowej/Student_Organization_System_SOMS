@@ -1,7 +1,13 @@
+/**
+ * User Notifications Routes (backend/routes/notifications.js)
+ *
+ * Links to the `notifications` table in ../database/student_org_db.sql.
+ */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET /api/notifications/user/:user_id — List notifications for a user (optional ?unread=true filter)
 router.get('/user/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -24,6 +30,7 @@ router.get('/user/:user_id', async (req, res) => {
   }
 });
 
+// GET /api/notifications/user/:user_id/count — Count unread notifications (uses idx_notifications_user_unread)
 router.get('/user/:user_id/count', async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -38,6 +45,7 @@ router.get('/user/:user_id/count', async (req, res) => {
   }
 });
 
+// PUT /api/notifications/:id/read — Mark a single notification as read
 router.put('/:id/read', async (req, res) => {
   try {
     const { id } = req.params;
@@ -56,6 +64,7 @@ router.put('/:id/read', async (req, res) => {
   }
 });
 
+// PUT /api/notifications/user/:user_id/read-all — Mark all unread notifications for a user as read
 router.put('/user/:user_id/read-all', async (req, res) => {
   try {
     const { user_id } = req.params;
@@ -70,6 +79,7 @@ router.put('/user/:user_id/read-all', async (req, res) => {
   }
 });
 
+// POST /api/notifications — Create a new notification for a user
 router.post('/', async (req, res) => {
   try {
     const { user_id, type, title, message } = req.body;
@@ -91,6 +101,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+// DELETE /api/notifications/:id — Delete a notification by ID
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -107,3 +118,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+

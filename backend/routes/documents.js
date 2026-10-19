@@ -1,7 +1,14 @@
+/**
+ * Organization Documents Routes (backend/routes/documents.js)
+ *
+ * Links to the `documents` table (`document_type` and `document_status` ENUMs)
+ * in ../database/student_org_db.sql.
+ */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET /api/documents/org/:organization_id — List documents for an organization with optional type/status filters
 router.get('/org/:organization_id', async (req, res) => {
   try {
     const { organization_id } = req.params;
@@ -39,6 +46,7 @@ router.get('/org/:organization_id', async (req, res) => {
   }
 });
 
+// GET /api/documents/:id — Retrieve a single document record by ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -64,6 +72,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// POST /api/documents — Submit a new organization document (defaults to PENDING status)
 router.post('/', async (req, res) => {
   try {
     const { organization_id, type, title, file_url, uploaded_by } = req.body;
@@ -74,6 +83,7 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Matches document_type ENUM in database/student_org_db.sql
     const validTypes = ['CONSTITUTION', 'PROPOSAL', 'FINANCIAL', 'REPORT', 'CERTIFICATE'];
     if (!validTypes.includes(type)) {
       return res.status(400).json({
@@ -96,6 +106,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/documents/:id/review — Approve or reject a submitted document
 router.put('/:id/review', async (req, res) => {
   try {
     const { id } = req.params;
@@ -127,6 +138,7 @@ router.put('/:id/review', async (req, res) => {
   }
 });
 
+// DELETE /api/documents/:id — Delete a document record by ID
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -144,3 +156,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+

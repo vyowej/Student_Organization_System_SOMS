@@ -1,3 +1,9 @@
+/**
+ * Officer-to-Student Event Normalization Utilities
+ *
+ * Maps officer-created event records into the student event schema so approved
+ * organization events appear in the Student Portal events catalog.
+ */
 export function officerEventToStudentEvent(event) {
   return {
     ...event,

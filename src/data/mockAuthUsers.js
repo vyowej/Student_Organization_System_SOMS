@@ -1,6 +1,13 @@
+/**
+ * Demo Authentication Accounts & Role Routing Constants
+ *
+ * Seeded WMSU accounts and role-to-dashboard mappings used by `AuthContext`
+ * and `RequireRole`.
+ */
 import { initialOfficerMembers } from './officerPortal.js'
 import { studentOrganizations } from './studentOrganizations.js'
 
+// Derives active officer organization assignments for a student ID
 function getOrganizationRoles(studentId) {
   const assignments = initialOfficerMembers.filter((member) => (
     member.studentId === studentId

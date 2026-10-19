@@ -1,3 +1,9 @@
+/**
+ * Portal Sidebar Navigation
+ *
+ * Renders role-specific navigation links and optional section groupings for
+ * the Student Affairs Admin portal.
+ */
 import { Fragment } from 'react'
 import { NavLink } from 'react-router-dom'
 

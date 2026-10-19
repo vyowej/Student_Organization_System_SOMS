@@ -1,3 +1,9 @@
+/**
+ * Public Landing & Authentication Pages
+ *
+ * Renders the public home view (`LandingPage`) as well as WMSU email sign-in,
+ * student registration, and password reset forms.
+ */
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Card from '../components/ui/Card.jsx'

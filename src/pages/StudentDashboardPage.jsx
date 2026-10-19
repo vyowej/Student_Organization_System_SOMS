@@ -1,3 +1,9 @@
+/**
+ * Student Portal Dashboard Page (`/student/dashboard`)
+ *
+ * Displays personalized greetings, organization membership counts, upcoming
+ * campus events, and recent membership/event updates for the signed-in student.
+ */
 import { useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { formatGreetingName, getTimeGreeting } from '../data/displayName.js'

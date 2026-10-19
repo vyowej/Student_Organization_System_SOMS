@@ -1,3 +1,6 @@
+/**
+ * Hook for accessing shared portal data and workflow actions from PortalDataContext.
+ */
 import { useContext } from 'react'
 import PortalDataContext from './PortalData.js'
 

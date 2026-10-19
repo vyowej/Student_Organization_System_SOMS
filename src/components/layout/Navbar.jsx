@@ -1,3 +1,10 @@
+/**
+ * Portal Top Navigation Bar
+ *
+ * Displays the UNIDOS brand, active portal role label, user display name,
+ * Officer-to-Student portal switcher, unread notification badge, profile link,
+ * and logout confirmation modal.
+ */
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/useAuth.js'

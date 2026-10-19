@@ -1,3 +1,10 @@
+/**
+ * Organization Officer Portal Seed Data
+ *
+ * Initial organization workspace details, membership applications, member
+ * roster, and event proposals corresponding to `/api/members`, `/api/events`,
+ * and `/api/announcements`.
+ */
 export const officerOrganization = {
   id: 'computer-society',
   name: 'WMSU Computer Society',

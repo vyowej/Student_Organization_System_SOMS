@@ -1,3 +1,9 @@
+/**
+ * Student Portal Dashboard Seed Data
+ *
+ * Initial summary metrics, active organization memberships, upcoming events,
+ * and notifications displayed on the Student Portal dashboard.
+ */
 import { upcomingEvents } from './landingPage.js'
 
 export const studentDashboardMetrics = [

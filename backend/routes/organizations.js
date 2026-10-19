@@ -1,7 +1,15 @@
+/**
+ * Student Organizations Routes (backend/routes/organizations.js)
+ *
+ * Links to `organizations` and `organization_advisers` tables in
+ * ../database/student_org_db.sql, enforcing `chk_org_scope` and
+ * `fk_org_department_college`.
+ */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET /api/organizations — Fetch all active student organizations with college and department names
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(`
@@ -21,6 +29,7 @@ router.get('/', async (req, res) => {
   }
 });
 
+// POST /api/organizations — Propose/create an organization respecting chk_org_scope in database/student_org_db.sql
 router.post('/', async (req, res) => {
   try {
     const {
@@ -40,14 +49,39 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Organization name is required' });
     }
 
-    const collegeIdVal = college_id || null;
-    const departmentIdVal = department_id || null;
+    let collegeIdVal = college_id || null;
+    let departmentIdVal = department_id || null;
 
+    // Infer or normalize scope so it satisfies chk_org_scope in database/student_org_db.sql:
+    // UNIVERSITY -> college_id IS NULL AND department_id IS NULL
+    // COLLEGE    -> college_id IS NOT NULL AND department_id IS NULL
+    // DEPARTMENT -> college_id IS NOT NULL AND department_id IS NOT NULL
     let orgScope = scope;
     if (!orgScope) {
       if (departmentIdVal && collegeIdVal) orgScope = 'DEPARTMENT';
       else if (collegeIdVal) orgScope = 'COLLEGE';
       else orgScope = 'UNIVERSITY';
+    } else if (orgScope === 'UNIVERSITY') {
+      collegeIdVal = null;
+      departmentIdVal = null;
+    } else if (orgScope === 'COLLEGE') {
+      departmentIdVal = null;
+      if (!collegeIdVal) {
+        return res.status(400).json({ error: 'college_id is required when scope is COLLEGE' });
+      }
+    } else if (orgScope === 'DEPARTMENT') {
+      if (!departmentIdVal) {
+        return res.status(400).json({ error: 'department_id is required when scope is DEPARTMENT' });
+      }
+      // If college_id was omitted for a DEPARTMENT org, look it up from the departments table
+      if (!collegeIdVal) {
+        const deptRes = await db.query('SELECT college_id FROM departments WHERE id = $1', [departmentIdVal]);
+        if (deptRes.rows.length > 0) {
+          collegeIdVal = deptRes.rows[0].college_id;
+        } else {
+          return res.status(400).json({ error: 'Valid college_id and department_id are required for DEPARTMENT scope' });
+        }
+      }
     }
 
     const orgTypeVal = org_type || 'OTHER';
@@ -73,6 +107,7 @@ router.post('/', async (req, res) => {
 
     const createdOrg = result.rows[0];
 
+    // Optionally link an initial adviser in organization_advisers
     if (adviser_id) {
       try {
         await db.query(
@@ -95,6 +130,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/organizations/:id/approve — Approve a pending organization and mark it ACTIVE
 router.put('/:id/approve', async (req, res) => {
   try {
     const { id } = req.params;
@@ -122,3 +158,4 @@ router.put('/:id/approve', async (req, res) => {
 });
 
 module.exports = router;
+

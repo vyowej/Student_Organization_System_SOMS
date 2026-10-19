@@ -1,3 +1,9 @@
+/**
+ * Faculty Adviser Dashboard Page (`/adviser/dashboard`)
+ *
+ * Summarizes assigned student organizations, pending event proposals,
+ * compliance documents, and accomplishment reports awaiting adviser review.
+ */
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Card from '../components/ui/Card.jsx'

@@ -1,3 +1,10 @@
+/**
+ * Organization Adviser Portal Seed Data
+ *
+ * Initial adviser profile, assigned organizations, compliance documents,
+ * activity reports, and review history corresponding to `/api/advisers`
+ * and `/api/documents`.
+ */
 import { officerOrganization } from './officerPortal.js'
 
 export const adviserProfile = {

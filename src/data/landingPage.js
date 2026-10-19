@@ -1,3 +1,9 @@
+/**
+ * Public Landing Page Seed Data
+ *
+ * Provides categories, featured student leaders, organizations, upcoming
+ * campus events, and community highlights displayed on the public home page.
+ */
 export const organizationCategories = [
   'All',
   'Academic',

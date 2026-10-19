@@ -1,3 +1,9 @@
+-- ============================================================
+-- Local Fallback Schema Copy (backend/schema/schema_student_db.sql)
+-- Note: The primary linked schema used by backend/db.js and
+-- backend/init-db.js is located at ../../database/student_org_db.sql.
+-- This file serves as a local reset/fallback copy inside backend/schema/.
+-- ============================================================
 DROP TABLE IF EXISTS audit_logs CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS announcements CASCADE;

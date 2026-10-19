@@ -1,3 +1,9 @@
+/**
+ * Frontend Application Entry Point (src/main.jsx)
+ *
+ * Mounts the React root with BrowserRouter, global Toast notifications,
+ * and shared CSS stylesheets for the UNIDOS / SOMS portal.
+ */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
@@ -17,3 +23,4 @@ createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </StrictMode>,
 )
+

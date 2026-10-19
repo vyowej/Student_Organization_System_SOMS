@@ -1,7 +1,13 @@
+/**
+ * Organization Announcements Routes (backend/routes/announcements.js)
+ *
+ * Links to the `announcements` table in ../database/student_org_db.sql.
+ */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET /api/announcements — List announcements across organizations (newest first)
 router.get('/', async (req, res) => {
   try {
     const { organization_id, limit } = req.query;
@@ -38,6 +44,7 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/announcements/:id — Fetch a single announcement by ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -64,6 +71,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// POST /api/announcements — Publish a new announcement for an organization
 router.post('/', async (req, res) => {
   try {
     const { organization_id, title, content, created_by } = req.body;
@@ -86,6 +94,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/announcements/:id — Update an existing announcement's title or content
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -110,6 +119,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// DELETE /api/announcements/:id — Delete an announcement by ID
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -126,3 +136,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+

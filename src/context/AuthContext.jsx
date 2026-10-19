@@ -1,3 +1,10 @@
+/**
+ * Authentication Context Provider
+ *
+ * Manages session state, WMSU email login, student registration, and active
+ * role/workspace switching across Student, Officer, Adviser, and Admin portals.
+ * Maps to the backend `/api/users` and `/api/academic` endpoints.
+ */
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
 import { authSessionKey, mockAuthUsers, registeredUsersKey } from '../data/mockAuthUsers.js'
 import { formatDisplayName } from '../data/displayName.js'

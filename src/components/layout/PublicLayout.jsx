@@ -1,3 +1,9 @@
+/**
+ * Public Marketing & Landing Layout
+ *
+ * Wraps the public landing page with a sticky navigation bar, smooth hash
+ * scrolling, and IntersectionObserver-based active section highlighting.
+ */
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import WmsuLogo from '../ui/WmsuLogo.jsx'

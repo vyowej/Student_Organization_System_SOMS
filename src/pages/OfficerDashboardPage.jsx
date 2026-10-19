@@ -1,3 +1,9 @@
+/**
+ * Organization Officer Dashboard Page (`/officer/dashboard`)
+ *
+ * Displays organization workspace metrics, pending membership applications,
+ * event proposal statuses, and quick actions for the active officer organization.
+ */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'

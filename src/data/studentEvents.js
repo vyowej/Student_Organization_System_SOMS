@@ -1,3 +1,9 @@
+/**
+ * Student Portal Events & Registrations Seed Data
+ *
+ * Initial campus events, student event registrations, and attendance records
+ * corresponding to `/api/events` and `/api/attendance`.
+ */
 export const studentEvents = [
   {
     id: 'wmsu-hackathon-2026',

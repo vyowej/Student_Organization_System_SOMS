@@ -1,3 +1,9 @@
+/**
+ * Role Portal Navigation Definitions
+ *
+ * Defines page routes, titles, and sidebar/navbar links for each UNIDOS role
+ * portal (Student, Organization Officer, Organization Adviser, and Admin).
+ */
 export const studentPages = [
   { path: 'dashboard', title: 'Student Dashboard', description: 'Your overview of organizations, events, and campus updates.', to: '/student/dashboard' },
   { path: 'organizations', title: 'Organizations', description: 'Discover active student organizations at WMSU.', to: '/student/organizations' },

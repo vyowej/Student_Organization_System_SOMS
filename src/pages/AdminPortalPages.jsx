@@ -1,3 +1,10 @@
+/**
+ * Student Affairs Admin Portal Pages (`/admin/*`)
+ *
+ * Implements the campus-wide Admin Dashboard, User & Student directories,
+ * Organization Accreditation & Change Requests, Approval Center, Compliance
+ * Documents, Reports, Analytics, Audit Logs, and System Settings views.
+ */
 import { useState } from 'react'
 import { Link, useLocation, useOutletContext } from 'react-router-dom'
 import PageHeader from '../components/layout/PageHeader.jsx'

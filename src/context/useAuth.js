@@ -1,3 +1,6 @@
+/**
+ * Hook for accessing authentication state and session actions from AuthContext.
+ */
 import { useContext } from 'react'
 import AuthContext from './AuthContext.jsx'
 

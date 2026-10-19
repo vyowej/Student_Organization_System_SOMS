@@ -1,5 +1,12 @@
+/**
+ * Users & Authentication Routes (backend/routes/users.js)
+ *
+ * Links to the `users` table (`user_role` and `user_status` ENUMs)
+ * in ../database/student_org_db.sql.
+ */
 const express = require('express');
 const router = express.Router();
+// Prefer native bcrypt, with automatic fallback to pure-JS bcryptjs
 let bcrypt;
 try {
   bcrypt = require('bcrypt');
@@ -8,6 +15,7 @@ try {
 }
 const db = require('../db');
 
+// GET /api/users — List all users without exposing password hashes
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(
@@ -20,6 +28,7 @@ router.get('/', async (req, res) => {
   }
 });
 
+// POST /api/users/register — Register a new user account with a bcrypt-hashed password
 router.post('/register', async (req, res) => {
   try {
     const { email, password, role, first_name, last_name, status } = req.body;
@@ -53,6 +62,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// POST /api/users/login — Authenticate user by case-insensitive email (uq_users_email) and password
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -93,3 +103,4 @@ router.post('/login', async (req, res) => {
 });
 
 module.exports = router;
+

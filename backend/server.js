@@ -1,3 +1,10 @@
+/**
+ * SOMS Express Backend Server (backend/server.js)
+ *
+ * Entry point for the Student Organization Management System REST API.
+ * Mounts all resource routers and verifies the link to PostgreSQL and
+ * ../database/student_org_db.sql on startup.
+ */
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
@@ -5,9 +12,11 @@ const { testConnection, SCHEMA_PATH } = require('./db');
 
 const app = express();
 
+// Global middleware: enable CORS for frontend requests and parse JSON request bodies
 app.use(cors());
 app.use(express.json());
 
+// Mount REST API route modules mapped to database/student_org_db.sql tables
 app.use('/api/users', require('./routes/users'));
 app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/events', require('./routes/events'));
@@ -20,10 +29,12 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/advisers', require('./routes/advisers'));
 app.use('/api/audit-logs', require('./routes/auditLogs'));
 
+// Root status endpoint
 app.get('/', (req, res) => {
   res.send('SOMS API is running...');
 });
 
+// Health & database schema link diagnostic endpoint
 app.get('/api/health', async (req, res) => {
   const dbStatus = await testConnection();
   res.json({
@@ -33,6 +44,7 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+// Start HTTP server and log database link status
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
@@ -45,3 +57,4 @@ app.listen(PORT, async () => {
     console.log(`Database Notice: Not connected yet (${dbStatus.error}). Run "npm run db:init" once PostgreSQL is ready.`);
   }
 });
+

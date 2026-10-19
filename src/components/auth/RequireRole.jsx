@@ -1,3 +1,10 @@
+/**
+ * Role-Based Route Guards
+ *
+ * - `RequireRole`: Protects portal routes (`/student/*`, `/officer/*`, `/adviser/*`, `/admin/*`)
+ *   by verifying authentication and role membership.
+ * - `PublicOnly`: Redirects already-authenticated users to their active role's dashboard.
+ */
 import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { dashboardByRole } from '../../data/mockAuthUsers.js'

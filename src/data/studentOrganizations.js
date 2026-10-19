@@ -1,3 +1,10 @@
+/**
+ * Student Organizations Directory & Memberships Seed Data
+ *
+ * Initial accredited organizations, officer rosters, announcements, and
+ * student membership records corresponding to `/api/organizations` and
+ * `/api/members`.
+ */
 import { organizationCategories, upcomingEvents } from './landingPage.js'
 
 export { organizationCategories }

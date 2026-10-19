@@ -1,7 +1,13 @@
+/**
+ * System Audit Logs Routes (backend/routes/auditLogs.js)
+ *
+ * Links to the `audit_logs` table in ../database/student_org_db.sql.
+ */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET /api/audit-logs — Query system audit trail with optional filters and pagination
 router.get('/', async (req, res) => {
   try {
     const { user_id, entity, entity_id, action, limit = 50, offset = 0 } = req.query;
@@ -51,6 +57,7 @@ router.get('/', async (req, res) => {
   }
 });
 
+// POST /api/audit-logs — Record a new audit log entry with JSONB metadata and client IP
 router.post('/', async (req, res) => {
   try {
     const { user_id, action, entity, entity_id, metadata, ip_address } = req.body;
@@ -77,3 +84,4 @@ router.post('/', async (req, res) => {
 });
 
 module.exports = router;
+

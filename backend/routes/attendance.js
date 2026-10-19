@@ -1,7 +1,14 @@
+/**
+ * Event Registrations & Attendance Routes (backend/routes/attendance.js)
+ *
+ * Links to `event_registrations` and `attendance` tables in
+ * ../database/student_org_db.sql.
+ */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET /api/attendance/registrations/:event_id — List all student registrations for an event
 router.get('/registrations/:event_id', async (req, res) => {
   try {
     const { event_id } = req.params;
@@ -32,6 +39,7 @@ router.get('/registrations/:event_id', async (req, res) => {
   }
 });
 
+// POST /api/attendance/register — Register a student for a published event (respecting max_participants)
 router.post('/register', async (req, res) => {
   try {
     const { event_id, student_id } = req.body;
@@ -40,6 +48,7 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'event_id and student_id are required' });
     }
 
+    // Verify event exists and is PUBLISHED before allowing registration
     const eventRes = await db.query(
       'SELECT id, status, max_participants FROM events WHERE id = $1',
       [event_id]
@@ -54,6 +63,7 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Cannot register for an event that is not published' });
     }
 
+    // Enforce max_participants capacity limit when set on the event
     if (event.max_participants) {
       const countRes = await db.query(
         "SELECT COUNT(*) FROM event_registrations WHERE event_id = $1 AND status != 'CANCELLED'",
@@ -81,6 +91,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// DELETE /api/attendance/registrations/:event_id/:student_id — Cancel a student's event registration
 router.delete('/registrations/:event_id/:student_id', async (req, res) => {
   try {
     const { event_id, student_id } = req.params;
@@ -103,6 +114,7 @@ router.delete('/registrations/:event_id/:student_id', async (req, res) => {
   }
 });
 
+// GET /api/attendance/event/:event_id — List all attendance check-ins for a specific event
 router.get('/event/:event_id', async (req, res) => {
   try {
     const { event_id } = req.params;
@@ -134,6 +146,7 @@ router.get('/event/:event_id', async (req, res) => {
   }
 });
 
+// POST /api/attendance/check-in — Record student attendance (QR_SCAN, MANUAL, or SELF_CHECKIN)
 router.post('/check-in', async (req, res) => {
   try {
     const { event_id, student_id, method, recorded_by } = req.body;
@@ -153,6 +166,7 @@ router.post('/check-in', async (req, res) => {
       [event_id, student_id, checkInMethod, recorded_by || null]
     );
 
+    // Synchronize corresponding event_registrations status to 'ATTENDED'
     await db.query(
       `UPDATE event_registrations
           SET status = 'ATTENDED'
@@ -167,6 +181,7 @@ router.post('/check-in', async (req, res) => {
   }
 });
 
+// GET /api/attendance/student/:student_id — Retrieve a student's event registration and attendance history
 router.get('/student/:student_id', async (req, res) => {
   try {
     const { student_id } = req.params;
@@ -197,3 +212,4 @@ router.get('/student/:student_id', async (req, res) => {
 });
 
 module.exports = router;
+

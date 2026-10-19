@@ -1,3 +1,12 @@
+-- ============================================================
+-- Student Organization Management System (SOMS) — PostgreSQL Schema
+-- File: database/student_org_db.sql
+-- Linked directly to backend/db.js and backend/init-db.js
+-- ============================================================
+
+-- ============================================================
+-- 1. ENUM TYPES (Roles, Statuses, Scopes, and Categories)
+-- ============================================================
 CREATE TYPE user_role              AS ENUM ('STUDENT', 'OFFICER', 'ADVISER', 'ADMIN');
 CREATE TYPE user_status            AS ENUM ('ACTIVE', 'SUSPENDED', 'PENDING');
 
@@ -18,6 +27,9 @@ CREATE TYPE attendance_method      AS ENUM ('QR_SCAN', 'MANUAL', 'SELF_CHECKIN')
 CREATE TYPE document_type          AS ENUM ('CONSTITUTION', 'PROPOSAL', 'FINANCIAL', 'REPORT', 'CERTIFICATE');
 CREATE TYPE document_status        AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
 
+-- ============================================================
+-- 2. USERS & ACADEMIC HIERARCHY (Colleges, Departments, Programs)
+-- ============================================================
 CREATE TABLE users (
     id            INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     email         VARCHAR(255) NOT NULL,
@@ -30,6 +42,7 @@ CREATE TABLE users (
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
+-- Case-insensitive unique email constraint
 CREATE UNIQUE INDEX uq_users_email ON users (lower(email));
 
 CREATE TABLE colleges (
@@ -55,6 +68,7 @@ CREATE TABLE programs (
     UNIQUE (department_id, name)
 );
 
+-- Student profiles linked 1-to-1 with users and enrolled in an academic program
 CREATE TABLE students (
     id             INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id        INTEGER     NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
@@ -63,6 +77,7 @@ CREATE TABLE students (
     year_level     INTEGER     NOT NULL CHECK (year_level BETWEEN 1 AND 6)
 );
 
+-- Faculty adviser profiles linked 1-to-1 with users and affiliated with a college
 CREATE TABLE advisers (
     id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id         INTEGER     NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
@@ -70,6 +85,9 @@ CREATE TABLE advisers (
     college_id      INTEGER REFERENCES colleges(id) ON DELETE SET NULL
 );
 
+-- ============================================================
+-- 3. STUDENT ORGANIZATIONS & ADVISER ASSIGNMENTS
+-- ============================================================
 CREATE TABLE organizations (
     id            INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name          VARCHAR(150) NOT NULL,
@@ -87,10 +105,11 @@ CREATE TABLE organizations (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-
+    -- Ensures department_id belongs to the specified college_id
     CONSTRAINT fk_org_department_college
         FOREIGN KEY (department_id, college_id) REFERENCES departments (id, college_id),
 
+    -- Enforces valid college/department ownership combinations per scope
     CONSTRAINT chk_org_scope CHECK (
         (scope = 'UNIVERSITY' AND college_id IS NULL     AND department_id IS NULL) OR
         (scope = 'COLLEGE'    AND college_id IS NOT NULL AND department_id IS NULL) OR
@@ -98,6 +117,7 @@ CREATE TABLE organizations (
     )
 );
 
+-- Unique organization name and acronym within the same college/department scope
 CREATE UNIQUE INDEX uq_org_name_per_owner
     ON organizations (lower(name), COALESCE(college_id, 0), COALESCE(department_id, 0));
 
@@ -105,6 +125,7 @@ CREATE UNIQUE INDEX uq_org_acronym_per_owner
     ON organizations (lower(acronym), COALESCE(college_id, 0), COALESCE(department_id, 0))
     WHERE acronym IS NOT NULL;
 
+-- At most one Student Council per college and one University Student Council
 CREATE UNIQUE INDEX uq_one_council_per_college
     ON organizations (college_id)
     WHERE org_type = 'STUDENT_COUNCIL' AND scope = 'COLLEGE';
@@ -113,6 +134,7 @@ CREATE UNIQUE INDEX uq_one_university_council
     ON organizations (org_type)
     WHERE org_type = 'STUDENT_COUNCIL' AND scope = 'UNIVERSITY';
 
+-- Tracks current and historical adviser assignments per organization
 CREATE TABLE organization_advisers (
     id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -127,7 +149,7 @@ CREATE UNIQUE INDEX uq_one_current_adviser
     ON organization_advisers (organization_id)
     WHERE ended_at IS NULL;
 
-
+-- Requests to transition an organization to a new faculty adviser
 CREATE TABLE adviser_change_requests (
     id                  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     organization_id     INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -147,6 +169,9 @@ CREATE UNIQUE INDEX uq_one_pending_change_request
     ON adviser_change_requests (organization_id)
     WHERE status = 'PENDING';
 
+-- ============================================================
+-- 4. ORGANIZATION MEMBERSHIPS & APPLICATIONS
+-- ============================================================
 CREATE TABLE organization_members (
     id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -177,6 +202,9 @@ CREATE UNIQUE INDEX uq_one_pending_application
     ON organization_applications (organization_id, applicant_id)
     WHERE status = 'PENDING';
 
+-- ============================================================
+-- 5. EVENTS, REGISTRATIONS & ATTENDANCE
+-- ============================================================
 CREATE TABLE events (
     id               INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -213,6 +241,9 @@ CREATE TABLE attendance (
     UNIQUE (event_id, student_id)
 );
 
+-- ============================================================
+-- 6. DOCUMENTS, ANNOUNCEMENTS, NOTIFICATIONS & AUDIT LOGS
+-- ============================================================
 CREATE TABLE documents (
     id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -257,6 +288,9 @@ CREATE TABLE audit_logs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- ============================================================
+-- 7. TRIGGER 1: AUTOMATIC updated_at TIMESTAMP MAINTENANCE
+-- ============================================================
 CREATE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN
     NEW.updated_at = now();
@@ -273,7 +307,7 @@ CREATE TRIGGER trg_organizations_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ============================================================
--- TRIGGER 2: eligibility rule
+-- 8. TRIGGER 2: STUDENT ELIGIBILITY RULE
 -- UNIVERSITY org -> any student
 -- COLLEGE org    -> only students of that college
 -- DEPARTMENT org -> only students of that department
@@ -340,6 +374,9 @@ CREATE TRIGGER trg_applications_eligibility
     BEFORE INSERT ON organization_applications
     FOR EACH ROW EXECUTE FUNCTION trg_application_eligibility();
 
+-- ============================================================
+-- 9. PERFORMANCE INDEXES
+-- ============================================================
 CREATE INDEX idx_departments_college        ON departments (college_id);
 CREATE INDEX idx_programs_department        ON programs (department_id);
 CREATE INDEX idx_students_program           ON students (program_id);

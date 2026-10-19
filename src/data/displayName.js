@@ -1,3 +1,9 @@
+/**
+ * Person Name & Greeting Formatting Utilities
+ *
+ * Formats user names consistently across UNIDOS portals (`Last, First Middle`
+ * for rosters/tables and `First` for conversational greetings).
+ */
 export function formatDisplayName(person = {}) {
   person ??= {}
   const lastName = person.lastName?.trim()

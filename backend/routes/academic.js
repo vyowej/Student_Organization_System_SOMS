@@ -1,7 +1,14 @@
+/**
+ * Academic Structure Routes (backend/routes/academic.js)
+ *
+ * Links to `colleges`, `departments`, `programs`, `students`, and `advisers`
+ * tables in ../database/student_org_db.sql.
+ */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET /api/academic/colleges — Fetch all colleges ordered alphabetically
 router.get('/colleges', async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM colleges ORDER BY name ASC');
@@ -12,6 +19,7 @@ router.get('/colleges', async (req, res) => {
   }
 });
 
+// POST /api/academic/colleges — Create a new college (name and acronym must be unique)
 router.post('/colleges', async (req, res) => {
   try {
     const { name, acronym } = req.body;
@@ -32,6 +40,7 @@ router.post('/colleges', async (req, res) => {
   }
 });
 
+// GET /api/academic/departments — List departments, optionally filtered by college_id
 router.get('/departments', async (req, res) => {
   try {
     const { college_id } = req.query;
@@ -56,6 +65,7 @@ router.get('/departments', async (req, res) => {
   }
 });
 
+// POST /api/academic/departments — Create a new department under a college
 router.post('/departments', async (req, res) => {
   try {
     const { college_id, name, acronym } = req.body;
@@ -73,6 +83,7 @@ router.post('/departments', async (req, res) => {
   }
 });
 
+// GET /api/academic/programs — List degree programs with department and college metadata
 router.get('/programs', async (req, res) => {
   try {
     const { department_id } = req.query;
@@ -101,6 +112,7 @@ router.get('/programs', async (req, res) => {
   }
 });
 
+// POST /api/academic/programs — Create a new academic program under a department
 router.post('/programs', async (req, res) => {
   try {
     const { department_id, name, acronym } = req.body;
@@ -118,6 +130,7 @@ router.post('/programs', async (req, res) => {
   }
 });
 
+// GET /api/academic/students — Fetch all student profiles joined with user and academic info
 router.get('/students', async (req, res) => {
   try {
     const result = await db.query(`
@@ -149,6 +162,7 @@ router.get('/students', async (req, res) => {
   }
 });
 
+// GET /api/academic/students/:id — Fetch a single student profile by student.id or user_id
 router.get('/students/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -184,6 +198,7 @@ router.get('/students/:id', async (req, res) => {
   }
 });
 
+// POST /api/academic/students — Create a student record linked to a user and program
 router.post('/students', async (req, res) => {
   try {
     const { user_id, student_number, program_id, year_level } = req.body;
@@ -193,6 +208,7 @@ router.post('/students', async (req, res) => {
       });
     }
 
+    // Matches CHECK (year_level BETWEEN 1 AND 6) in database/student_org_db.sql
     if (year_level < 1 || year_level > 6) {
       return res.status(400).json({ error: 'year_level must be between 1 and 6' });
     }
@@ -213,6 +229,7 @@ router.post('/students', async (req, res) => {
   }
 });
 
+// GET /api/academic/advisers — Fetch all faculty adviser profiles joined with user and college info
 router.get('/advisers', async (req, res) => {
   try {
     const result = await db.query(`
@@ -237,6 +254,7 @@ router.get('/advisers', async (req, res) => {
   }
 });
 
+// POST /api/academic/advisers — Create a faculty adviser profile linked to a user
 router.post('/advisers', async (req, res) => {
   try {
     const { user_id, employee_number, college_id } = req.body;
@@ -261,3 +279,4 @@ router.post('/advisers', async (req, res) => {
 });
 
 module.exports = router;
+

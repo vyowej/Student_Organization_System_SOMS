@@ -1,14 +1,18 @@
+/**
+ * Database Initialization & Schema Link Runner (backend/init-db.js)
+ *
+ * Reads the SQL schema from ../database/student_org_db.sql (resolved via ./db)
+ * and applies all ENUM types, tables, constraints, triggers, and indexes
+ * to the configured PostgreSQL database.
+ */
 const fs = require('fs');
-const path = require('path');
 const { Pool } = require('pg');
 require('dotenv').config();
+const { SCHEMA_PATH: DB_SCHEMA_PATH } = require('./db');
 
-const DB_SCHEMA_PATH = fs.existsSync(path.resolve(__dirname, 'schema/schema_student_db.sql'))
-  ? path.resolve(__dirname, 'schema/schema_student_db.sql')
-  : fs.existsSync(path.resolve(__dirname, 'schema/schema.sql'))
-  ? path.resolve(__dirname, 'schema/schema.sql')
-  : path.resolve(__dirname, '../database/student_org_db.sql');
-
+/**
+ * Connects to PostgreSQL and executes the linked SQL schema file.
+ */
 async function initializeDatabase() {
   console.log('----------------------------------------------------');
   console.log('Student Organization Management System (SOMS)');
@@ -16,12 +20,14 @@ async function initializeDatabase() {
   console.log('----------------------------------------------------');
   console.log(`[LINK] Resolving schema file at: ${DB_SCHEMA_PATH}`);
 
+  // Ensure the SQL schema file exists before attempting database connection
   if (!fs.existsSync(DB_SCHEMA_PATH)) {
     console.error(`[ERROR] Schema file not found at: ${DB_SCHEMA_PATH}`);
-    console.error('Please verify that backend/schema/schema_student_db.sql exists.');
+    console.error('Please verify that database/student_org_db.sql exists.');
     process.exit(1);
   }
 
+  // Load the SQL definitions from the linked database folder
   const sqlContent = fs.readFileSync(DB_SCHEMA_PATH, 'utf8');
   console.log(`[FILE] Loaded schema file (${sqlContent.length} bytes)`);
 
@@ -53,6 +59,7 @@ async function initializeDatabase() {
     console.error('\n[DATABASE ERROR] Failed to initialize database:');
     console.error(err.message);
 
+    // Provide actionable troubleshooting hints for common PostgreSQL error codes
     if (err.code === '3D000') {
       console.error(`\nHint: The database "${dbConfig.database}" does not exist yet.`);
       console.error(`Create it first by running: CREATE DATABASE ${dbConfig.database}; in psql or pgAdmin.`);
@@ -72,6 +79,7 @@ async function initializeDatabase() {
   }
 }
 
+// Execute immediately if run directly via `node init-db.js` or `npm run db:init`
 if (require.main === module) {
   initializeDatabase();
 }
@@ -80,3 +88,4 @@ module.exports = {
   DB_SCHEMA_PATH,
   initializeDatabase,
 };
+

@@ -1,7 +1,15 @@
+/**
+ * Organization Members & Applications Routes (backend/routes/members.js)
+ *
+ * Links to `organization_members` and `organization_applications` tables
+ * and respects the `trg_members_eligibility` / `trg_applications_eligibility`
+ * database triggers in ../database/student_org_db.sql.
+ */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET /api/members/org/:organization_id — List active members and officers ordered by position hierarchy
 router.get('/org/:organization_id', async (req, res) => {
   try {
     const { organization_id } = req.params;
@@ -47,6 +55,7 @@ router.get('/org/:organization_id', async (req, res) => {
   }
 });
 
+// GET /api/members/student/:student_id — List all active organization memberships for a student
 router.get('/student/:student_id', async (req, res) => {
   try {
     const { student_id } = req.params;
@@ -75,6 +84,7 @@ router.get('/student/:student_id', async (req, res) => {
   }
 });
 
+// POST /api/members — Add a student to an organization (enforces trg_members_eligibility trigger)
 router.post('/', async (req, res) => {
   try {
     const { organization_id, student_id, position, custom_title } = req.body;
@@ -94,6 +104,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
+    // Catch eligibility trigger exception from student_can_join() in database/student_org_db.sql
     if (err.message && err.message.includes('Student is not eligible')) {
       return res.status(403).json({ error: err.message });
     }
@@ -104,6 +115,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/members/:id/position — Update a member's position, custom officer title, or status
 router.put('/:id/position', async (req, res) => {
   try {
     const { id } = req.params;
@@ -129,6 +141,7 @@ router.put('/:id/position', async (req, res) => {
   }
 });
 
+// DELETE /api/members/:id — Deactivate a membership and set left_at timestamp
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -150,6 +163,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// GET /api/members/applications/org/:organization_id — List membership applications for an organization
 router.get('/applications/org/:organization_id', async (req, res) => {
   try {
     const { organization_id } = req.params;
@@ -181,6 +195,7 @@ router.get('/applications/org/:organization_id', async (req, res) => {
   }
 });
 
+// POST /api/members/applications — Submit an application to join an organization (enforces trg_applications_eligibility)
 router.post('/applications', async (req, res) => {
   try {
     const { organization_id, applicant_id, message } = req.body;
@@ -208,6 +223,7 @@ router.post('/applications', async (req, res) => {
   }
 });
 
+// PUT /api/members/applications/:id/review — Approve or reject a membership application
 router.put('/applications/:id/review', async (req, res) => {
   try {
     const { id } = req.params;
@@ -234,6 +250,7 @@ router.put('/applications/:id/review', async (req, res) => {
 
     const app = appResult.rows[0];
 
+    // Automatically enroll student into organization_members when application is approved
     if (status === 'APPROVED') {
       await db.query(
         `INSERT INTO organization_members (organization_id, student_id, position, status)
@@ -252,3 +269,4 @@ router.put('/applications/:id/review', async (req, res) => {
 });
 
 module.exports = router;
+

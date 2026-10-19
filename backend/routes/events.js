@@ -1,7 +1,14 @@
+/**
+ * Organization Events Routes (backend/routes/events.js)
+ *
+ * Links to the `events` table (`event_status` ENUM) in
+ * ../database/student_org_db.sql.
+ */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET /api/events — Retrieve all PUBLISHED events joined with organization details
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(`
@@ -20,6 +27,7 @@ router.get('/', async (req, res) => {
   }
 });
 
+// POST /api/events — Create or propose a new organization event
 router.post('/', async (req, res) => {
   try {
     const {
@@ -40,6 +48,7 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Matches CHECK (end_date >= start_date) in database/student_org_db.sql
     if (new Date(end_date) < new Date(start_date)) {
       return res.status(400).json({ error: 'end_date must be greater than or equal to start_date' });
     }
@@ -72,6 +81,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/events/:id/publish — Transition an event status to PUBLISHED
 router.put('/:id/publish', async (req, res) => {
   try {
     const { id } = req.params;
@@ -92,3 +102,4 @@ router.put('/:id/publish', async (req, res) => {
 });
 
 module.exports = router;
+
