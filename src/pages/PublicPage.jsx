@@ -1,9 +1,3 @@
-/**
- * Public Landing & Authentication Pages
- *
- * Renders the public home view (`LandingPage`) as well as WMSU email sign-in,
- * student registration, and password reset forms.
- */
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Card from '../components/ui/Card.jsx'
@@ -132,7 +126,26 @@ function AuthenticationPage({ page }) {
   const [title, description] = titles[page]
 
   return (
-    <Card className={`auth-card auth-card-${page}`}>
+    <div className="auth-layout">
+      <aside className="auth-feature-panel">
+        <Link aria-label="UNIDOS home" className="auth-feature-brand" to="/">
+          <WmsuLogo className="brand-seal" />
+          <span><strong>UNIDOS</strong><small>WMSU student community</small></span>
+        </Link>
+        <div className="auth-feature-copy">
+          <span className="landing-eyebrow">One campus. Many communities.</span>
+          <h2>Find your people.<br /><em>Make your impact.</em></h2>
+          <p>Discover organizations, connect with students, and take part in campus life.</p>
+        </div>
+        <div aria-hidden="true" className="auth-device-preview">
+          <div className="auth-mini-laptop">
+            <div><span>UNIDOS</span><b>Campus, connected.</b><i /><i /><i /></div>
+          </div>
+          <div className="auth-mini-phone"><span>UNIDOS</span><b>Join a community</b><i /><i /></div>
+        </div>
+        <span className="auth-feature-foot">Western Mindanao State University</span>
+      </aside>
+      <Card className={`auth-card auth-card-${page}`}>
       <div className="auth-brand">
         <WmsuLogo className="brand-seal" />
         <div><strong>UNIDOS</strong><span>Student Organization Management System</span></div>
@@ -153,13 +166,9 @@ function AuthenticationPage({ page }) {
           </div>
           {error && <p className="auth-error" role="alert">{error}</p>}
           <Button className="auth-submit" type="submit">Login</Button>
-          <details className="auth-test-accounts">
-            <summary>Development demo accounts</summary>
-            <span className="auth-demo-notice">For preview and testing only. Do not use these credentials for real accounts.</span>
-            <span>Student + Organization Officer · student@wmsu.edu.ph · student123</span>
-            <span>Adviser · adviser@wmsu.edu.ph · adviser123</span>
-            <span>Admin · admin@wmsu.edu.ph · admin123</span>
-          </details>
+          {import.meta.env.DEV && (
+            <p className="auth-test-accounts">Development demo accounts are available for preview and testing.</p>
+          )}
         </form>
       )}
       {page === 'register' && (
@@ -239,7 +248,8 @@ function AuthenticationPage({ page }) {
           : page === 'register' ? <>Already registered? <Link to="/login">Sign in</Link></>
             : <Link to="/login">Return to sign in</Link>}
       </p>
-    </Card>
+      </Card>
+    </div>
   )
 }
 
