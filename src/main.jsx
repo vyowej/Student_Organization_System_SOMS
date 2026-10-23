@@ -12,6 +12,9 @@ import App from './App.jsx'
 import './styles/polish.css'
 import './styles/refine.css'
 import './styles/facebook-layout.css'
+// Keep the existing UI enhancement layer after legacy stylesheets.
+import './ui-improvements.css'
+import './design-system.css'
 import { ToastProvider } from './components/ui/Toast.jsx'
 
 createRoot(document.getElementById('root')).render(
@@ -23,4 +26,3 @@ createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </StrictMode>,
 )
-
