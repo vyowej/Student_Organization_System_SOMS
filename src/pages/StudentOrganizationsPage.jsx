@@ -1,5 +1,15 @@
-import { useMemo, useState } from 'react'
-import { Link, useOutletContext } from 'react-router-dom'
+/**
+ * StudentOrganizationsPage.jsx
+ *
+ * Student portal — full organization directory with live search + category filter.
+ *
+ * Change from original:
+ *  - Reads the `?q=` query-string parameter (set by the hero search bar on the
+ *    landing page) and pre-fills the search input with it on mount.
+ *    The existing filter/search logic is otherwise unchanged.
+ */
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import FilterSelect from '../components/ui/FilterSelect.jsx'
@@ -9,8 +19,20 @@ import { organizationCategories, studentOrganizations } from '../data/studentOrg
 
 export default function StudentOrganizationsPage() {
   const { adminOrganizations = [] } = useOutletContext()
-  const [search, setSearch] = useState('')
+
+  // Read the optional ?q= param from the landing-page hero search
+  const [searchParams] = useSearchParams()
+  const initialQuery = searchParams.get('q') ?? ''
+
+  const [search, setSearch] = useState(initialQuery)
   const [category, setCategory] = useState('All')
+
+  // Keep the search input in sync if the URL param changes (e.g. browser back/forward)
+  useEffect(() => {
+    const q = searchParams.get('q') ?? ''
+    setSearch(q)
+  }, [searchParams])
+
   const visibleOrganizations = useMemo(() => {
     const currentOrganizations = new Map(studentOrganizations.map((organization) => [organization.id, organization]))
     adminOrganizations.forEach((organization) => {
