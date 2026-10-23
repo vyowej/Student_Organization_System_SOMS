@@ -5,8 +5,8 @@
  * the top Navbar, collapsible Sidebar, UndoBar, ErrorBoundary, and role-scoped
  * React Router Outlet context.
  */
-import { useEffect, useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 import { roleNavigation } from '../../data/navigation.js'
 import { studentDashboardNotifications } from '../../data/studentDashboard.js'
 import { studentEvents } from '../../data/studentEvents.js'
@@ -18,9 +18,11 @@ import UndoBar from '../ui/UndoBar.jsx'
 import ErrorBoundary from '../ui/ErrorBoundary.jsx'
 
 export default function PortalLayout({ role }) {
+  const location = useLocation()
   const sharedPortalData = usePortalData()
   const { currentUser } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
+  const previousLocation = useRef(location.pathname)
   const [readNotificationIds, setReadNotificationIds] = useState(() =>
     studentDashboardNotifications.filter((notification) => !notification.unread).map((notification) => notification.id),
   )
@@ -38,13 +40,45 @@ export default function PortalLayout({ role }) {
     if (!menuOpen) return undefined
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const closeOnEscape = (event) => { if (event.key === 'Escape') setMenuOpen(false) }
-    document.addEventListener('keydown', closeOnEscape)
+    const sidebar = document.getElementById('portal-sidebar')
+    const firstLink = sidebar?.querySelector('a[href]')
+    firstLink?.focus()
+
+    function handleDrawerKeyDown(event) {
+      if (event.key === 'Escape') {
+        setMenuOpen(false)
+        return
+      }
+      if (event.key !== 'Tab' || !sidebar) return
+
+      const focusable = [...sidebar.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleDrawerKeyDown)
     return () => {
       document.body.style.overflow = previousOverflow
-      document.removeEventListener('keydown', closeOnEscape)
+      document.removeEventListener('keydown', handleDrawerKeyDown)
+      document.querySelector('.mobile-menu-button')?.focus()
     }
   }, [menuOpen])
+
+  useEffect(() => {
+    if (previousLocation.current !== location.pathname) {
+      previousLocation.current = location.pathname
+      setMenuOpen(false)
+      window.scrollTo(0, 0)
+    }
+  }, [location.pathname])
 
   function markNotificationRead(id) {
     setReadNotificationIds((currentIds) => (
@@ -132,14 +166,74 @@ export default function PortalLayout({ role }) {
       ? (sharedPortalData.officerNotifications || []).filter((n) => !n.read).length
       : role === 'Student Affairs Admin'
         ? (sharedPortalData.adminNotifications || []).filter((n) => !n.read).length
+        : role === 'Organization Adviser'
+          ? [
+              ...(sharedPortalData.adviserDocuments || []).filter((item) => item.status === 'PENDING'),
+              ...(sharedPortalData.adviserReports || []).filter((item) => item.status === 'PENDING_VERIFICATION'),
+              ...(sharedPortalData.officerEvents || []).filter((item) => ['SUBMITTED', 'UNDER_REVIEW'].includes(item.status)),
+            ].length
         : 0
+  const topbarNotifications = role === 'Student'
+    ? [
+        ...(sharedPortalData.studentNotifications || []).map((notification) => ({
+          ...notification,
+          title: notification.title ?? notification.type ?? 'Campus update',
+          text: notification.message,
+          time: notification.time ?? notification.createdAt ?? 'Earlier',
+          read: Boolean(notification.read),
+          to: '/student/notifications',
+          source: 'portal',
+        })),
+        ...studentDashboardNotifications.map((notification) => ({
+          ...notification,
+          text: notification.message,
+          read: !notification.unread || readNotificationIds.includes(notification.id),
+          to: notification.type === 'Registration' ? '/student/registrations' : '/student/notifications',
+          source: 'dashboard',
+        })),
+      ]
+    : role === 'Student Affairs Admin'
+      ? (sharedPortalData.adminNotifications || []).map((notification) => ({
+          ...notification,
+          title: notification.title ?? 'Approval update',
+          text: notification.message,
+          time: notification.createdAt,
+          to: '/admin/approvals',
+          source: 'admin',
+        }))
+      : role === 'Organization Adviser'
+        ? [
+            ...(sharedPortalData.adviserDocuments || [])
+              .filter((item) => item.status === 'PENDING')
+              .map((item) => ({ id: item.id, title: item.title ?? item.name ?? 'Document review', text: item.description, time: item.submittedDate, read: false, to: '/adviser/approvals', source: 'adviser' })),
+            ...(sharedPortalData.adviserReports || [])
+              .filter((item) => item.status === 'PENDING_VERIFICATION')
+              .map((item) => ({ id: item.id, title: item.title ?? item.name ?? 'Activity report', text: item.description, time: item.submittedDate, read: false, to: '/adviser/approvals', source: 'adviser' })),
+            ...(sharedPortalData.officerEvents || [])
+              .filter((item) => ['SUBMITTED', 'UNDER_REVIEW'].includes(item.status))
+              .map((item) => ({ id: item.id, title: item.title, text: item.description, time: item.submittedDate, read: false, to: '/adviser/events', source: 'adviser' })),
+          ]
+        : []
+
+  function markTopbarNotificationRead(notification) {
+    if (notification.source === 'portal') sharedPortalData.markStudentNotificationRead(notification.id)
+    if (notification.source === 'admin') sharedPortalData.markAdminNotificationRead(notification.id)
+    if (notification.source === 'dashboard') markNotificationRead(notification.id)
+  }
+
+  function markAllTopbarNotificationsRead() {
+    topbarNotifications.filter((notification) => !notification.read).forEach(markTopbarNotificationRead)
+  }
 
   return (
     <div className={`app-shell portal-layout${menuOpen ? ' sidebar-open' : ''}`}>
       <Navbar
         isMenuOpen={menuOpen}
         notificationCount={unreadNotificationCount}
+        notifications={topbarNotifications}
         notificationLink={navigation.notifications}
+        onMarkAllNotificationsRead={markAllTopbarNotificationsRead}
+        onMarkNotificationRead={markTopbarNotificationRead}
         onMenuClick={() => setMenuOpen((open) => !open)}
         profileLink={navigation.profile}
         role={role}
