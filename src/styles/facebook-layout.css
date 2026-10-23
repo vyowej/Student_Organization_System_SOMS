@@ -1,11 +1,3 @@
-/* ==========================================================================
-   Facebook-style profile layout
-   Used by: Officer Dashboard + Organization Profile.
-   Layout only — colours, fonts, radii and shadows all come from the existing
-   theme variables (--crimson, --border, --surface, --radius-card, …).
-   Loaded last (see main.jsx) so it wins over App.css / polish.css / refine.css.
-   ========================================================================== */
-
 .portal-main > .fb-page {
   display: flex;
   flex-direction: column;
