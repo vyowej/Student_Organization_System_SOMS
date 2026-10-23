@@ -1,6 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import FilterSelect from '../components/ui/FilterSelect.jsx'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import Icon from '../components/ui/Icon.jsx'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import { EventCard, LeaderCard, OrganizationCard } from '../components/public/LandingCards.jsx'
@@ -15,12 +14,22 @@ import {
   upcomingEvents,
 } from '../data/landingPage.js'
 
+const heroNotifications = [
+  { type: 'Organizations', icon: 'organization', title: 'New organization', message: 'WMSU Computer Society is now open for members.', time: 'now' },
+  { type: 'Events', icon: 'calendar', title: 'Event reminder', message: 'Campus Connect starts tomorrow at 2:00 PM.', time: '2m' },
+  { type: 'Announcements', icon: 'announcement', title: 'New announcement', message: 'Student Council posted a campus update.', time: '5m' },
+  { type: 'Membership', icon: 'user', title: 'Request approved', message: 'Your membership request was approved.', time: '1h' },
+]
+
 function SectionTitle({ eyebrow, title, description, action, id }) {
+  const titleWords = title.split(' ')
+  const accent = titleWords.pop()
+
   return (
     <div className="landing-section-title">
       <div>
         <span className="landing-eyebrow">{eyebrow}</span>
-        <h2 id={id}>{title}</h2>
+        <h2 id={id}>{titleWords.join(' ')} <em>{accent}</em></h2>
         {description && <p>{description}</p>}
       </div>
       {action}
@@ -28,23 +37,282 @@ function SectionTitle({ eyebrow, title, description, action, id }) {
   )
 }
 
+function HeroSearch() {
+  const [query, setQuery] = useState('')
+  const navigate = useNavigate()
+  const inputRef = useRef(null)
+
+  function handleSubmit(event) {
+    event.preventDefault()
+    const trimmed = query.trim()
+    if (trimmed) {
+      navigate(`/student/organizations?q=${encodeURIComponent(trimmed)}`)
+    } else {
+      navigate('/student/organizations')
+    }
+  }
+
+  return (
+    <form
+      aria-label="Search organizations"
+      className="hero-search"
+      onSubmit={handleSubmit}
+      role="search"
+    >
+      {/*
+        .hero-search-inner is used on mobile (≤768 px) so the icon+input
+        share one bordered box while the button sits below. On desktop,
+        the form itself is the container and .hero-search-inner is transparent.
+      */}
+      <span className="hero-search-inner">
+        <span aria-hidden="true" className="hero-search-icon">
+          <svg fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" x2="16.65" y1="21" y2="16.65" />
+          </svg>
+        </span>
+        <input
+          ref={inputRef}
+          aria-label="Search organizations"
+          autoComplete="off"
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search organizations, e.g. Computer Society"
+          type="search"
+          value={query}
+        />
+      </span>
+      <button className="button button-primary" type="submit">
+        Search
+      </button>
+    </form>
+  )
+}
+
+/* ─── Live stat float cards ─────────────────────────────────────────────── */
+
+/**
+ * Derives stat counts from mock data (mirrors what a real API would return).
+ * Returns a promise so the component can simulate async loading and handle
+ * errors the same way it would with a real fetch.
+ *
+ * When a backend is available, replace this function body with:
+ *   const res = await fetch('/api/stats')
+ *   return res.json()
+ */
+function fetchHeroStats() {
+  return new Promise((resolve) => {
+    // Simulate a short network delay (remove when connected to real API)
+    setTimeout(() => {
+      const activeOrgs = organizations.length          // 12 active orgs
+      const eventsThisMonth = upcomingEvents.filter((e) => {
+        // Events in October or November 2026 (current month window)
+        const dateStr = e.date ?? ''
+        return dateStr.includes('November') || dateStr.includes('October')
+      }).length
+      resolve({ activeOrgs, eventsThisMonth })
+    }, 900)
+  })
+}
+
+function LiveStatCards() {
+  const [stats, setStats] = useState(null)   // null = loading
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchHeroStats()
+      .then((data) => { if (!cancelled) setStats(data) })
+      .catch(() => { if (!cancelled) setError(true) })
+    return () => { cancelled = true }
+  }, [])
+
+  const loading = stats === null && !error
+
+  /* --- Organizations card --- */
+  const orgValue  = error ? '—' : stats ? `${stats.activeOrgs}+` : null
+  const orgLabel  = 'Active Organizations'
+
+  /* --- Events card --- */
+  const evtValue  = error ? '—' : stats ? `${stats.eventsThisMonth}` : null
+  const evtLabel  = error ? 'Events this month' : stats ? `Event${stats.eventsThisMonth !== 1 ? 's' : ''} this month` : 'Events this month'
+
+  return (
+    <>
+      {/* Top-left float card — active organizations */}
+      <div className={`hero-float-card float-organizations${loading ? ' is-loading' : ''}${error ? ' has-error' : ''}`}>
+        <span className="float-icon">
+          <Icon name="organization" size={16} />
+        </span>
+        <span>
+          {/* Skeleton shown only while loading */}
+          <span className="float-stat-skeleton">
+            <span className="skeleton-line float-skeleton-value skeleton" />
+            <span className="skeleton-line float-skeleton-label skeleton" />
+          </span>
+          {/* Real data shown once loaded */}
+          {!loading && <strong className="float-stat-value">{orgValue}</strong>}
+          {!loading && <small className="float-stat-label">{orgLabel}</small>}
+        </span>
+      </div>
+
+      {/* Bottom-right float card — events this month */}
+      <div className={`hero-float-card float-events${loading ? ' is-loading' : ''}${error ? ' has-error' : ''}`}>
+        <span className="float-icon">
+          <Icon name="calendar" size={16} />
+        </span>
+        <span>
+          <span className="float-stat-skeleton">
+            <span className="skeleton-line float-skeleton-value skeleton" />
+            <span className="skeleton-line float-skeleton-label skeleton" />
+          </span>
+          {!loading && <strong className="float-stat-value">{evtValue}</strong>}
+          {!loading && <small className="float-stat-label">{evtLabel}</small>}
+        </span>
+      </div>
+    </>
+  )
+}
+
+function MobileHeroStats() {
+  const activeOrganizations = organizations.length
+  const eventsThisMonth = upcomingEvents.filter((event) => {
+    const date = event.date ?? ''
+    return date.includes('October') || date.includes('November')
+  }).length
+
+  return (
+    <div aria-label="Campus community at a glance" className="hero-mobile-stats">
+      <div><strong>{activeOrganizations}+</strong><span>Active Organizations</span></div>
+      <div><strong>{eventsThisMonth}</strong><span>Events this month</span></div>
+    </div>
+  )
+}
+
+/* ─── Main page ─────────────────────────────────────────────────────────── */
+
 function LandingPage() {
   const [activeCategory, setActiveCategory] = useState('All')
+  const [notificationIndex, setNotificationIndex] = useState(0)
+  const heroArtRef = useRef(null)
   const filteredOrganizations = activeCategory === 'All'
     ? organizations
     : organizations.filter((organization) => organization.category === activeCategory)
+
+  useEffect(() => {
+    const stage = heroArtRef.current
+    if (!stage) return undefined
+    let frameId = 0
+    let visible = true
+    let active = true
+    let countersStarted = false
+    let targetX = 0
+    let targetY = 0
+
+    const animateCounters = () => {
+      if (countersStarted || !visible || document.hidden) return
+      countersStarted = true
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        stage.querySelectorAll('[data-count]').forEach((counter) => {
+          counter.textContent = counter.getAttribute('data-count') ?? '0'
+        })
+        return
+      }
+      stage.querySelectorAll('[data-count]').forEach((counter) => {
+        const target = Number(counter.getAttribute('data-count'))
+        let elapsed = 0
+        let previousTime = performance.now()
+        const count = (now) => {
+          if (visible && !document.hidden) elapsed += now - previousTime
+          previousTime = now
+          const progress = Math.min(elapsed / 900, 1)
+          counter.textContent = String(Math.round(target * progress))
+          if (progress < 1) requestAnimationFrame(count)
+        }
+        requestAnimationFrame(count)
+      })
+    }
+    const updateActiveState = () => {
+      const running = visible && !document.hidden
+      stage.classList.toggle('is-running', running)
+      if (running) animateCounters()
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting
+      updateActiveState()
+    })
+    observer.observe(stage)
+    const onVisibilityChange = () => updateActiveState()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    const welcomeText = stage.querySelector('.mock-welcome strong')
+    const markWelcomeTyped = () => stage.classList.add('has-typed')
+    welcomeText?.addEventListener('animationend', markWelcomeTyped)
+
+    const onPointerMove = (event) => {
+      if (window.matchMedia('(hover: none), (prefers-reduced-motion: reduce)').matches) return
+      const bounds = stage.getBoundingClientRect()
+      targetX = ((event.clientX - bounds.left) / bounds.width - .5) * 12
+      targetY = ((event.clientY - bounds.top) / bounds.height - .5) * -12
+      if (frameId) return
+      const animateTilt = () => {
+        const currentX = Number(stage.dataset.tiltX || 0)
+        const currentY = Number(stage.dataset.tiltY || 0)
+        const nextX = currentX + (targetX - currentX) * .12
+        const nextY = currentY + (targetY - currentY) * .12
+        stage.dataset.tiltX = String(nextX)
+        stage.dataset.tiltY = String(nextY)
+        stage.style.setProperty('--tilt-x', `${nextX}deg`)
+        stage.style.setProperty('--tilt-y', `${nextY}deg`)
+        if (Math.abs(targetX - nextX) + Math.abs(targetY - nextY) > .05) {
+          frameId = requestAnimationFrame(animateTilt)
+        } else {
+          frameId = 0
+        }
+      }
+      frameId = requestAnimationFrame(animateTilt)
+    }
+    const onPointerLeave = () => {
+      targetX = 0
+      targetY = 0
+      onPointerMove({ clientX: stage.getBoundingClientRect().left + stage.offsetWidth / 2, clientY: stage.getBoundingClientRect().top + stage.offsetHeight / 2 })
+    }
+    stage.addEventListener('pointermove', onPointerMove)
+    stage.addEventListener('pointerleave', onPointerLeave)
+    const interval = window.setInterval(() => {
+      if (active && visible && !document.hidden) setNotificationIndex((index) => (index + 1) % heroNotifications.length)
+    }, 4200)
+
+    updateActiveState()
+    return () => {
+      active = false
+      observer.disconnect()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      welcomeText?.removeEventListener('animationend', markWelcomeTyped)
+      stage.removeEventListener('pointermove', onPointerMove)
+      stage.removeEventListener('pointerleave', onPointerLeave)
+      window.clearInterval(interval)
+      cancelAnimationFrame(frameId)
+    }
+  }, [])
 
   return (
     <div className="landing-page">
       <section aria-labelledby="hero-title" className="landing-hero">
         <div className="hero-copy">
           <span className="hero-kicker"><i /> YOUR CAMPUS, YOUR COMMUNITY</span>
-          <h1 id="hero-title">Discover Your <span>Campus Community with UNIDOS.</span></h1>
+          <h1 id="hero-title">
+            Discover Your
+            <span className="hero-title-accent">Campus Community</span>
+            <span className="hero-title-ending">with UNIDOS.</span>
+          </h1>
           <p className="hero-tagline">Join. Lead. Make an Impact.</p>
           <p className="hero-description">
             UNIDOS brings WMSU students and organizations together as one campus community to
             discover, participate, and stay connected to everything happening on campus.
           </p>
+
+          {/* ── Hero search bar ─ above action buttons ── */}
+          <HeroSearch />
+
           <div className="hero-actions">
             <Link className="button button-primary" to="/student/organizations">
               Explore Organizations <Icon name="arrow-right" size={14} />
@@ -57,18 +325,59 @@ function LandingPage() {
             <div className="mini-avatars" aria-hidden="true"><span>AS</span><span>MD</span><span>JF</span><span>+</span></div>
             <span><strong>Find your people.</strong> Get involved at WMSU.</span>
           </div>
+          <MobileHeroStats />
         </div>
-        <div aria-label="Campus community illustration" className="hero-art">
-          <div className="hero-art-orbit orbit-one" />
-          <div className="hero-art-orbit orbit-two" />
-          <div className="hero-art-center">
-            <WmsuLogo className="hero-art-seal" />
-            <span className="hero-art-center-label">One campus<br />many communities</span>
+
+        <div aria-hidden="true" className="hero-art" ref={heroArtRef}>
+          <div aria-hidden="true" className="hero-dot-grid" />
+          <div aria-hidden="true" className="hero-gold-arc" />
+          <div aria-hidden="true" className="hero-device-circle" />
+          <div aria-hidden="true" className="hero-laptop">
+            <div className="hero-laptop-screen">
+              <div className="mock-dashboard">
+                <div className="mock-dashboard-top"><WmsuLogo className="mock-logo" /><span>UNIDOS</span><i /></div>
+                <div className="mock-welcome"><small>STUDENT DASHBOARD</small><strong>Welcome back!</strong></div>
+                <div className="mock-metrics">
+                  <span><b data-count="12">0</b><small>Organizations</small></span>
+                  <span><b data-count="48">0</b><small>Events</small></span>
+                  <span><b data-count="240">0</b><small>Members</small></span>
+                </div>
+                <div className="mock-dashboard-content">
+                  <div className="mock-org-list"><b>My organizations</b><i /><i /><i /></div>
+                  <div className="mock-event-card"><span>UPCOMING EVENT</span><b>Campus Connect</b><i /><i /></div>
+                </div>
+              </div>
+            </div>
+            <div className="hero-laptop-base" />
           </div>
-          <div className="hero-float-card float-organizations"><span className="float-icon"><Icon name="organization" size={16} /></span><span><strong>50+</strong><small>Organizations</small></span></div>
-          <div className="hero-float-card float-events"><span className="float-icon"><Icon name="calendar" size={16} /></span><span><strong>Campus life</strong><small>Happening here</small></span></div>
-          <span className="hero-spark spark-one">✦</span>
-          <span className="hero-spark spark-two">✦</span>
+          <div aria-hidden="true" className="hero-phone">
+            <div className="hero-phone-screen">
+              <div className="mock-phone-status"><span>9:41</span><i /></div>
+              <div className="mock-phone-header"><WmsuLogo className="mock-logo" /><b>UNIDOS</b><i>•••</i></div>
+              <div className="mock-org-cover"><span>COMPUTER<br />SOCIETY</span></div>
+              <b className="mock-phone-title">WMSU Computer Society</b>
+              <span className="mock-phone-caption">LEARN · BUILD · CONNECT</span>
+              <div className="mock-phone-button">View organization</div>
+              <div className="mock-phone-line" /><div className="mock-phone-line short" />
+            </div>
+          </div>
+          <div className="hero-notification hero-notification-primary">
+            <span className="hero-notification-icon"><Icon name={heroNotifications[notificationIndex].icon} size={17} /></span>
+            <span className="hero-notification-copy">
+              <strong>{heroNotifications[notificationIndex].title}</strong>
+              <span>{heroNotifications[notificationIndex].message}</span>
+            </span>
+            <small>{heroNotifications[notificationIndex].time}</small>
+          </div>
+          <div className="hero-notification hero-notification-secondary">
+            <span className="hero-notification-icon"><Icon name={heroNotifications[(notificationIndex + 1) % heroNotifications.length].icon} size={17} /></span>
+            <span className="hero-notification-copy">
+              <strong>{heroNotifications[(notificationIndex + 1) % heroNotifications.length].title}</strong>
+              <span>{heroNotifications[(notificationIndex + 1) % heroNotifications.length].message}</span>
+            </span>
+            <small>{heroNotifications[(notificationIndex + 1) % heroNotifications.length].time}</small>
+          </div>
+          <LiveStatCards />
         </div>
       </section>
 
@@ -100,13 +409,19 @@ function LandingPage() {
           id="organizations-title"
           title="Student organizations"
         />
-        <FilterSelect
-          className="landing-category-select"
-          label="Category"
-          onChange={setActiveCategory}
-          options={organizationCategories}
-          value={activeCategory}
-        />
+        <div aria-label="Filter organizations by category" className="category-filters" role="group">
+          {organizationCategories.map((category) => (
+            <button
+              aria-pressed={activeCategory === category}
+              className={`category-filter${activeCategory === category ? ' selected' : ''}`}
+              key={category}
+              onClick={() => setActiveCategory(category)}
+              type="button"
+            >
+              {category}
+            </button>
+          ))}
+        </div>
         <div className="organization-grid" id="organization-results">
           {filteredOrganizations.map((organization) => (
             <OrganizationCard key={organization.id} organization={organization} />
@@ -214,32 +529,38 @@ function LandingPage() {
             <p className="footer-university">Western Mindanao State University</p>
             <p>Connecting WMSU students with organizations, activities, and campus communities.</p>
           </div>
-          <nav aria-label="Quick links" className="footer-column">
-            <strong>Quick Links</strong>
-            <Link to="/">Home</Link>
-            <Link to="/student/organizations">Organizations</Link>
-            <Link to="/student/events">Events</Link>
-            <Link to="/#about">About</Link>
-            <Link to="/#community-feed">Community Feed</Link>
-            <Link to="/#leaderboard">Leaderboard</Link>
-          </nav>
-          <nav aria-label="Student links" className="footer-column">
-            <strong>Student</strong>
-            <Link to="/student/my-organizations">My Organizations</Link>
-            <Link to="/student/registrations">My Registrations</Link>
-            <Link to="/student/attendance">Attendance</Link>
-            <Link to="/student/notifications">Notifications</Link>
-          </nav>
-          <nav aria-label="Account links" className="footer-column">
-            <strong>Account</strong>
-            <Link to="/login">Sign In</Link>
-            <Link to="/register">Create Account</Link>
-          </nav>
-          <div className="footer-column footer-contact">
-            <strong>Contact</strong>
+          <details className="footer-column" open>
+            <summary>Quick Links</summary>
+            <nav aria-label="Quick links">
+              <Link to="/">Home</Link>
+              <Link to="/student/organizations">Organizations</Link>
+              <Link to="/student/events">Events</Link>
+              <Link to="/#about">About</Link>
+              <Link to="/#community-feed">Community Feed</Link>
+              <Link to="/#leaderboard">Leaderboard</Link>
+            </nav>
+          </details>
+          <details className="footer-column" open>
+            <summary>Student</summary>
+            <nav aria-label="Student links">
+              <Link to="/student/my-organizations">My Organizations</Link>
+              <Link to="/student/registrations">My Registrations</Link>
+              <Link to="/student/attendance">Attendance</Link>
+              <Link to="/student/notifications">Notifications</Link>
+            </nav>
+          </details>
+          <details className="footer-column" open>
+            <summary>Account</summary>
+            <nav aria-label="Account links">
+              <Link to="/login">Sign In</Link>
+              <Link to="/register">Create Account</Link>
+            </nav>
+          </details>
+          <details className="footer-column footer-contact" open>
+            <summary>Contact</summary>
             <span><Icon name="location" size={14} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '6px' }} /> Western Mindanao State University</span>
             <span><Icon name="mail" size={14} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '6px' }} /> Student Affairs</span>
-          </div>
+          </details>
         </div>
         <div className="footer-bottom">
           <span>© 2026 Western Mindanao State University</span>
