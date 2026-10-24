@@ -7,7 +7,13 @@
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+
+const envPath = path.join(__dirname, '.env');
+const envExamplePath = path.join(__dirname, '.env.example');
+if (!fs.existsSync(envPath) && fs.existsSync(envExamplePath)) {
+  fs.copyFileSync(envExamplePath, envPath);
+}
+require('dotenv').config({ path: envPath });
 
 // Primary database folder and SQL schema path (../database/student_org_db.sql),
 // with fallback to local backend/schema copies if the main database folder is moved.
