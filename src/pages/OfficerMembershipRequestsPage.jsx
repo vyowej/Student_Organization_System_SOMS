@@ -15,16 +15,16 @@ const requestFilters = ['ALL', 'PENDING', 'APPROVED', 'REJECTED']
 
 export default function OfficerMembershipRequestsPage() {
   const {
-    adminOrganizations,
+    adminOrganizations = [],
     approveOfficerMembershipRequest,
     captureUndo,
     currentUser,
-    officerMembershipRequests,
+    officerMembershipRequests = [],
     rejectOfficerMembershipRequest,
   } = useOutletContext()
   const { showToast } = useToast()
-  const orgId = currentUser?.organizationId || 'wmsu-cs'
-  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society', acronym: 'CS' }
+  const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
+  const organization = adminOrganizations?.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0] || { name: 'Your Organization', acronym: 'ORG' }
   const [activeFilter, setActiveFilter] = useState('PENDING')
   const [search, setSearch] = useState('')
   const [selectedRequest, setSelectedRequest] = useState(null)
@@ -32,33 +32,37 @@ export default function OfficerMembershipRequestsPage() {
   const [rejectTarget, setRejectTarget] = useState(null)
   const [rejectionReason, setRejectionReason] = useState('')
 
-  const pending = officerMembershipRequests.filter((request) => request.status === 'PENDING')
+  const orgRequests = useMemo(
+    () => officerMembershipRequests.filter((r) => !organization.id || String(r.organizationId) === String(organization.id)),
+    [officerMembershipRequests, organization.id]
+  )
+  const pending = orgRequests.filter((request) => request.status === 'PENDING')
   const nameOf = formatDisplayName
 
   const visibleRequests = useMemo(() => {
     const query = search.trim().toLowerCase()
-    return officerMembershipRequests
+    return orgRequests
       .filter((request) => activeFilter === 'ALL' || request.status === activeFilter)
       .filter((request) => {
         if (!query) return true
         const text = `${nameOf(request)} ${request.studentId} ${request.program} ${request.applicationDate}`.toLowerCase()
         return text.includes(query)
       })
-  }, [activeFilter, officerMembershipRequests, search])
+  }, [activeFilter, orgRequests, search, nameOf])
 
-  function approve() {
+  async function approve() {
     if (!approveTarget) return
     const undo = captureUndo()
-    if (approveOfficerMembershipRequest(approveTarget.id)) {
+    if (await approveOfficerMembershipRequest(approveTarget.id)) {
       showToast(`${nameOf(approveTarget)} is now an active member.`, 'success', undoAction(undo))
     }
     setApproveTarget(null)
   }
 
-  function reject() {
+  async function reject() {
     if (!rejectTarget) return
     const undo = captureUndo()
-    if (rejectOfficerMembershipRequest(rejectTarget.id, rejectionReason)) {
+    if (await rejectOfficerMembershipRequest(rejectTarget.id, rejectionReason)) {
       showToast(`${nameOf(rejectTarget)}'s application was rejected.`, 'success', undoAction(undo))
     }
     setRejectTarget(null)
@@ -90,7 +94,7 @@ export default function OfficerMembershipRequestsPage() {
               <span>Applied {request.applicationDate}</span>
               {request.status !== 'PENDING' ? (
                 <small>
-                  {request.status === 'APPROVED' ? 'Approved' : 'Rejected'} {request.decisionDate} · by {request.processedBy ?? 'Organization Officer'}
+                  {request.status === 'APPROVED' ? 'Approved' : 'Rejected'} {request.decisionDate} · by {request.processedBy || 'Organization Officer'}
                   {request.decisionReason && ` · “${request.decisionReason}”`}
                 </small>
               ) : (
@@ -100,13 +104,13 @@ export default function OfficerMembershipRequestsPage() {
             <Badge tone={statusTones[request.status]}>{request.status}</Badge>
             <div className="officer-request-history-actions">
               <Button onClick={() => setSelectedRequest(request)} variant="secondary">View</Button>
-              {request.status === 'PENDING' && request.studentId !== 'WMSU-OFFICER-0142' && (
+              {request.status === 'PENDING' && String(request.studentId) !== String(currentUser?.studentId) && (
                 <>
                   <Button onClick={() => setApproveTarget(request)} variant="primary">Approve</Button>
                   <Button onClick={() => { setRejectTarget(request); setRejectionReason('') }} variant="danger">Reject</Button>
                 </>
               )}
-              {request.status === 'PENDING' && request.studentId === 'WMSU-OFFICER-0142' && <span className="officer-readonly-label">Cannot process your own application</span>}
+              {request.status === 'PENDING' && String(request.studentId) === String(currentUser?.studentId) && <span className="officer-readonly-label">Cannot process your own application</span>}
             </div>
           </article>
         ))}
@@ -134,8 +138,8 @@ export default function OfficerMembershipRequestsPage() {
           <div className="officer-request-tabs" role="group" aria-label="Filter membership requests">
             {requestFilters.map((filter) => {
               const count = filter === 'ALL'
-                ? officerMembershipRequests.length
-                : officerMembershipRequests.filter((request) => request.status === filter).length
+                ? orgRequests.length
+                : orgRequests.filter((request) => request.status === filter).length
               const label = filter === 'ALL' ? 'All' : filter.charAt(0) + filter.slice(1).toLowerCase()
               return (
                 <button
@@ -180,7 +184,7 @@ export default function OfficerMembershipRequestsPage() {
         )}
         <div className="officer-modal-actions">
           <Button onClick={() => setSelectedRequest(null)} variant="secondary">Close</Button>
-          {selectedRequest?.status === 'PENDING' && selectedRequest.studentId !== 'WMSU-OFFICER-0142' && (
+          {selectedRequest?.status === 'PENDING' && String(selectedRequest.studentId) !== String(currentUser?.studentId) && (
             <>
               <Button onClick={() => { setSelectedRequest(null); setApproveTarget(selectedRequest) }} variant="primary">Approve</Button>
               <Button onClick={() => { setSelectedRequest(null); setRejectTarget(selectedRequest); setRejectionReason('') }} variant="secondary">Reject</Button>

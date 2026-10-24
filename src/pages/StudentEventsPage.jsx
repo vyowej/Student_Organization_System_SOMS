@@ -26,18 +26,18 @@ function EventStatusBadge({ event, registration }) {
 }
 
 function EventDate({ date }) {
-  const [month, day, year] = date.replace(',', '').split(' ')
+  const [month, day, year] = String(date || 'TBA • •').replace(',', '').split(' ')
   return (
     <div aria-label={date} className="campus-event-date">
-      <span>{month.slice(0, 3)}</span>
-      <strong>{day}</strong>
-      <small>{year}</small>
+      <span>{(month || 'TBA').slice(0, 3)}</span>
+      <strong>{day || '•'}</strong>
+      <small>{year || ''}</small>
     </div>
   )
 }
 
 export default function StudentEventsPage() {
-  const { officerEvents, studentRegistrations, eventRegisteredCounts } = useOutletContext()
+  const { officerEvents = [], studentRegistrations = [], eventRegisteredCounts = {} } = useOutletContext()
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [statusFilter, setStatusFilter] = useState('All')
@@ -48,14 +48,14 @@ export default function StudentEventsPage() {
       .filter((event) => event.status === 'PUBLISHED')
       .map(officerEventToStudentEvent)
     return [...studentEvents, ...publishedOfficerEvents]
-      .filter((event) => event.status === 'PUBLISHED')
+      .filter((event) => event && event.status === 'PUBLISHED')
       .map((event) => ({
         ...event,
-        registeredCount: eventRegisteredCounts[event.id] ?? event.registeredCount,
+        registeredCount: eventRegisteredCounts[event.id] ?? event.registeredCount ?? 0,
       }))
       .filter((event) => {
         const registration = studentRegistrations.find((item) => (
-          item.eventId === event.id && item.status === 'REGISTERED'
+          String(item.eventId) === String(event.id) && item.status !== 'CANCELLED'
         ))
         const matchesCategory = category === 'All' || event.category === category
         const searchableText = `${event.title} ${event.organizationName} ${event.category} ${event.location} ${event.description}`.toLowerCase()
@@ -103,11 +103,11 @@ export default function StudentEventsPage() {
         <div className="campus-event-grid">
           {visibleEvents.map((event, index) => {
             const registration = studentRegistrations.find((item) => (
-              item.eventId === event.id && item.status === 'REGISTERED'
+              String(item.eventId) === String(event.id) && item.status !== 'CANCELLED'
             ))
             return (
               <article className="campus-event-card" key={event.id} style={{ '--event-index': index }}>
-                <Link aria-label={`View event: ${event.title}`} className={`campus-event-card-link event-${event.color}`} to={`/student/events/${event.id}`}>
+                <Link aria-label={`View event: ${event.title}`} className={`campus-event-card-link event-${event.color || 'crimson'}`} to={`/student/events/${event.id}`}>
                   <div className="campus-event-card-top">
                     <EventDate date={event.date} />
                     <Badge tone="crimson">{event.category}</Badge>

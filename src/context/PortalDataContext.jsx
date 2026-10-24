@@ -1,1217 +1,1442 @@
 /**
- * Portal Data Context Provider
+ * Shared Portal Data Context (`src/context/PortalDataContext.jsx`)
  *
- * Centralizes state and actions across the Student, Officer, Adviser, and
- * Admin portals (memberships, event proposals/registrations, document/report
- * reviews, notifications, and audit logs), corresponding to the tables in
- * `database/student_org_db.sql` and REST routes in `backend/routes/`.
+ * Synchronizes Student, Officer, Adviser, and Admin portals with the PostgreSQL
+ * database (`database/student_org_db.sql`) via Express REST API endpoints (`/api/*`).
+ * All hardcoded fake data arrays and localStorage mock databases have been removed.
  */
-import { useEffect, useRef, useState } from 'react'
-import { initialStudentMemberships, studentOrganizations } from '../data/studentOrganizations.js'
-import {
-  initialOfficerEvents,
-  initialOfficerMembers,
-  initialOfficerMembershipRequests,
-  officerOrganization,
-} from '../data/officerPortal.js'
-import { initialAdviserActivity, initialAdviserDocuments, initialAdviserReports } from '../data/adviserPortal.js'
-import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
-import {
-  initialAdminAuditLogs,
-  initialAdminNotifications,
-  initialAdminOrganizations,
-  initialAdminSettings,
-  initialAdminUsers,
-  initialOrganizationApplications,
-} from '../data/adminPortal.js'
-import { initialStudentRegistrations, studentEvents } from '../data/studentEvents.js'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import PortalDataContext from './PortalData.js'
 import { useAuth } from './useAuth.js'
-import { formatDisplayName } from '../data/displayName.js'
+import { adminDefaultSettings } from '../data/adminPortal.js'
 
-// Officer positions that can only be assigned to one active member per organization
-const exclusiveOfficerPositions = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor', 'PIO']
-const legacyOfficerStudentId = 'WMSU-OFFICER-0142'
-const membershipSessionKey = 'unidos-membership-state'
-
-// Normalizes stored session records to ensure consistent display names and emails
-function normalizeLegacyDemoNames(value, parentKey = '') {
-  if (Array.isArray(value)) return value.map((item) => normalizeLegacyDemoNames(item, parentKey))
-  if (!value || typeof value !== 'object') return value
-
-  const normalized = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normalizeLegacyDemoNames(item, key)]))
-  const email = typeof value.email === 'string' ? value.email.toLowerCase() : ''
-  const id = typeof value.id === 'string' ? value.id : ''
-  const userId = typeof value.userId === 'string' ? value.userId : ''
-  const studentId = typeof value.studentId === 'string' ? value.studentId : ''
-  const demoPerson = ['student@unidos.test', 'student@wmsu.edu.ph'].includes(email) || userId === 'WMSU-2026-0142' || id === 'wcs-member-president'
-    ? { firstName: 'Juan', middleName: '', lastName: 'Dela Cruz', name: 'Dela Cruz, Juan', displayName: 'Dela Cruz, Juan', email: 'student@wmsu.edu.ph' }
-    : email === 'officer@unidos.test' || userId === legacyOfficerStudentId || studentId === legacyOfficerStudentId
-      ? { firstName: 'Maria', middleName: '', lastName: 'Santos', name: 'Santos, Maria', displayName: 'Santos, Maria', studentName: 'Santos, Maria', email: email === 'officer@unidos.test' || userId === 'WMSU-OFFICER-0142' ? 'officer@unidos.test' : 'maria.santos@wmsu.edu.ph' }
-      : studentId === '2026-00123' || userId === '2026-00123'
-        ? { firstName: 'Elena', middleName: '', lastName: 'Cruz', name: 'Cruz, Elena', displayName: 'Cruz, Elena', studentName: 'Cruz, Elena', email: 'elena.cruz@student.wmsu.edu.ph' }
-        : ['adviser@unidos.test', 'adviser@wmsu.edu.ph'].includes(email) || userId === 'WMSU-EMP-0314'
-          ? { firstName: 'Ana', middleName: '', lastName: 'Reyes', name: 'Reyes, Ana', displayName: 'Reyes, Ana', email: 'adviser@wmsu.edu.ph' }
-          : ['admin@unidos.test', 'admin@wmsu.edu.ph'].includes(email) || userId === 'WMSU-ADMIN-0001' || id === 'admin-root'
-            ? { firstName: 'John', middleName: '', lastName: 'Garcia', name: 'Garcia, John', displayName: 'Garcia, John', email: 'admin@wmsu.edu.ph' }
-            : null
-  const submittedByOfficer = ['officerEvents', 'adviserDocuments', 'adviserReports'].includes(parentKey)
-  const legacyAuditActor = parentKey === 'adminAuditLogs' && ['audit-seed-2', 'audit-seed-3'].includes(id)
-  return {
-    ...normalized,
-    ...(demoPerson ?? {}),
-    ...(id === 'computer-society' ? {
-      adviser: 'Reyes, Ana',
-      announcements: (value.announcements ?? []).map((announcement, index) => ({
-        ...announcement,
-        id: announcement.id ?? `computer-society-announcement-${index + 1}`,
-        content: announcement.content ?? announcement.description ?? 'Official update shared with organization members.',
-        postedBy: announcement.postedBy ?? 'Santos, Maria',
-        datePosted: announcement.datePosted ?? announcement.date ?? currentDate(),
-        lastUpdated: announcement.lastUpdated ?? announcement.datePosted ?? announcement.date ?? currentDate(),
-        status: announcement.status ?? 'PUBLISHED',
-      })),
-    } : {}),
-    ...(submittedByOfficer && 'submittedBy' in value ? { submittedBy: 'Santos, Maria' } : {}),
-    ...(legacyAuditActor || ['DOCUMENT_SUBMITTED', 'ORGANIZATION_PROFILE_UPDATED'].includes(value.action) ? { actor: 'Santos, Maria' } : {}),
-    ...(parentKey === 'adviserDocuments' && value.processedBy ? { processedBy: 'Reyes, Ana' } : {}),
-  }
-}
-
-function readMembershipSession() {
-  const savedState = window.sessionStorage.getItem(membershipSessionKey)
-  if (!savedState) return null
-
-  try {
-    const parsedState = JSON.parse(savedState)
-    if (
-      !Array.isArray(parsedState.studentMemberships)
-      || !Array.isArray(parsedState.officerMembershipRequests)
-      || !Array.isArray(parsedState.officerMembers)
-      || !Number.isFinite(parsedState.officerMemberCount)
-      || (parsedState.studentRegistrations !== undefined && !Array.isArray(parsedState.studentRegistrations))
-      || (parsedState.officerEvents !== undefined && !Array.isArray(parsedState.officerEvents))
-      || (parsedState.adviserDocuments !== undefined && !Array.isArray(parsedState.adviserDocuments))
-      || (parsedState.adviserReports !== undefined && !Array.isArray(parsedState.adviserReports))
-      || (parsedState.adviserActivity !== undefined && !Array.isArray(parsedState.adviserActivity))
-      || (parsedState.officerNotifications !== undefined && !Array.isArray(parsedState.officerNotifications))
-      || (parsedState.adminOrganizations !== undefined && !Array.isArray(parsedState.adminOrganizations))
-      || (parsedState.organizationApplications !== undefined && !Array.isArray(parsedState.organizationApplications))
-      || (parsedState.adminUsers !== undefined && !Array.isArray(parsedState.adminUsers))
-      || (parsedState.adminAuditLogs !== undefined && !Array.isArray(parsedState.adminAuditLogs))
-      || (parsedState.adminNotifications !== undefined && !Array.isArray(parsedState.adminNotifications))
-      || (parsedState.studentNotifications !== undefined && !Array.isArray(parsedState.studentNotifications))
-      || (parsedState.adminSettings !== undefined && (typeof parsedState.adminSettings !== 'object' || parsedState.adminSettings === null))
-      || (parsedState.organizationChangeRequests !== undefined && !Array.isArray(parsedState.organizationChangeRequests))
-    ) {
-      throw new Error('Saved membership state has an invalid structure.')
-    }
-    const normalizedState = normalizeLegacyDemoNames(parsedState)
-    const missingSeededMemberships = initialStudentMemberships.filter((seededMembership) => (
-      !normalizedState.studentMemberships.some((membership) => (
-        membership.studentId === seededMembership.studentId
-        && membership.organizationId === seededMembership.organizationId
-      ))
-    ))
-    return {
-      ...normalizedState,
-      studentMemberships: [...normalizedState.studentMemberships, ...missingSeededMemberships],
-    }
-  } catch (error) {
-    console.error('Unable to restore UNIDOS membership session state.', error)
-    window.sessionStorage.removeItem(membershipSessionKey)
-    return null
-  }
-}
-
-function currentDate() {
-  return new Intl.DateTimeFormat('en-US', {
-    day: 'numeric',
+function formatDisplayDate(isoValue) {
+  if (!isoValue) return ''
+  const parsed = new Date(isoValue)
+  if (Number.isNaN(parsed.getTime())) return String(isoValue)
+  return parsed.toLocaleDateString('en-US', {
     month: 'long',
+    day: 'numeric',
     year: 'numeric',
-  }).format(new Date())
+  })
 }
 
-function currentDateTime() {
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date())
+function formatDisplayTime(isoValue) {
+  if (!isoValue) return ''
+  const parsed = new Date(isoValue)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function formatOrgCategoryLabel(orgType) {
+  if (!orgType) return 'Academic'
+  const map = {
+    ACADEMIC: 'Academic',
+    NON_ACADEMIC: 'Leadership',
+    SOCIO_CIVIC: 'Socio-Civic',
+    RELIGIOUS: 'Religious',
+    SPORTS: 'Sports',
+    CULTURAL: 'Cultural',
+    FRATERNITY_SORORITY: 'Fraternity / Sorority',
+    OTHER: 'Other',
+  }
+  return map[String(orgType).toUpperCase()] || orgType
+}
+
+function formatPositionLabel(position, customTitle) {
+  if (customTitle) return customTitle
+  const map = {
+    PRESIDENT: 'President',
+    VICE_PRESIDENT: 'Vice President',
+    SECRETARY: 'Secretary',
+    TREASURER: 'Treasurer',
+    AUDITOR: 'Auditor',
+    PUBLIC_RELATIONS_OFFICER: 'PIO',
+    MEMBER: 'General Member',
+    OTHER: 'Committee Head',
+  }
+  return map[position] || position || 'General Member'
+}
+
+function formatRoleLabel(role) {
+  const map = {
+    STUDENT: 'Student',
+    OFFICER: 'Organization Officer',
+    ADVISER: 'Faculty Adviser',
+    ADMIN: 'Student Affairs Admin',
+  }
+  return map[String(role || '').toUpperCase()] || role || 'Student'
+}
+
+function normalizeAnnouncement(a) {
+  return {
+    id: a.announcement_id,
+    announcementId: a.announcement_id,
+    organizationId: a.organization_id,
+    organizationName: a.organization_name || 'Organization',
+    title: a.title,
+    description: a.content,
+    content: a.content,
+    date: formatDisplayDate(a.published_at || a.created_at),
+    datePosted: a.published_at || a.created_at,
+    lastUpdated: a.updated_at || a.published_at || a.created_at,
+    isPinned: Boolean(a.is_pinned),
+    status: a.published_at ? 'PUBLISHED' : 'DRAFT',
+    postedBy: a.first_name ? `${a.last_name}, ${a.first_name}` : 'Organization Officer',
+  }
+}
+
+function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allDocuments = []) {
+  const orgMembers = allMembers.filter((m) => String(m.organization_id) === String(row.organization_id) && m.status === 'ACTIVE')
+  const officers = orgMembers
+    .filter((m) => m.position && m.position !== 'MEMBER')
+    .map((m) => ({
+      id: m.membership_id,
+      studentId: m.student_number || String(m.student_id),
+      firstName: m.first_name,
+      middleName: m.middle_name || '',
+      lastName: m.last_name,
+      name: `${m.last_name}, ${m.first_name}`,
+      position: formatPositionLabel(m.position, m.custom_title),
+      rawPosition: m.position,
+      status: m.status || 'ACTIVE',
+    }))
+
+  const orgAnnouncements = allAnnouncements
+    .filter((a) => String(a.organization_id) === String(row.organization_id))
+    .map(normalizeAnnouncement)
+
+  const orgDocs = allDocuments
+    .filter((d) => String(d.organization_id) === String(row.organization_id) && d.status === 'APPROVED')
+    .map((d) => d.title)
+
+  const adviserName = row.adviser_first_name
+    ? `${row.adviser_last_name}, ${row.adviser_first_name}`
+    : 'Unassigned'
+
+  const activeCount = Number(row.member_count ?? orgMembers.length ?? 0)
+
+  return {
+    id: row.organization_id,
+    organizationId: row.organization_id,
+    name: row.name,
+    acronym: row.acronym || row.name?.slice(0, 4)?.toUpperCase() || 'ORG',
+    category: formatOrgCategoryLabel(row.org_type),
+    orgType: row.org_type,
+    scope: row.scope,
+    collegeId: row.college_id,
+    college: row.college_name || 'University-wide',
+    collegeCode: row.college_code || '',
+    departmentId: row.department_id,
+    department: row.department_name || '',
+    departmentCode: row.department_code || '',
+    description: row.description || row.mission || 'Official WMSU student organization.',
+    mission: row.mission || 'Not provided.',
+    vision: row.vision || 'Not provided.',
+    logo: row.logo || '',
+    adviserId: row.adviser_id || null,
+    adviser: adviserName,
+    adviserStatus: row.adviser_id ? 'ACTIVE' : 'UNASSIGNED',
+    status: row.status || 'ACTIVE',
+    accreditationStatus: row.accreditation_status || 'PENDING',
+    memberCount: activeCount,
+    activeMembers: activeCount,
+    upcomingEventsCount: Number(row.upcoming_events_count ?? 0),
+    establishedDate: formatDisplayDate(row.established_date || row.created_at),
+    createdAt: row.created_at,
+    officers,
+    announcements: orgAnnouncements,
+    documents: orgDocs,
+  }
+}
+
+function normalizeEvent(row) {
+  const startTime = formatDisplayTime(row.start_datetime)
+  const endTime = formatDisplayTime(row.end_datetime)
+  const timeRange = startTime && endTime ? `${startTime} – ${endTime}` : startTime || 'TBA'
+  const rawStatus = row.status || 'PENDING'
+  const mappedStatus = rawStatus === 'PENDING' ? 'SUBMITTED' : rawStatus
+
+  return {
+    id: row.event_id,
+    eventId: row.event_id,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name || 'Campus Organization',
+    organizationAcronym: row.organization_acronym || '',
+    title: row.title,
+    description: row.description || '',
+    venue: row.venue || 'WMSU Campus',
+    location: row.venue || 'WMSU Campus',
+    startDatetime: row.start_datetime,
+    endDatetime: row.end_datetime,
+    date: formatDisplayDate(row.start_datetime),
+    submittedDate: formatDisplayDate(row.created_at),
+    startTime,
+    endTime,
+    time: timeRange,
+    category: row.event_type || 'Academic',
+    eventType: row.event_type || 'Academic',
+    capacity: Number(row.max_participants ?? 100),
+    registeredCount: Number(row.registered_count ?? 0),
+    registrations: Number(row.registered_count ?? 0),
+    attendedCount: Number(row.attended_count ?? 0),
+    attendance: Number(row.attended_count ?? 0),
+    status: row.is_published && rawStatus === 'APPROVED' ? 'PUBLISHED' : mappedStatus,
+    rawStatus,
+    isPublished: Boolean(row.is_published),
+    adviserDecisionDate: row.approved_by ? formatDisplayDate(row.updated_at || row.created_at) : null,
+    adminApprovedAt: row.is_published ? formatDisplayDate(row.updated_at || row.created_at) : (row.approved_by ? formatDisplayDate(row.updated_at || row.created_at) : null),
+    createdBy: row.created_by,
+    approvedBy: row.approved_by,
+    createdAt: row.created_at,
+    supportingDocuments: [],
+  }
+}
+
+function normalizeMember(row) {
+  const joinedFormatted = formatDisplayDate(row.joined_at || row.created_at)
+  const positionLabel = formatPositionLabel(row.position, row.custom_title)
+  return {
+    id: row.membership_id,
+    membershipId: row.membership_id,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name || '',
+    acronym: row.acronym || '',
+    studentRecordId: row.student_id,
+    studentId: row.student_number || String(row.student_id),
+    userId: row.user_id,
+    firstName: row.first_name || '',
+    middleName: row.middle_name || '',
+    lastName: row.last_name || '',
+    name: `${row.last_name || ''}, ${row.first_name || ''}`.replace(/^,\s*/, ''),
+    email: row.email || '',
+    program: row.program_name || row.program_code || '',
+    yearLevel: row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : '',
+    position: positionLabel,
+    rawPosition: row.position || 'MEMBER',
+    customTitle: row.custom_title || '',
+    termStart: row.term_start,
+    termEnd: row.term_end,
+    status: row.status || 'ACTIVE',
+    joinedDate: joinedFormatted,
+    dateJoined: joinedFormatted,
+    approvedDate: joinedFormatted,
+    history: [
+      {
+        date: joinedFormatted || 'Recorded',
+        action: `Joined as ${positionLabel}`,
+      },
+    ],
+  }
+}
+
+function normalizeApplication(row) {
+  return {
+    id: row.application_id,
+    applicationId: row.application_id,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name || '',
+    acronym: row.acronym || '',
+    studentRecordId: row.student_id,
+    studentId: row.student_number || String(row.student_id),
+    firstName: row.first_name || '',
+    middleName: row.middle_name || '',
+    lastName: row.last_name || '',
+    name: `${row.last_name || ''}, ${row.first_name || ''}`.replace(/^,\s*/, ''),
+    email: row.email || '',
+    program: row.program_name || row.program_code || '',
+    yearLevel: row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : '',
+    desiredRole: row.desired_role || 'Member',
+    message: row.reason || 'Membership application submitted via UNIDOS portal.',
+    reason: row.reason || '',
+    status: row.status || 'PENDING',
+    applicationDate: formatDisplayDate(row.applied_at),
+    appliedAt: row.applied_at,
+    decisionDate: row.reviewed_at ? formatDisplayDate(row.reviewed_at) : '',
+    reviewedAt: row.reviewed_at,
+    processedBy: row.reviewer_first_name ? `${row.reviewer_last_name}, ${row.reviewer_first_name}` : '',
+  }
+}
+
+function normalizeRegistration(row) {
+  const attendanceStatus = row.attendance_id
+    ? (row.attendance_status === 'LATE' ? 'ATTENDED' : row.attendance_status || 'ATTENDED')
+    : 'PENDING'
+
+  return {
+    id: `REG-${row.registration_id}`,
+    registrationId: row.registration_id,
+    eventId: row.event_id,
+    eventTitle: row.event_title || '',
+    organizationId: row.organization_id,
+    organizationName: row.organization_name || '',
+    studentRecordId: row.student_id,
+    studentId: row.student_number || String(row.student_id),
+    firstName: row.first_name || '',
+    lastName: row.last_name || '',
+    status: row.status || 'REGISTERED',
+    registrationDate: formatDisplayDate(row.registered_at),
+    registeredAt: row.registered_at,
+    attendanceStatus,
+    checkInTime: row.time_in ? formatDisplayTime(row.time_in) : null,
+    checkInDate: row.time_in ? formatDisplayDate(row.time_in) : null,
+  }
+}
+
+function normalizeDocument(row) {
+  return {
+    id: row.document_id,
+    documentId: row.document_id,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name || '',
+    acronym: row.organization_acronym || '',
+    title: row.title,
+    type: row.doc_type || 'OTHER',
+    docType: row.doc_type || 'OTHER',
+    fileUrl: row.file_url || '',
+    academicYear: row.academic_year || '',
+    semester: row.semester || '',
+    status: row.status || 'PENDING',
+    submittedDate: formatDisplayDate(row.created_at),
+    submittedBy: row.uploader_first_name
+      ? `${row.uploader_last_name}, ${row.uploader_first_name}`
+      : 'Organization Officer',
+    processedBy: row.reviewer_first_name
+      ? `${row.reviewer_last_name}, ${row.reviewer_first_name}`
+      : '',
+    decisionReason: row.review_remarks || '',
+    revisionNote: row.review_remarks || '',
+    reviewRemarks: row.review_remarks || '',
+    reviewedAt: row.reviewed_at ? formatDisplayDate(row.reviewed_at) : '',
+    adminReviewRequired: ['CONSTITUTION', 'BYLAWS', 'ACCREDITATION_FORM', 'FINANCIAL_REPORT', 'EVENT_REPORT'].includes(row.doc_type),
+  }
+}
+
+function normalizeUser(row) {
+  const fullName = `${row.last_name || ''}, ${row.first_name || ''}`.replace(/^,\s*/, '')
+  return {
+    id: row.user_id,
+    userId: row.student_number || row.employee_number || String(row.user_id),
+    dbUserId: row.user_id,
+    studentRecordId: row.student_id || null,
+    adviserRecordId: row.adviser_id || null,
+    studentNumber: row.student_number || '',
+    employeeNumber: row.employee_number || '',
+    firstName: row.first_name || '',
+    middleName: row.middle_name || '',
+    lastName: row.last_name || '',
+    name: fullName,
+    email: row.email || '',
+    role: formatRoleLabel(row.role),
+    rawRole: row.role || 'STUDENT',
+    status: row.status || 'ACTIVE',
+    programId: row.program_id || null,
+    program: row.program_name || row.adviser_department_name || '—',
+    programCode: row.program_code || '',
+    departmentId: row.department_id || row.adviser_department_id || null,
+    department: row.department_name || row.adviser_department_name || '—',
+    collegeId: row.college_id || row.adviser_college_id || null,
+    college: row.college_name || '—',
+    yearLevel: row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : '—',
+    organization: '—',
+    lastActivity: formatDisplayDate(row.updated_at || row.created_at),
+    createdAt: formatDisplayDate(row.created_at),
+  }
+}
+
+function normalizeNotification(row) {
+  return {
+    id: row.notification_id,
+    notificationId: row.notification_id,
+    userId: row.user_id,
+    title: row.title,
+    message: row.message,
+    type: row.title || 'Update',
+    read: Boolean(row.is_read),
+    unread: !row.is_read,
+    createdAt: formatDisplayDate(row.created_at),
+    time: formatDisplayDate(row.created_at),
+  }
+}
+
+function normalizeAuditLog(row) {
+  return {
+    id: row.log_id,
+    logId: row.log_id,
+    userId: row.user_id,
+    actor: row.first_name ? `${row.last_name}, ${row.first_name}` : 'System',
+    role: row.role || 'SYSTEM',
+    action: row.action,
+    entityType: row.entity_type || 'SYSTEM',
+    entityId: row.entity_id || '—',
+    description: `${row.action} on ${row.entity_type || 'record'}${row.entity_id ? ` #${row.entity_id}` : ''}`,
+    ipAddress: row.ip_address || '',
+    timestamp: formatDisplayDate(row.created_at),
+    createdAt: row.created_at,
+  }
 }
 
 export function PortalDataProvider({ children }) {
-  const { currentUser, updateMockUserAccess } = useAuth()
-  const [initialMembershipState] = useState(readMembershipSession)
-  const [studentMemberships, setStudentMemberships] = useState(initialMembershipState?.studentMemberships ?? initialStudentMemberships)
-  const [officerMembershipRequests, setOfficerMembershipRequests] = useState(initialMembershipState?.officerMembershipRequests ?? initialOfficerMembershipRequests)
-  const [officerMembers, setOfficerMembers] = useState(initialMembershipState?.officerMembers ?? initialOfficerMembers)
-  const [officerMemberCount, setOfficerMemberCount] = useState(initialMembershipState?.officerMemberCount ?? officerOrganization.activeMembers)
-  const [officerEvents, setOfficerEvents] = useState(initialMembershipState?.officerEvents ?? initialOfficerEvents)
-  const [studentRegistrations, setStudentRegistrations] = useState(() => {
-    const savedRegistrations = initialMembershipState?.studentRegistrations ?? []
-    const savedIds = new Set(savedRegistrations.map((registration) => registration.id))
-    return [
-      ...initialStudentRegistrations.filter((registration) => !savedIds.has(registration.id)),
-      ...savedRegistrations,
-    ]
+  const { currentUser, refreshCurrentUser } = useAuth()
+
+  const [rawOrganizations, setRawOrganizations] = useState([])
+  const [rawEvents, setRawEvents] = useState([])
+  const [rawMembers, setRawMembers] = useState([])
+  const [rawApplications, setRawApplications] = useState([])
+  const [rawRegistrations, setRawRegistrations] = useState([])
+  const [rawDocuments, setRawDocuments] = useState([])
+  const [rawAnnouncements, setRawAnnouncements] = useState([])
+  const [rawUsers, setRawUsers] = useState([])
+  const [rawNotifications, setRawNotifications] = useState([])
+  const [rawAuditLogs, setRawAuditLogs] = useState([])
+  const [rawAdvisers, setRawAdvisers] = useState([])
+  const [rawAdviserChangeRequests, setRawAdviserChangeRequests] = useState([])
+  const [academicHierarchy, setAcademicHierarchy] = useState({
+    colleges: [],
+    departments: [],
+    programs: [],
   })
-  const [adviserDocuments, setAdviserDocuments] = useState(initialMembershipState?.adviserDocuments ?? initialAdviserDocuments)
-  const [adviserReports, setAdviserReports] = useState(initialMembershipState?.adviserReports ?? initialAdviserReports)
-  const [adviserActivity, setAdviserActivity] = useState(initialMembershipState?.adviserActivity ?? initialAdviserActivity)
-  const [officerNotifications, setOfficerNotifications] = useState(initialMembershipState?.officerNotifications ?? [])
-  const [adminOrganizations, setAdminOrganizations] = useState(initialMembershipState?.adminOrganizations ?? initialAdminOrganizations)
-  const [organizationChangeRequests, setOrganizationChangeRequests] = useState(initialMembershipState?.organizationChangeRequests ?? [])
-  const [organizationApplications, setOrganizationApplications] = useState(initialMembershipState?.organizationApplications ?? initialOrganizationApplications)
-  const [adminUsers, setAdminUsers] = useState(() => (
-    (initialMembershipState?.adminUsers ?? initialAdminUsers)
-      .filter((user) => user.email !== 'officer@unidos.test')
-  ))
-  const [adminAuditLogs, setAdminAuditLogs] = useState(initialMembershipState?.adminAuditLogs ?? initialAdminAuditLogs)
-  const [adminSettings, setAdminSettings] = useState(initialMembershipState?.adminSettings ?? initialAdminSettings)
-  const [studentNotifications, setStudentNotifications] = useState(initialMembershipState?.studentNotifications ?? [])
-  const [adminNotifications, setAdminNotifications] = useState(initialMembershipState?.adminNotifications ?? initialAdminNotifications)
+  const [adminSettings, setAdminSettings] = useState(adminDefaultSettings)
+  const [loading, setLoading] = useState(true)
+
+  const refreshPortalData = useCallback(async () => {
+    try {
+      const [
+        orgsRes,
+        eventsRes,
+        membersRes,
+        appsRes,
+        regsRes,
+        docsRes,
+        annRes,
+        usersRes,
+        notifsRes,
+        logsRes,
+        advisersRes,
+        adviserReqRes,
+        hierarchyRes,
+      ] = await Promise.all([
+        fetch('/api/organizations').catch(() => null),
+        fetch('/api/events').catch(() => null),
+        fetch('/api/members').catch(() => null),
+        fetch('/api/members/applications').catch(() => null),
+        fetch('/api/attendance/registrations').catch(() => null),
+        fetch('/api/documents').catch(() => null),
+        fetch('/api/announcements').catch(() => null),
+        fetch('/api/users').catch(() => null),
+        fetch(currentUser?.userId ? `/api/notifications?user_id=${currentUser.userId}` : '/api/notifications').catch(() => null),
+        fetch('/api/audit-logs').catch(() => null),
+        fetch('/api/advisers').catch(() => null),
+        fetch('/api/advisers/requests').catch(() => null),
+        fetch('/api/academic/hierarchy').catch(() => null),
+      ])
+
+      if (orgsRes?.ok) setRawOrganizations(await orgsRes.json())
+      if (eventsRes?.ok) setRawEvents(await eventsRes.json())
+      if (membersRes?.ok) setRawMembers(await membersRes.json())
+      if (appsRes?.ok) setRawApplications(await appsRes.json())
+      if (regsRes?.ok) setRawRegistrations(await regsRes.json())
+      if (docsRes?.ok) setRawDocuments(await docsRes.json())
+      if (annRes?.ok) setRawAnnouncements(await annRes.json())
+      if (usersRes?.ok) setRawUsers(await usersRes.json())
+      if (notifsRes?.ok) setRawNotifications(await notifsRes.json())
+      if (logsRes?.ok) setRawAuditLogs(await logsRes.json())
+      if (advisersRes?.ok) setRawAdvisers(await advisersRes.json())
+      if (adviserReqRes?.ok) setRawAdviserChangeRequests(await adviserReqRes.json())
+      if (hierarchyRes?.ok) setAcademicHierarchy(await hierarchyRes.json())
+    } finally {
+      setLoading(false)
+    }
+  }, [currentUser?.userId])
 
   useEffect(() => {
-    window.sessionStorage.setItem(membershipSessionKey, JSON.stringify({
-      studentMemberships,
-      officerMembershipRequests,
-      officerMembers,
-      officerMemberCount,
-      officerEvents,
-      studentRegistrations,
-      adviserDocuments,
-      adviserReports,
-      adviserActivity,
-      officerNotifications,
-      adminOrganizations,
-      organizationChangeRequests,
-      organizationApplications,
-      adminUsers,
-      adminAuditLogs,
-      adminSettings,
-      studentNotifications,
-      adminNotifications,
+    refreshPortalData()
+  }, [refreshPortalData])
+
+  // Derived normalized lists reflecting every database table
+  const adminOrganizations = useMemo(
+    () => rawOrganizations.map((org) => normalizeOrganization(org, rawMembers, rawAnnouncements, rawDocuments)),
+    [rawOrganizations, rawMembers, rawAnnouncements, rawDocuments]
+  )
+
+  const studentOrganizations = useMemo(
+    () => adminOrganizations.filter((org) => org.status === 'ACTIVE'),
+    [adminOrganizations]
+  )
+
+  const officerAnnouncements = useMemo(
+    () => rawAnnouncements.map(normalizeAnnouncement),
+    [rawAnnouncements]
+  )
+
+  const officerEvents = useMemo(
+    () => rawEvents.map(normalizeEvent),
+    [rawEvents]
+  )
+
+  const officerMembers = useMemo(
+    () => rawMembers.map(normalizeMember),
+    [rawMembers]
+  )
+
+  const officerMemberCount = useMemo(() => {
+    const activeOrgId = currentUser?.organizationId || adminOrganizations[0]?.id
+    if (!activeOrgId) return officerMembers.filter((m) => m.status === 'ACTIVE').length
+    return officerMembers.filter(
+      (m) => m.status === 'ACTIVE' && String(m.organizationId) === String(activeOrgId)
+    ).length
+  }, [officerMembers, currentUser?.organizationId, adminOrganizations])
+
+  const officerMembershipRequests = useMemo(
+    () => rawApplications.map(normalizeApplication),
+    [rawApplications]
+  )
+
+  const studentMemberships = useMemo(() => {
+    const activeEntries = officerMembers.map((m) => ({
+      id: `MEM-${m.id}`,
+      membershipId: m.membershipId,
+      organizationId: m.organizationId,
+      organizationName: m.organizationName,
+      studentId: m.studentId,
+      studentRecordId: m.studentRecordId,
+      studentDbId: m.studentRecordId,
+      userId: m.userId,
+      position: m.position,
+      status: m.status,
+      approvedDate: m.approvedDate,
+      applicationDate: m.joinedDate,
+      dateJoined: m.dateJoined,
     }))
-  }, [studentMemberships, officerMembershipRequests, officerMembers, officerMemberCount, officerEvents, studentRegistrations, adviserDocuments, adviserReports, adviserActivity, officerNotifications, adminOrganizations, organizationChangeRequests, organizationApplications, adminUsers, adminAuditLogs, adminSettings, studentNotifications, adminNotifications])
+    const pendingEntries = officerMembershipRequests
+      .filter((app) => app.status === 'PENDING')
+      .map((app) => ({
+        id: `APP-${app.id}`,
+        applicationId: app.applicationId,
+        organizationId: app.organizationId,
+        organizationName: app.organizationName,
+        studentId: app.studentId,
+        studentRecordId: app.studentRecordId,
+        studentDbId: app.studentRecordId,
+        userId: app.userId,
+        position: app.desiredRole || 'General Member',
+        status: 'PENDING',
+        applicationDate: app.applicationDate,
+      }))
+    return [...activeEntries, ...pendingEntries]
+  }, [officerMembers, officerMembershipRequests])
 
-  // ---- Undo support -------------------------------------------------------
-  // Keep the latest state of every slice in a ref so an action can capture a
-  // snapshot *before* it runs, and hand back a function that restores it.
-  const latestState = useRef({})
-  latestState.current = {
-    studentMemberships, officerMembershipRequests, officerMembers, officerMemberCount, officerEvents,
-    studentRegistrations, adviserDocuments, adviserReports, adviserActivity, officerNotifications,
-    adminOrganizations, organizationChangeRequests, organizationApplications, adminUsers,
-    adminAuditLogs, adminSettings, studentNotifications, adminNotifications,
-  }
+  const getMembershipForOrganization = useCallback(
+    (organizationId) =>
+      studentMemberships.find(
+        (m) =>
+          String(m.organizationId) === String(organizationId) &&
+          ((currentUser?.studentRecordId && String(m.studentRecordId) === String(currentUser.studentRecordId)) ||
+            (currentUser?.studentDbId && String(m.studentDbId) === String(currentUser.studentDbId)) ||
+            (currentUser?.studentId && String(m.studentId).toLowerCase() === String(currentUser.studentId).toLowerCase()))
+      ) || null,
+    [studentMemberships, currentUser]
+  )
 
-  function captureUndo() {
-    const snapshot = latestState.current
-    return function undo() {
-      setStudentMemberships(snapshot.studentMemberships)
-      setOfficerMembershipRequests(snapshot.officerMembershipRequests)
-      setOfficerMembers(snapshot.officerMembers)
-      setOfficerMemberCount(snapshot.officerMemberCount)
-      setOfficerEvents(snapshot.officerEvents)
-      setStudentRegistrations(snapshot.studentRegistrations)
-      setAdviserDocuments(snapshot.adviserDocuments)
-      setAdviserReports(snapshot.adviserReports)
-      setAdviserActivity(snapshot.adviserActivity)
-      setOfficerNotifications(snapshot.officerNotifications)
-      setAdminOrganizations(snapshot.adminOrganizations)
-      setOrganizationChangeRequests(snapshot.organizationChangeRequests)
-      setOrganizationApplications(snapshot.organizationApplications)
-      setAdminUsers(snapshot.adminUsers)
-      setAdminAuditLogs(snapshot.adminAuditLogs)
-      setAdminSettings(snapshot.adminSettings)
-      setStudentNotifications(snapshot.studentNotifications)
-      setAdminNotifications(snapshot.adminNotifications)
-    }
-  }
+  const studentRegistrations = useMemo(
+    () => rawRegistrations.map(normalizeRegistration),
+    [rawRegistrations]
+  )
 
-  function appendAudit(action, entityType, entityId, description) {
-    const timestamp = new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date())
-    setAdminAuditLogs((logs) => [{
-      id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      timestamp,
-      actor: formatDisplayName(currentUser) || 'Garcia, John',
-      action,
-      entityType,
-      entityId,
-      description,
-    }, ...logs])
-  }
+  const adviserDocuments = useMemo(
+    () => rawDocuments.map(normalizeDocument),
+    [rawDocuments]
+  )
 
-  function addStudentNotification(message) {
-    const createdAt = new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date())
-    setStudentNotifications((notifications) => [
-      { id: `student-notification-${Date.now()}`, message, createdAt, read: false },
-      ...notifications,
-    ])
-  }
+  const adviserReports = useMemo(
+    () =>
+      adviserDocuments
+        .filter((d) => d.docType === 'EVENT_REPORT' || d.docType === 'FINANCIAL_REPORT')
+        .map((d) => ({
+          id: d.id,
+          documentId: d.documentId,
+          organizationId: d.organizationId,
+          organizationName: d.organizationName,
+          eventTitle: d.title,
+          title: d.title,
+          eventDate: d.submittedDate,
+          submittedDate: d.submittedDate,
+          submittedBy: d.submittedBy,
+          attendance: 0,
+          status:
+            d.status === 'APPROVED'
+              ? 'VERIFIED'
+              : d.status === 'REJECTED'
+                ? 'RETURNED'
+                : 'PENDING_VERIFICATION',
+          verifiedBy: d.processedBy,
+          decisionDate: d.reviewedAt,
+          revisionNote: d.reviewRemarks,
+          supportingDocuments: d.fileUrl ? [d.fileUrl] : [],
+        })),
+    [adviserDocuments]
+  )
 
-  function markStudentNotificationRead(id) {
-    setStudentNotifications((notifications) => notifications.map((notification) => (
-      notification.id === id ? { ...notification, read: true } : notification
-    )))
-  }
+  const adminUsers = useMemo(
+    () => rawUsers.map(normalizeUser),
+    [rawUsers]
+  )
 
-  function markAdminNotificationRead(id) {
-    setAdminNotifications((notifications) => notifications.map((notification) => (
-      notification.id === id ? { ...notification, read: true } : notification
-    )))
-  }
+  const notifications = useMemo(
+    () => rawNotifications.map(normalizeNotification),
+    [rawNotifications]
+  )
 
-  function addAdminNotification(message) {
-    const createdAt = new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date())
-    setAdminNotifications((notifications) => [
-      { id: `admin-notification-${Date.now()}`, message, createdAt, read: false },
-      ...notifications,
-    ])
-  }
+  const adminAuditLogs = useMemo(
+    () => rawAuditLogs.map(normalizeAuditLog),
+    [rawAuditLogs]
+  )
 
-  function addOfficerNotification(message) {
-    const createdAt = new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date())
-    setOfficerNotifications((notifications) => [
-      { id: `officer-notification-${Date.now()}`, message, createdAt, read: false },
-      ...notifications,
-    ])
-  }
+  const organizationApplications = useMemo(
+    () =>
+      adminOrganizations
+        .filter((org) => org.accreditationStatus === 'PENDING' || org.status === 'PENDING')
+        .map((org) => ({
+          id: org.id,
+          organizationId: org.id,
+          name: org.name,
+          acronym: org.acronym,
+          category: org.category,
+          scope: org.scope,
+          college: org.college,
+          department: org.department,
+          adviser: org.adviser,
+          submittedBy: org.officers[0]?.name || 'Organization Representative',
+          submittedDate: org.establishedDate,
+          status: org.accreditationStatus === 'ACCREDITED' ? 'APPROVED' : org.accreditationStatus,
+          mission: org.mission,
+          vision: org.vision,
+          proposedOfficers: org.officers,
+          documents: org.documents,
+        })),
+    [adminOrganizations]
+  )
 
-  function registerStudentForEvent(eventId, registeredCount) {
-    if (currentUser?.role !== 'STUDENT') return null
-    const studentEvent = studentEvents.find((item) => item.id === eventId)
-    const officerEvent = officerEvents.find((item) => item.id === eventId && item.status === 'PUBLISHED')
-    const eventDetails = studentEvent ?? (officerEvent && officerEventToStudentEvent(officerEvent))
-    if (
-      !eventDetails
-      || eventDetails.status !== 'PUBLISHED'
-      || eventDetails.registrationStatus === 'CLOSED'
-      || (registeredCount ?? eventDetails.registeredCount) >= eventDetails.capacity
-    ) return null
+  const captureUndo = useCallback(() => () => {}, [])
 
-    const studentId = currentUser.studentId ?? currentUser.id
-    const existingRegistration = studentRegistrations.find((registration) => (
-      registration.eventId === eventId
-      && registration.studentId === studentId
-      && registration.status === 'REGISTERED'
-    ))
-    if (existingRegistration) return existingRegistration
+  // --- API Action Handlers ---
 
-    const registration = {
-      id: `UNIDOS-REG-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-      eventId,
-      studentId,
-      registrationDate: currentDate(),
-      status: 'REGISTERED',
-      attendanceStatus: 'PENDING',
-      checkInTime: null,
-    }
-    setStudentRegistrations((registrations) => [...registrations, registration])
-    return registration
-  }
-
-  function cancelStudentRegistration(registrationId) {
-    if (currentUser?.role !== 'STUDENT') return null
-    const studentId = currentUser.studentId ?? currentUser.id
-    const target = studentRegistrations.find((registration) => (
-      registration.id === registrationId
-      && registration.studentId === studentId
-      && registration.status === 'REGISTERED'
-      && registration.attendanceStatus !== 'ATTENDED'
-    ))
-    if (!target) return null
-    setStudentRegistrations((registrations) => registrations.map((registration) => (
-      registration.id === registrationId ? { ...registration, status: 'CANCELLED' } : registration
-    )))
-    return target
-  }
-
-  function checkInStudent(eventId, registrationId) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) {
-      return { ok: false, message: 'Only this organization’s officer can record attendance.' }
-    }
-
-    const event = officerEvents.find((item) => (
-      item.id === eventId
-      && item.organizationId === currentUser.organizationId
-      && ['PUBLISHED', 'COMPLETED', 'ARCHIVED'].includes(item.status)
-    ))
-    if (!event) return { ok: false, message: 'This event is not available for attendance check-in.' }
-
-    const registration = studentRegistrations.find((item) => (
-      typeof item.id === 'string'
-      && typeof registrationId === 'string'
-      && item.id.toUpperCase() === registrationId.trim().toUpperCase()
-      && item.eventId === eventId
-      && item.status === 'REGISTERED'
-    ))
-    if (!registration) return { ok: false, message: 'No active registration matches that code for this event.' }
-    if (registration.attendanceStatus === 'ATTENDED') {
-      return { ok: false, message: `This student was already checked in at ${registration.checkInTime}.` }
-    }
-    if (registration.attendanceStatus === 'ABSENT') {
-      return { ok: false, message: 'Attendance has already been finalized for this registration.' }
-    }
-
-    const now = new Date()
-    const checkInTime = new Intl.DateTimeFormat('en-US', { timeStyle: 'short' }).format(now)
-    const checkedInBy = formatDisplayName(currentUser) || 'Organization Officer'
-    setStudentRegistrations((registrations) => registrations.map((item) => (
-      item.id === registration.id
-        ? { ...item, attendanceStatus: 'ATTENDED', checkInTime, checkedInAt: now.toISOString(), checkedInBy }
-        : item
-    )))
-    appendAudit('STUDENT_CHECKED_IN', 'EVENT_REGISTRATION', registration.id, `${registration.studentId} checked in for ${event.title}.`)
-    addOfficerNotification(`${registration.studentId} was checked in for "${event.title}".`)
-    return { ok: true, message: `Attendance recorded at ${checkInTime}.`, registrationId: registration.id }
-  }
-
-  function addAdviserActivity(message) {
-    const time = new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date())
-    setAdviserActivity((activity) => [{ id: `adviser-activity-${Date.now()}`, message, time }, ...activity])
-  }
-
-  function saveOfficerEvent(event, status) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    const proposal = {
-      ...event,
-      id: event.id ?? `wcs-event-${Date.now()}`,
-      organizationId: officerOrganization.id,
-      organizationName: officerOrganization.name,
-      submittedBy: formatDisplayName(currentUser) || 'Organization Officer',
-      submittedDate: currentDate(),
-      status,
-      revisionNote: '',
-      adviser: null,
-      adviserDecisionDate: null,
-    }
-    setOfficerEvents((events) => {
-      const exists = events.some((item) => item.id === proposal.id)
-      return exists
-        ? events.map((item) => item.id === proposal.id ? proposal : item)
-        : [proposal, ...events]
+  const submitMembershipRequest = useCallback(async (organizationId, payload = {}) => {
+    const studentId = payload.studentRecordId || currentUser?.studentRecordId
+    if (!studentId) return false
+    const response = await fetch('/api/members/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        organization_id: organizationId,
+        student_id: studentId,
+        desired_role: payload.desiredRole || 'Member',
+        reason: payload.message || payload.reason || 'Applied via Student Portal',
+      }),
     })
-    if (status === 'SUBMITTED') addAdviserActivity(`${proposal.title} event proposal was submitted for adviser review.`)
-  }
-
-  function reviewAdviserRequest(type, id, decision, comment = '') {
-    if (currentUser?.role !== 'ADVISER' || currentUser.organizationId !== officerOrganization.id) return false
-    const revisionNote = comment.trim()
-    if (!['APPROVED', 'RETURNED', 'REJECTED'].includes(decision)) return false
-    if ((decision === 'RETURNED' || decision === 'REJECTED') && !revisionNote) return false
-
-    const decisionDate = currentDate()
-    if (type === 'EVENT') {
-      const event = officerEvents.find((item) => item.id === id && item.organizationId === officerOrganization.id)
-      if (!event || !['SUBMITTED', 'UNDER_REVIEW'].includes(event.status)) return false
-      const eventStatus = decision === 'RETURNED'
-        ? 'RETURNED_FOR_REVISION'
-        : decision
-      setOfficerEvents((events) => events.map((item) => item.id === id
-        ? { ...item, status: eventStatus, revisionNote: decision === 'APPROVED' ? '' : revisionNote, adviser: adminOrganizations.find((organization) => organization.id === item.organizationId)?.adviser ?? officerOrganization.adviser, adviserDecisionDate: decisionDate }
-        : item))
-      addAdviserActivity(`${event.title} proposal was ${decision.toLowerCase()} by the adviser.`)
-      addOfficerNotification(decision === 'APPROVED'
-        ? `Your event proposal "${event.title}" was approved by your adviser and is awaiting Student Affairs review.`
-        : decision === 'RETURNED'
-          ? `Your event proposal "${event.title}" was returned for revision: ${revisionNote}`
-          : `Your event proposal "${event.title}" was rejected: ${revisionNote}`)
-      if (decision === 'APPROVED') addAdminNotification(`New event proposal "${event.title}" requires final approval.`)
-      return true
-    }
-
-    if (type === 'DOCUMENT') {
-      const document = adviserDocuments.find((item) => item.id === id && item.organizationId === officerOrganization.id)
-      if (!document || document.status !== 'PENDING') return false
-      setAdviserDocuments((documents) => documents.map((item) => item.id === id
-        ? { ...item, status: decision, decisionDate, decisionReason: decision === 'APPROVED' ? '' : revisionNote, processedBy: formatDisplayName(currentUser) }
-        : item))
-      addAdviserActivity(`${document.title} was ${decision.toLowerCase()} by the adviser.`)
-      addOfficerNotification(decision === 'APPROVED'
-        ? `Your document "${document.title}" was approved by your adviser.`
-        : `Your document "${document.title}" was ${decision.toLowerCase()}: ${revisionNote}`)
-      if (decision === 'APPROVED' && document.adminReviewRequired) addAdminNotification(`Document "${document.title}" requires Student Affairs review.`)
-      return true
-    }
-
-    return false
-  }
-
-  function reviewAccomplishmentReport(id, decision, comment = '') {
-    if (currentUser?.role !== 'ADVISER' || currentUser.organizationId !== officerOrganization.id) return false
-    const revisionNote = comment.trim()
-    if (!['VERIFIED', 'RETURNED'].includes(decision) || (decision === 'RETURNED' && !revisionNote)) return false
-    const report = adviserReports.find((item) => item.id === id && item.organizationId === officerOrganization.id)
-    if (!report || !['PENDING_VERIFICATION', 'RETURNED'].includes(report.status)) return false
-    const decisionDate = currentDate()
-    setAdviserReports((reports) => reports.map((item) => item.id === id
-      ? {
-        ...item,
-        status: decision,
-        decisionDate,
-        revisionNote: decision === 'RETURNED' ? revisionNote : '',
-        verifiedBy: decision === 'VERIFIED' ? formatDisplayName(currentUser) : null,
-      }
-      : item))
-    addAdviserActivity(`${report.eventTitle} accomplishment report was ${decision.toLowerCase()}.`)
-    addOfficerNotification(decision === 'VERIFIED'
-      ? `Your accomplishment report for "${report.eventTitle}" was verified by your adviser.`
-      : `Your accomplishment report for "${report.eventTitle}" was returned for revision: ${revisionNote}`)
+    if (!response.ok) return false
+    await refreshPortalData()
     return true
-  }
+  }, [currentUser?.studentRecordId, refreshPortalData])
 
-  function updateAdminOrganizationStatus(id, status, reason = '') {
-    if (currentUser?.role !== 'ADMIN') return false
-    if (!['ACTIVE', 'INACTIVE', 'SUSPENDED'].includes(status)) return false
-    const organization = adminOrganizations.find((item) => item.id === id)
-    if (!organization || organization.status === status) return false
-    if (status === 'SUSPENDED' && !reason.trim()) return false
-    setAdminOrganizations((organizations) => organizations.map((item) => item.id === id
-      ? { ...item, status, suspensionReason: status === 'SUSPENDED' ? reason.trim() : '' }
-      : item))
-    appendAudit(status === 'SUSPENDED' ? 'ORGANIZATION_SUSPENDED' : 'ORGANIZATION_REACTIVATED', 'ORGANIZATION', id, status === 'SUSPENDED'
-      ? `${organization.name} was suspended. Reason: ${reason.trim()}`
-      : `${organization.name} was reactivated.`)
-    addOfficerNotification(`${organization.name} organization status changed to ${status}${status === 'SUSPENDED' ? `: ${reason.trim()}` : ''}.`)
+  const approveOfficerMembershipRequest = useCallback(async (applicationId) => {
+    const response = await fetch(`/api/members/applications/${applicationId}/review`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'APPROVED',
+        reviewed_by: currentUser?.userId || null,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
     return true
-  }
+  }, [currentUser, refreshPortalData])
 
-  function updateAdminOrganization(id, changes) {
-    if (currentUser?.role !== 'ADMIN') return false
-    const organization = adminOrganizations.find((item) => item.id === id)
-    if (!organization) return false
-    const allowedChanges = Object.fromEntries(
-      ['name', 'acronym', 'category', 'adviser'].filter((key) => typeof changes[key] === 'string')
-        .map((key) => [key, changes[key].trim()]),
-    )
-    if (!Object.values(allowedChanges).every(Boolean)) return false
-    setAdminOrganizations((organizations) => organizations.map((item) => item.id === id ? { ...item, ...allowedChanges } : item))
-    appendAudit('ORGANIZATION_UPDATED', 'ORGANIZATION', id, `${organization.name} organization profile was updated.`)
+  const rejectOfficerMembershipRequest = useCallback(async (applicationId, reason = '') => {
+    const response = await fetch(`/api/members/applications/${applicationId}/review`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'REJECTED',
+        reviewed_by: currentUser?.userId || null,
+        reason,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
     return true
-  }
+  }, [currentUser, refreshPortalData])
 
-  function updateOfficerOrganizationProfile(changes) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    const allowedFields = ['name', 'acronym', 'category', 'mission', 'vision']
-    const updates = Object.fromEntries(allowedFields
-      .filter((key) => typeof changes[key] === 'string')
-      .map((key) => [key, changes[key].trim()]))
-    if (allowedFields.some((key) => !updates[key])) return false
-    const organization = adminOrganizations.find((item) => item.id === currentUser.organizationId)
-    if (!organization) return false
-    setAdminOrganizations((organizations) => organizations.map((item) => item.id === organization.id
-      ? { ...item, ...updates }
-      : item))
-    appendAudit('ORGANIZATION_PROFILE_UPDATED', 'ORGANIZATION', organization.id, `${updates.name} profile information was updated by an organization officer.`)
-    return true
-  }
-
-  function updateOfficerOrganizationContact(changes) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    const allowedFields = ['officialEmail', 'contactNumber', 'socialMedia']
-    const updates = Object.fromEntries(allowedFields
-      .filter((key) => typeof changes[key] === 'string')
-      .map((key) => [key, changes[key].trim()]))
-    if (Object.keys(updates).length !== allowedFields.length) return false
-    const organization = adminOrganizations.find((item) => item.id === currentUser.organizationId)
-    if (!organization) return false
-    setAdminOrganizations((organizations) => organizations.map((item) => item.id === organization.id
-      ? { ...item, ...updates }
-      : item))
-    appendAudit('ORGANIZATION_CONTACT_UPDATED', 'ORGANIZATION', organization.id, `${organization.name} contact information was updated.`)
-    return true
-  }
-
-  function updateOfficerOrganizationLogo(logo) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    if (logo !== null && (typeof logo !== 'string' || !logo.startsWith('data:image/'))) return false
-    const organization = adminOrganizations.find((item) => item.id === currentUser.organizationId)
-    if (!organization) return false
-    setAdminOrganizations((organizations) => organizations.map((item) => item.id === organization.id
-      ? { ...item, logo }
-      : item))
-    appendAudit(logo ? 'ORGANIZATION_LOGO_UPDATED' : 'ORGANIZATION_LOGO_REMOVED', 'ORGANIZATION', organization.id, `${organization.name} organization logo was ${logo ? 'updated' : 'removed'}.`)
-    return true
-  }
-
-  function saveOfficerNotificationPreferences(preferences) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    const keys = ['membershipRequests', 'eventUpdates', 'documentUpdates', 'adviserApprovalUpdates', 'studentAnnouncements']
-    if (!keys.every((key) => typeof preferences[key] === 'boolean')) return false
-    const organization = adminOrganizations.find((item) => item.id === currentUser.organizationId)
-    if (!organization) return false
-    setAdminOrganizations((organizations) => organizations.map((item) => item.id === organization.id
-      ? { ...item, notificationPreferences: { ...preferences } }
-      : item))
-    appendAudit('ORGANIZATION_NOTIFICATION_PREFERENCES_UPDATED', 'ORGANIZATION', organization.id, `${organization.name} notification preferences were updated.`)
-    return true
-  }
-
-  function submitOfficerOrganizationRequest(type, reason) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    if (!['ADVISER_CHANGE', 'DEACTIVATION'].includes(type) || !reason?.trim()) return false
-    const organization = adminOrganizations.find((item) => item.id === currentUser.organizationId)
-    if (!organization) return false
-    const request = {
-      id: `org-request-${Date.now()}`,
-      organizationId: organization.id,
-      organizationName: organization.name,
-      type,
-      reason: reason.trim(),
-      status: 'PENDING',
-      submittedBy: formatDisplayName(currentUser),
-      submittedAt: currentDateTime(),
-    }
-    setOrganizationChangeRequests((requests) => [request, ...requests])
-    appendAudit(type === 'ADVISER_CHANGE' ? 'ADVISER_CHANGE_REQUESTED' : 'ORGANIZATION_DEACTIVATION_REQUESTED', 'ORGANIZATION_REQUEST', organization.id, `${organization.name}: ${type === 'ADVISER_CHANGE' ? 'Faculty adviser change' : 'Organization deactivation'} requested by ${request.submittedBy}.`)
-    addAdminNotification(`${organization.name} submitted a ${type === 'ADVISER_CHANGE' ? 'faculty adviser change' : 'deactivation'} request for Student Affairs review.`)
-    return true
-  }
-
-  function addOfficerDocument({ title, type, fileName }) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    const organization = adminOrganizations.find((item) => item.id === currentUser.organizationId)
-    if (!organization || !title.trim() || !type.trim() || !fileName.trim()) return false
-    const submittedDate = currentDate()
-    setAdviserDocuments((documents) => [...documents, {
-      id: `wcs-document-${Date.now()}`,
-      organizationId: organization.id,
-      organizationName: organization.name,
-      title: title.trim(),
-      type: type.trim(),
-      submittedBy: formatDisplayName(currentUser),
-      submittedDate,
-      status: 'PENDING',
-      description: `${title.trim()} submitted for adviser review.`,
-      supportingDocuments: [fileName.trim()],
-    }])
-    appendAudit('DOCUMENT_SUBMITTED', 'DOCUMENT', organization.id, `${title.trim()} was uploaded by ${formatDisplayName(currentUser)}.`)
-    addAdviserActivity(`${title.trim()} document was submitted for adviser review.`)
-    return true
-  }
-
-  function saveOfficerAnnouncement({ id, title, content, status }) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    if (!title?.trim() || !content?.trim() || !['DRAFT', 'PUBLISHED'].includes(status)) return false
-    const organization = adminOrganizations.find((item) => item.id === currentUser.organizationId)
-    if (!organization) return false
-    const now = currentDateTime()
-    const announcements = organization.announcements ?? []
-    const existing = id ? announcements.find((item) => item.id === id) : null
-    const announcement = {
-      id: existing?.id ?? `announcement-${Date.now()}`,
-      title: title.trim(),
-      content: content.trim(),
-      postedBy: existing?.postedBy ?? formatDisplayName(currentUser),
-      datePosted: existing?.datePosted ?? now,
-      lastUpdated: now,
-      status,
-    }
-    setAdminOrganizations((organizations) => organizations.map((item) => item.id === organization.id
-      ? {
-        ...item, announcements: existing
-          ? (item.announcements ?? []).map((current) => current.id === existing.id ? announcement : current)
-          : [announcement, ...(item.announcements ?? [])]
-      }
-      : item))
-    const publishingDraft = existing?.status !== 'PUBLISHED' && status === 'PUBLISHED'
-    const action = publishingDraft
-      ? 'ANNOUNCEMENT_PUBLISHED'
-      : existing ? 'ANNOUNCEMENT_UPDATED' : status === 'PUBLISHED' ? 'ANNOUNCEMENT_PUBLISHED' : 'ANNOUNCEMENT_DRAFT_CREATED'
-    const activityMessage = publishingDraft || (!existing && status === 'PUBLISHED')
-      ? `${formatDisplayName(currentUser)} published an announcement.`
-      : existing
-        ? `${formatDisplayName(currentUser)} updated an announcement.`
-        : `${formatDisplayName(currentUser)} saved an announcement draft.`
-    appendAudit(action, 'ANNOUNCEMENT', organization.id, `${organization.name}: ${activityMessage} ${announcement.title} (record ${announcement.id}).`)
-    setAdviserActivity((activity) => [{
-      id: `announcement-activity-${Date.now()}`,
-      message: activityMessage,
-      time: now,
-    }, ...activity])
-    if ((!existing || existing.status !== 'PUBLISHED') && status === 'PUBLISHED') {
-      addStudentNotification(`${organization.name} posted a new announcement: ${announcement.title}`)
-    }
-    return true
-  }
-
-  function archiveOfficerAnnouncement(id) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    const organization = adminOrganizations.find((item) => item.id === currentUser.organizationId)
-    const announcement = organization?.announcements?.find((item) => item.id === id)
-    if (!announcement || announcement.status === 'ARCHIVED') return false
-    const now = currentDateTime()
-    setAdminOrganizations((organizations) => organizations.map((item) => item.id === organization.id
-      ? { ...item, announcements: item.announcements.map((current) => current.id === id ? { ...current, status: 'ARCHIVED', lastUpdated: now } : current) }
-      : item))
-    const activityMessage = `${formatDisplayName(currentUser)} archived an announcement.`
-    appendAudit('ANNOUNCEMENT_ARCHIVED', 'ANNOUNCEMENT', organization.id, `${organization.name}: ${activityMessage} ${announcement.title} (record ${id}).`)
-    setAdviserActivity((activity) => [{ id: `announcement-activity-${Date.now()}`, message: activityMessage, time: now }, ...activity])
-    return true
-  }
-
-  function deleteOfficerAnnouncement(id) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    const organization = adminOrganizations.find((item) => item.id === currentUser.organizationId)
-    const announcement = organization?.announcements?.find((item) => item.id === id)
-    if (!announcement) return false
-    const now = currentDateTime()
-    setAdminOrganizations((organizations) => organizations.map((item) => item.id === organization.id
-      ? { ...item, announcements: item.announcements.filter((current) => current.id !== id) }
-      : item))
-    const activityMessage = `${formatDisplayName(currentUser)} deleted an announcement.`
-    appendAudit('ANNOUNCEMENT_DELETED', 'ANNOUNCEMENT', organization.id, `${organization.name}: ${activityMessage} ${announcement.title} (record ${id}).`)
-    setAdviserActivity((activity) => [{ id: `announcement-activity-${Date.now()}`, message: activityMessage, time: now }, ...activity])
-    return true
-  }
-
-  function reviewOrganizationApplication(id, decision, comment = '') {
-    if (currentUser?.role !== 'ADMIN') return false
-    if (!['APPROVED', 'RETURNED', 'REJECTED'].includes(decision)) return false
-    const reason = comment.trim()
-    if ((decision === 'RETURNED' || decision === 'REJECTED') && !reason) return false
-    const application = organizationApplications.find((item) => item.id === id && item.status === 'PENDING')
-    if (!application) return false
-    if (decision === 'APPROVED' && !application.adviserApproved) return false
-    const decisionDate = currentDate()
-    setOrganizationApplications((applications) => applications.map((item) => item.id === id
-      ? { ...item, status: decision, decisionDate, decisionReason: decision === 'APPROVED' ? '' : reason, processedBy: formatDisplayName(currentUser) }
-      : item))
-    if (decision === 'APPROVED') {
-      setAdminOrganizations((organizations) => {
-        const approvedOrganization = {
-          id: application.organizationId,
-          name: application.name,
-          acronym: application.acronym,
-          category: application.category,
-          college: ['Technology', 'Academic'].includes(application.category) ? 'College of Computing Studies' : 'College of Arts and Sciences',
-          adviser: application.adviser,
-          mission: application.mission,
-          vision: application.vision,
-          description: application.description,
-          color: 'blue',
-          status: 'ACTIVE',
-          accreditationStatus: 'ACCREDITED',
-          memberCount: application.proposedOfficers.length,
-          activeMembers: application.proposedOfficers.length,
-          officers: application.proposedOfficers.map((officer) => ({ ...officer })),
-          announcements: [],
-          documents: application.documents,
-          eventIds: [],
-          suspensionReason: '',
-        }
-        return organizations.some((item) => item.id === application.organizationId)
-          ? organizations.map((item) => item.id === application.organizationId ? { ...item, ...approvedOrganization } : item)
-          : [...organizations, approvedOrganization]
+  const assignOfficerPosition = useCallback(async (membershipId, nextPosition, customTitle = '') => {
+    try {
+      const response = await fetch(`/api/members/${membershipId}/position`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          position: nextPosition,
+          custom_title: customTitle,
+        }),
       })
-      addStudentNotification(`${application.name} is now an accredited WMSU organization.`)
-      addOfficerNotification(`${application.name} organization accreditation was approved by Student Affairs.`)
-    } else {
-      addOfficerNotification(decision === 'RETURNED'
-        ? `${application.name} accreditation was returned for revision: ${reason}`
-        : `${application.name} accreditation was rejected: ${reason}`)
-    }
-    appendAudit(`ORGANIZATION_${decision}`, 'ORGANIZATION_APPLICATION', id, `${application.name} application ${decision.toLowerCase()}${reason ? `: ${reason}` : ''}.`)
-    return true
-  }
-
-  function reviewAdminEvent(id, decision, comment = '') {
-    if (currentUser?.role !== 'ADMIN') return false
-    if (!['APPROVED', 'RETURNED', 'REJECTED'].includes(decision)) return false
-    const reason = comment.trim()
-    if ((decision === 'RETURNED' || decision === 'REJECTED') && !reason) return false
-    const event = officerEvents.find((item) => item.id === id && item.organizationId === officerOrganization.id)
-    if (!event || event.status !== 'APPROVED' || !event.adviserDecisionDate || !event.adviser) return false
-    if (event.adminApprovedAt) return false
-    const decisionDate = currentDate()
-    const nextStatus = decision === 'RETURNED' ? 'RETURNED_FOR_REVISION' : decision
-    setOfficerEvents((events) => events.map((item) => item.id === id
-      ? {
-        ...item,
-        status: nextStatus,
-        adminApprovedAt: decision === 'APPROVED' ? decisionDate : null,
-        adminDecisionDate: decisionDate,
-        adminDecisionReason: decision === 'APPROVED' ? '' : reason,
-        adminProcessedBy: formatDisplayName(currentUser),
-        revisionNote: decision === 'APPROVED' ? '' : reason,
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        return { ok: false, reason: err.error || 'Unable to assign officer position.' }
       }
-      : item))
-    appendAudit(`EVENT_${decision}`, 'EVENT', id, `${event.title} was ${decision.toLowerCase()} by Student Affairs.${reason ? ` ${reason}` : ''}`)
-    if (decision === 'APPROVED') {
-      addOfficerNotification(`Your event "${event.title}" was approved by Student Affairs. It is ready for publication.`)
-    } else {
-      addOfficerNotification(`Your event "${event.title}" was ${decision === 'RETURNED' ? 'returned for revision' : 'rejected'} by Student Affairs: ${reason}`)
+      await refreshPortalData()
+      await refreshCurrentUser()
+      return { ok: true }
+    } catch {
+      return { ok: false, reason: 'Network error while updating member position.' }
     }
-    return true
-  }
+  }, [refreshPortalData, refreshCurrentUser])
 
-  function publishAdminEvent(id) {
-    if (currentUser?.role !== 'ADMIN') return false
-    const event = officerEvents.find((item) => item.id === id && item.organizationId === officerOrganization.id)
-    if (!event || event.status !== 'APPROVED' || !event.adviserDecisionDate || !event.adminApprovedAt) return false
-    const publishedDate = currentDate()
-    setOfficerEvents((events) => events.map((item) => item.id === id
-      ? { ...item, status: 'PUBLISHED', publishedDate, registrationStatus: 'OPEN' }
-      : item))
-    appendAudit('EVENT_PUBLISHED', 'EVENT', id, `${event.title} was published for student registration.`)
-    addOfficerNotification(`Your event "${event.title}" was published by Student Affairs and is now visible to students.`)
-    addStudentNotification(`Registration is now open for ${event.title}.`)
+  const updateOfficerMemberStatus = useCallback(async (membershipId, nextStatus) => {
+    const response = await fetch(`/api/members/${membershipId}/position`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: nextStatus,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
     return true
-  }
+  }, [refreshPortalData])
 
-  function reviewAdminDocument(id, decision, comment = '') {
-    if (currentUser?.role !== 'ADMIN') return false
-    if (!['APPROVED', 'RETURNED', 'REJECTED'].includes(decision)) return false
-    const reason = comment.trim()
-    if ((decision === 'RETURNED' || decision === 'REJECTED') && !reason) return false
-    const document = adviserDocuments.find((item) => item.id === id && item.organizationId === officerOrganization.id)
-    if (!document || !document.adminReviewRequired || document.status !== 'APPROVED') return false
-    const decisionDate = currentDate()
-    setAdviserDocuments((documents) => documents.map((item) => item.id === id
-      ? { ...item, status: decision, adminDecisionDate: decisionDate, adminDecisionReason: decision === 'APPROVED' ? '' : reason, adminProcessedBy: formatDisplayName(currentUser) }
-      : item))
-    appendAudit(`DOCUMENT_${decision}`, 'DOCUMENT', id, `${document.title} was ${decision.toLowerCase()} by Student Affairs.${reason ? ` ${reason}` : ''}`)
-    addOfficerNotification(decision === 'APPROVED'
-      ? `Your document "${document.title}" was approved by Student Affairs.`
-      : `Your document "${document.title}" was ${decision === 'RETURNED' ? 'returned for revision' : 'rejected'}: ${reason}`)
+  const registerForEvent = useCallback(async (eventId) => {
+    const studentId = currentUser?.studentRecordId
+    if (!studentId) return false
+    const response = await fetch('/api/attendance/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_id: eventId,
+        student_id: studentId,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
     return true
-  }
+  }, [currentUser?.studentRecordId, refreshPortalData])
 
-  function updateAdminUser(id, changes) {
-    if (currentUser?.role !== 'ADMIN') return { ok: false, reason: 'Only Student Affairs administrators may update user accounts.' }
-    const user = adminUsers.find((item) => item.id === id)
-    if (!user) return { ok: false, reason: 'User not found.' }
-    const roleChanged = changes.role !== undefined && changes.role !== user.role
-    const statusChanged = changes.status !== undefined && changes.status !== user.status
-    if (user.id === 'admin-root' && (roleChanged || statusChanged)) {
-      return { ok: false, reason: 'Your own administrator account cannot be changed from this screen.' }
+  const cancelEventRegistration = useCallback(async (registrationOrEventId) => {
+    const reg = studentRegistrations.find(
+      (r) =>
+        String(r.id) === String(registrationOrEventId) ||
+        String(r.registrationId) === String(registrationOrEventId) ||
+        (String(r.eventId) === String(registrationOrEventId) &&
+          String(r.studentId) === String(currentUser?.studentId))
+    )
+    if (!reg) return false
+    const response = await fetch(`/api/attendance/registrations/${reg.registrationId}/cancel`, {
+      method: 'PUT',
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [studentRegistrations, currentUser?.studentId, refreshPortalData])
+
+  const checkInStudent = useCallback(async (eventId, registrationCodeOrStudentId) => {
+    const code = String(registrationCodeOrStudentId || '').trim()
+    if (!code) return { ok: false, message: 'Enter a student registration code or student ID.' }
+
+    const matchedReg = studentRegistrations.find(
+      (r) =>
+        String(r.eventId) === String(eventId) &&
+        (String(r.id).toUpperCase() === code.toUpperCase() ||
+          String(r.studentId).toUpperCase() === code.toUpperCase() ||
+          `UNIDOS-${String(r.id).toUpperCase()}` === code.toUpperCase())
+    )
+
+    const response = await fetch('/api/attendance/check-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_id: eventId,
+        student_id: matchedReg?.studentRecordId || undefined,
+        student_number: matchedReg?.studentId || code,
+        recorded_by: currentUser?.userId || null,
+        status: 'PRESENT',
+      }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      return { ok: false, message: payload.error || 'Unable to record attendance for this code.' }
     }
-    const activeAdmins = adminUsers.filter((item) => item.role === 'Student Affairs Admin' && item.status === 'ACTIVE')
-    if (user.role === 'Student Affairs Admin' && activeAdmins.length <= 1
-      && ((roleChanged && changes.role !== 'Student Affairs Admin') || (statusChanged && changes.status !== 'ACTIVE'))) {
-      return { ok: false, reason: 'The final active system administrator cannot be deactivated or reassigned.' }
+    await refreshPortalData()
+    return {
+      ok: true,
+      message: `Attendance recorded for ${matchedReg?.studentId || code}.`,
+      data: payload,
     }
-    if (changes.role && !['Student', 'Organization Officer', 'Faculty Adviser', 'Student Affairs Admin'].includes(changes.role)) {
-      return { ok: false, reason: 'Choose a valid system role.' }
+  }, [studentRegistrations, currentUser?.userId, refreshPortalData])
+
+  const saveOfficerEvent = useCallback(async (eventPayload, statusOverride) => {
+    const orgId = eventPayload.organizationId || currentUser?.organizationId || adminOrganizations[0]?.id
+    if (!orgId) return null
+
+    const rawDate = eventPayload.startDatetime || eventPayload.date || new Date().toISOString()
+    const parsedDate = new Date(rawDate)
+    const baseIsoDate = Number.isNaN(parsedDate.getTime())
+      ? new Date().toISOString().slice(0, 10)
+      : parsedDate.toISOString().slice(0, 10)
+
+    const startIso = eventPayload.startTime && /^\d{2}:\d{2}/.test(eventPayload.startTime)
+      ? `${baseIsoDate}T${eventPayload.startTime}:00`
+      : (Number.isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString())
+
+    const endIso = eventPayload.endTime && /^\d{2}:\d{2}/.test(eventPayload.endTime)
+      ? `${baseIsoDate}T${eventPayload.endTime}:00`
+      : startIso
+
+    const targetStatus = statusOverride || eventPayload.status || 'PENDING'
+    const dbStatus = ['SUBMITTED', 'UNDER_REVIEW', 'DRAFT'].includes(targetStatus) ? 'PENDING' : targetStatus
+
+    const isUpdate = Boolean(eventPayload.id || eventPayload.eventId)
+    const url = isUpdate ? `/api/events/${eventPayload.id || eventPayload.eventId}` : '/api/events'
+    const method = isUpdate ? 'PUT' : 'POST'
+
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        organization_id: orgId,
+        title: eventPayload.title,
+        description: eventPayload.description,
+        venue: eventPayload.location || eventPayload.venue,
+        start_datetime: startIso,
+        end_datetime: endIso,
+        event_type: eventPayload.category || eventPayload.eventType || 'Academic',
+        status: dbStatus,
+        max_participants: Number(eventPayload.capacity || 100),
+        created_by: currentUser?.userId || null,
+      }),
+    })
+    if (!response.ok) return null
+    const saved = await response.json()
+    await refreshPortalData()
+    return normalizeEvent(saved)
+  }, [currentUser?.organizationId, currentUser?.userId, adminOrganizations, refreshPortalData])
+
+  const reviewAdviserRequest = useCallback(async (kindOrId, idOrStatus, decisionOrReason = '', commentMaybe = '') => {
+    // Support both 4-arg (kind, id, decision, comment) and 3-arg (id, status, reason)
+    let kind = 'EVENT'
+    let itemId = kindOrId
+    let nextStatus = idOrStatus
+    if (['EVENT', 'DOCUMENT'].includes(String(kindOrId).toUpperCase()) && commentMaybe !== undefined && decisionOrReason !== '') {
+      kind = String(kindOrId).toUpperCase()
+      itemId = idOrStatus
+      nextStatus = decisionOrReason
+    } else if (['EVENT', 'DOCUMENT'].includes(String(kindOrId).toUpperCase())) {
+      kind = String(kindOrId).toUpperCase()
+      itemId = idOrStatus
+      nextStatus = decisionOrReason
     }
-    if (changes.status && !['ACTIVE', 'INACTIVE', 'SUSPENDED'].includes(changes.status)) {
-      return { ok: false, reason: 'Choose a valid account status.' }
+
+    if (kind === 'DOCUMENT') {
+      const docStatus = nextStatus === 'RETURNED' ? 'REJECTED' : nextStatus
+      const response = await fetch(`/api/documents/${itemId}/review`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: docStatus,
+          reviewed_by: currentUser?.userId || null,
+          review_remarks: commentMaybe || decisionOrReason || '',
+        }),
+      })
+      if (!response.ok) return false
+      await refreshPortalData()
+      return true
     }
-    const authRoles = {
+
+    const dbStatus = ['RETURNED', 'RETURNED_FOR_REVISION'].includes(nextStatus)
+      ? 'CANCELLED'
+      : nextStatus === 'APPROVED'
+        ? 'APPROVED'
+        : 'REJECTED'
+
+    const response = await fetch(`/api/events/${itemId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: dbStatus,
+        approved_by: currentUser?.userId || null,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [currentUser, refreshPortalData])
+
+  const reviewAccomplishmentReport = useCallback(async (reportId, decision, comment = '') => {
+    const docStatus = decision === 'VERIFIED' || decision === 'APPROVED' ? 'APPROVED' : 'REJECTED'
+    const response = await fetch(`/api/documents/${reportId}/review`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: docStatus,
+        reviewed_by: currentUser?.userId || null,
+        review_remarks: comment,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [currentUser, refreshPortalData])
+
+  const reviewAdminEvent = useCallback(async (eventId, decision) => {
+    const dbStatus = decision === 'APPROVED' ? 'APPROVED' : decision === 'RETURNED' ? 'PENDING' : 'REJECTED'
+    const response = await fetch(`/api/events/${eventId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: dbStatus,
+        approved_by: currentUser?.userId || null,
+        is_published: decision === 'APPROVED' ? false : undefined,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [currentUser, refreshPortalData])
+
+  const publishAdminEvent = useCallback(async (eventId) => {
+    const response = await fetch(`/api/events/${eventId}/publish`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        approved_by: currentUser?.userId || null,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [currentUser, refreshPortalData])
+
+  const saveOfficerAnnouncement = useCallback(async (announcementPayload) => {
+    const orgId = announcementPayload.organizationId || currentUser?.organizationId || adminOrganizations[0]?.id
+    if (!orgId) return false
+    const isUpdate = Boolean(announcementPayload.id || announcementPayload.announcementId)
+    const url = isUpdate
+      ? `/api/announcements/${announcementPayload.id || announcementPayload.announcementId}`
+      : '/api/announcements'
+    const method = isUpdate ? 'PUT' : 'POST'
+
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        organization_id: orgId,
+        title: announcementPayload.title,
+        content: announcementPayload.content || announcementPayload.description,
+        is_pinned: Boolean(announcementPayload.isPinned),
+        published_at: announcementPayload.status === 'DRAFT' ? null : new Date().toISOString(),
+        created_by: currentUser?.userId || null,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [currentUser?.organizationId, currentUser?.userId, adminOrganizations, refreshPortalData])
+
+  const archiveOfficerAnnouncement = useCallback(async (announcementId) => {
+    const existing = rawAnnouncements.find((a) => String(a.announcement_id) === String(announcementId))
+    if (!existing) return false
+    const response = await fetch(`/api/announcements/${announcementId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: existing.title,
+        content: existing.content,
+        is_pinned: false,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [rawAnnouncements, refreshPortalData])
+
+  const deleteOfficerAnnouncement = useCallback(async (announcementId) => {
+    const response = await fetch(`/api/announcements/${announcementId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [refreshPortalData])
+
+  const addOfficerDocument = useCallback(async (docPayload) => {
+    const orgId = docPayload.organizationId || currentUser?.organizationId || adminOrganizations[0]?.id
+    if (!orgId) return false
+
+    // =========================================================================
+    // [GOOGLE DRIVE API PLACEHOLDER - FRONTEND DOCUMENT / IMAGE UPLOAD]
+    // Insert Google Drive API client upload call here if uploading directly from
+    // client or via `/api/documents` multipart upload to Google Drive folder,
+    // then pass the returned Google Drive `webViewLink` / `webContentLink` as `file_url`.
+    //
+    //   ...
+    //
+    // =========================================================================
+
+    const response = await fetch('/api/documents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        organization_id: orgId,
+        title: docPayload.title,
+        doc_type: docPayload.type || docPayload.docType || 'OTHER',
+        file_url: docPayload.fileUrl || docPayload.fileName || '/uploads/pending-google-drive-link',
+        academic_year: docPayload.academicYear || adminSettings.academicYear,
+        semester: docPayload.semester || adminSettings.semester,
+        uploaded_by: currentUser?.userId || null,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [currentUser?.organizationId, currentUser?.userId, adminOrganizations, adminSettings, refreshPortalData])
+
+  const reviewAdviserDocument = useCallback(async (documentId, status, remarks = '') => {
+    const response = await fetch(`/api/documents/${documentId}/review`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status,
+        reviewed_by: currentUser?.userId || null,
+        review_remarks: remarks,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [currentUser, refreshPortalData])
+
+  const updateOfficerOrganizationProfile = useCallback(async (orgUpdates) => {
+    const orgId = orgUpdates.id || orgUpdates.organizationId || currentUser?.organizationId || adminOrganizations[0]?.id
+    if (!orgId) return false
+    const currentOrg = rawOrganizations.find((o) => String(o.organization_id) === String(orgId))
+    if (!currentOrg) return false
+
+    // =========================================================================
+    // [GOOGLE DRIVE API PLACEHOLDER - ORGANIZATION LOGO IMAGE]
+    // Insert Google Drive API image upload call here so `orgUpdates.logo` stores
+    // the Google Drive image link (`https://drive.google.com/uc?id=...`).
+    //
+    //   ...
+    //
+    // =========================================================================
+
+    const response = await fetch(`/api/organizations/${orgId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: orgUpdates.name ?? currentOrg.name,
+        acronym: orgUpdates.acronym ?? currentOrg.acronym,
+        org_type: orgUpdates.category || orgUpdates.orgType || currentOrg.org_type,
+        scope: orgUpdates.scope ?? currentOrg.scope,
+        college_id: orgUpdates.collegeId ?? currentOrg.college_id,
+        department_id: orgUpdates.departmentId ?? currentOrg.department_id,
+        description: orgUpdates.description ?? currentOrg.description,
+        mission: orgUpdates.mission ?? currentOrg.mission,
+        vision: orgUpdates.vision ?? currentOrg.vision,
+        logo: orgUpdates.logo !== undefined ? orgUpdates.logo : currentOrg.logo,
+        status: orgUpdates.status ?? currentOrg.status,
+        accreditation_status: orgUpdates.accreditationStatus ?? currentOrg.accreditation_status,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [currentUser?.organizationId, adminOrganizations, rawOrganizations, refreshPortalData])
+
+  const updateOfficerOrganizationLogo = useCallback(async (logoData) => {
+    return updateOfficerOrganizationProfile({ logo: logoData })
+  }, [updateOfficerOrganizationProfile])
+
+  const updateOfficerOrganizationContact = useCallback(async (contactValues) => {
+    const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
+    if (!orgId) return false
+    const currentOrg = rawOrganizations.find((o) => String(o.organization_id) === String(orgId))
+    if (!currentOrg) return false
+    const contactSummary = [
+      contactValues.officialEmail ? `Email: ${contactValues.officialEmail}` : '',
+      contactValues.contactNumber ? `Phone: ${contactValues.contactNumber}` : '',
+      contactValues.socialMedia ? `Page: ${contactValues.socialMedia}` : '',
+    ].filter(Boolean).join(' | ')
+    return updateOfficerOrganizationProfile({
+      description: contactSummary || currentOrg.description,
+    })
+  }, [currentUser?.organizationId, adminOrganizations, rawOrganizations, updateOfficerOrganizationProfile])
+
+  const saveOfficerNotificationPreferences = useCallback(() => {
+    return true
+  }, [])
+
+  const submitOfficerOrganizationRequest = useCallback(async (requestType, reason, requestedAdviserId) => {
+    const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
+    if (!orgId || !reason?.trim()) return false
+
+    if (requestType === 'ADVISER_CHANGE') {
+      const targetAdviserId = requestedAdviserId || rawAdvisers[0]?.adviser_id
+      if (!targetAdviserId) return false
+      const response = await fetch('/api/advisers/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization_id: orgId,
+          requested_by: currentUser?.userId,
+          current_adviser_id: adminOrganizations.find((o) => String(o.id) === String(orgId))?.adviserId || null,
+          requested_adviser_id: targetAdviserId,
+          reason: reason.trim(),
+        }),
+      })
+      if (!response.ok) return false
+      await refreshPortalData()
+      return true
+    }
+
+    await fetch('/api/audit-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: currentUser?.userId || null,
+        action: `REQUEST_${requestType}`,
+        entity_type: 'organizations',
+        entity_id: orgId,
+      }),
+    }).catch(() => null)
+    await refreshPortalData()
+    return true
+  }, [currentUser?.organizationId, currentUser?.userId, adminOrganizations, rawAdvisers, refreshPortalData])
+
+  const updateAdminOrganizationStatus = useCallback(async (organizationId, nextStatus) => {
+    const response = await fetch(`/api/organizations/${organizationId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: nextStatus,
+        accreditation_status: nextStatus === 'ACTIVE' ? 'ACCREDITED' : undefined,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [refreshPortalData])
+
+  const updateAdminOrganization = useCallback(async (organizationId, changes) => {
+    if (!changes?.name || !changes?.acronym) return false
+    return updateOfficerOrganizationProfile({
+      id: organizationId,
+      name: changes.name,
+      acronym: changes.acronym,
+      category: changes.category,
+    })
+  }, [updateOfficerOrganizationProfile])
+
+  const reviewOrganizationApplication = useCallback(async (organizationId, decision) => {
+    const nextAccStatus = decision === 'APPROVED' ? 'ACCREDITED' : decision === 'REJECTED' ? 'REVOKED' : 'PENDING'
+    const nextStatus = decision === 'APPROVED' ? 'ACTIVE' : decision === 'REJECTED' ? 'INACTIVE' : 'PENDING'
+    const response = await fetch(`/api/organizations/${organizationId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: nextStatus,
+        accreditation_status: nextAccStatus,
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [refreshPortalData])
+
+  const updateAdminUser = useCallback(async (userId, updates) => {
+    const roleMap = {
       Student: 'STUDENT',
       'Organization Officer': 'OFFICER',
       'Faculty Adviser': 'ADVISER',
       'Student Affairs Admin': 'ADMIN',
     }
-    if (!updateMockUserAccess(user.email, {
-      ...(changes.role ? { role: authRoles[changes.role] } : {}),
-      ...(changes.status ? { status: changes.status } : {}),
-    })) return { ok: false, reason: 'The mock account access change could not be saved.' }
-    setAdminUsers((users) => users.map((item) => item.id === id ? { ...item, ...changes } : item))
-    const action = roleChanged ? 'USER_ROLE_CHANGED' : statusChanged ? `USER_${changes.status}` : 'USER_UPDATED'
-    appendAudit(action, 'USER', id, `${user.name} updated${roleChanged ? ` to role ${changes.role}` : ''}${statusChanged ? ` to status ${changes.status}` : ''}.`)
-    return { ok: true }
-  }
-
-  function saveAdminSettings(settings) {
-    if (currentUser?.role !== 'ADMIN') return false
-    setAdminSettings((current) => ({ ...current, ...settings, notifications: { ...current.notifications, ...settings.notifications } }))
-    appendAudit('SYSTEM_SETTINGS_UPDATED', 'SYSTEM', 'unidos-settings', 'Academic and notification settings were updated.')
-  }
-
-  function addRegisteredStudent(student) {
-    if (!student?.studentId || !student?.email || !student?.lastName || !student?.firstName) return false
-    if (adminUsers.some((user) => user.userId === student.studentId || user.email === student.email)) return false
-    setAdminUsers((users) => [{
-      id: student.studentId,
-      lastName: student.lastName,
-      firstName: student.firstName,
-      middleName: student.middleName ?? '',
-      name: formatDisplayName(student),
-      userId: student.studentId,
-      email: student.email,
-      role: 'Student',
-      status: 'ACTIVE',
-      organization: '—',
-      lastActivity: `Registered · ${currentDate()}`,
-      program: student.program,
-      yearLevel: student.yearLevel,
-    }, ...users])
-    return true
-  }
-
-  function submitMembershipApplication(organizationId) {
-    if (currentUser?.role !== 'STUDENT') return false
-    const organization = adminOrganizations.find((item) => item.id === organizationId)
-      ?? studentOrganizations.find((item) => item.id === organizationId)
-    if (!organization) return false
-
-    const studentId = currentUser.studentId ?? currentUser.id
-    const exists = studentMemberships.some((membership) => (
-      membership.studentId === studentId
-      && membership.organizationId === organizationId
-      && ['PENDING', 'ACTIVE', 'SUSPENDED'].includes(membership.status)
-    ))
-    if (exists) return false
-
-    const applicationDate = currentDate()
-    if (organizationId === officerOrganization.id) {
-      const request = {
-        id: `wcs-request-${studentId}-${Date.now()}`,
-        organizationId,
-        organizationName: officerOrganization.name,
-        ...currentUser,
-        firstName: currentUser.firstName,
-        middleName: currentUser.middleName ?? '',
-        lastName: currentUser.lastName,
-        studentName: formatDisplayName(currentUser),
-        studentId,
-        program: 'BSCS',
-        position: 'Applicant',
-        applicationDate,
-        message: 'I would like to join the Computer Society to participate in programming activities and workshops.',
-        status: 'PENDING',
-        decisionDate: null,
-        decisionReason: '',
-        processedBy: null,
-      }
-      setOfficerMembershipRequests((requests) => [...requests, request])
-    } else {
-      const request = {
-        id: `request-${organizationId}-${studentId}-${Date.now()}`,
-        organizationId,
-        organizationName: organization.name,
-        ...currentUser,
-        firstName: currentUser.firstName,
-        middleName: currentUser.middleName ?? '',
-        lastName: currentUser.lastName,
-        studentName: formatDisplayName(currentUser),
-        studentId,
-        program: 'BSCS',
-        position: 'Applicant',
-        applicationDate,
-        status: 'PENDING',
-        decisionDate: null,
-        decisionReason: '',
-        processedBy: null,
-      }
-      setOfficerMembershipRequests((requests) => [...requests, request])
+    const targetUser = rawUsers.find(
+      (u) => String(u.user_id) === String(userId) || String(u.student_number) === String(userId)
+    )
+    const dbId = targetUser?.user_id || userId
+    const response = await fetch(`/api/users/${dbId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        first_name: updates.firstName,
+        middle_name: updates.middleName,
+        last_name: updates.lastName,
+        email: updates.email,
+        role: roleMap[updates.role] || updates.rawRole || updates.role,
+        status: updates.status,
+      }),
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      return { ok: false, reason: err.error || 'Unable to update user account.' }
     }
-    setStudentMemberships((memberships) => [
-      ...memberships.filter((membership) => membership.organizationId !== organizationId),
-      {
-        studentId,
-        organizationId,
-        status: 'PENDING',
-        position: 'Applicant',
-        applicationDate,
-        approvedDate: null,
-        decisionReason: '',
-      },
-    ])
-    return true
-  }
+    await refreshPortalData()
+    return { ok: true }
+  }, [rawUsers, refreshPortalData])
 
-  function approveOfficerMembershipRequest(requestId) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    const request = officerMembershipRequests.find((item) => (
-      item.id === requestId
-      && item.organizationId === officerOrganization.id
-      && item.status === 'PENDING'
-      && item.studentId !== (currentUser.studentId ?? 'WMSU-2026-0142')
-    ))
-    if (!request) return false
-
-    const decisionDate = currentDate()
-    setOfficerMembershipRequests((requests) => requests.map((item) => (
-      item.id === requestId
-        ? { ...item, status: 'APPROVED', decisionDate, decisionReason: '', processedBy: formatDisplayName(currentUser) }
-        : item
-    )))
-    setOfficerMembers((members) => {
-      const existing = members.find((member) => (
-        member.organizationId === officerOrganization.id && member.studentId === request.studentId
-      ))
-      if (existing) {
-        return members.map((member) => member.id === existing.id
-          ? {
-            ...member,
-            position: 'General Member',
-            status: 'ACTIVE',
-            dateJoined: decisionDate,
-            history: [...member.history, { date: decisionDate, action: 'Membership approved as General Member' }],
-          }
-          : member)
-      }
-      return [...members, {
-        id: `wcs-member-${request.studentId}`,
-        organizationId: officerOrganization.id,
-        firstName: request.firstName ?? '',
-        middleName: request.middleName ?? '',
-        lastName: request.lastName ?? '',
-        studentName: request.studentName,
-        studentId: request.studentId,
-        program: request.program,
-        email: `${request.studentName.toLowerCase().replace(/\s+/g, '.')}@wmsu.edu.ph`,
-        position: 'General Member',
-        status: 'ACTIVE',
-        dateJoined: decisionDate,
-        history: [{ date: decisionDate, action: 'Membership approved as General Member' }],
-      }]
+  const submitAdviserChangeRequest = useCallback(async (payload) => {
+    const response = await fetch('/api/advisers/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        organization_id: payload.organizationId || currentUser?.organizationId,
+        requested_by: currentUser?.userId,
+        current_adviser_id: payload.currentAdviserId || null,
+        requested_adviser_id: payload.requestedAdviserId,
+        reason: payload.reason,
+      }),
     })
-    setStudentMemberships((memberships) => {
-      const membership = {
-        studentId: request.studentId,
-        organizationId: request.organizationId,
-        status: 'ACTIVE',
-        position: 'General Member',
-        applicationDate: request.applicationDate,
-        approvedDate: decisionDate,
-        decisionReason: '',
-      }
-      const existing = memberships.some((item) => (
-        item.studentId === request.studentId && item.organizationId === request.organizationId
-      ))
-      return existing
-        ? memberships.map((item) => item.studentId === request.studentId && item.organizationId === request.organizationId ? membership : item)
-        : [...memberships, membership]
-    })
-    setOfficerMemberCount((count) => count + 1)
+    if (!response.ok) return false
+    await refreshPortalData()
     return true
-  }
+  }, [currentUser?.organizationId, currentUser?.userId, refreshPortalData])
 
-  function rejectOfficerMembershipRequest(requestId, reason) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    const request = officerMembershipRequests.find((item) => (
-      item.id === requestId
-      && item.organizationId === officerOrganization.id
-      && item.status === 'PENDING'
-      && item.studentId !== (currentUser.studentId ?? 'WMSU-2026-0142')
-    ))
-    if (!request) return false
-
-    const decisionDate = currentDate()
-    const decisionReason = reason.trim()
-    setOfficerMembershipRequests((requests) => requests.map((item) => (
-      item.id === requestId
-        ? { ...item, status: 'REJECTED', decisionDate, decisionReason, processedBy: formatDisplayName(currentUser) }
-        : item
-    )))
-    setStudentMemberships((memberships) => {
-      const membership = {
-        studentId: request.studentId,
-        organizationId: request.organizationId,
-        status: 'REJECTED',
-        position: 'Applicant',
-        applicationDate: request.applicationDate,
-        approvedDate: null,
-        decisionReason,
-      }
-      const existing = memberships.some((item) => (
-        item.studentId === request.studentId && item.organizationId === request.organizationId
-      ))
-      return existing
-        ? memberships.map((item) => item.studentId === request.studentId && item.organizationId === request.organizationId ? membership : item)
-        : [...memberships, membership]
-    })
-    return true
-  }
-
-  function updateOfficerMemberStatus(memberId, status) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return false
-    const member = officerMembers.find((item) => (
-      item.id === memberId && item.organizationId === officerOrganization.id
-    ))
-    if (!member || !['ACTIVE', 'SUSPENDED', 'INACTIVE'].includes(status) || member.status === status) return false
-
-    const wasActive = member.status === 'ACTIVE'
-    const willBeActive = status === 'ACTIVE'
-    const date = currentDate()
-    const position = wasActive && !willBeActive && exclusiveOfficerPositions.includes(member.position)
-      ? 'General Member'
-      : member.position
-    setOfficerMembers((members) => members.map((item) => item.id === memberId
-      ? {
-        ...item,
-        position,
+  const reviewAdviserChangeRequest = useCallback(async (requestId, status, reviewRemarks = '') => {
+    const response = await fetch(`/api/advisers/requests/${requestId}/review`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         status,
-        history: [...item.history, {
-          date,
-          action: position !== member.position
-            ? `Membership status changed to ${status}; position released to General Member`
-            : `Membership status changed to ${status}`,
-        }],
-      }
-      : item))
-    if (wasActive !== willBeActive) setOfficerMemberCount((count) => count + (willBeActive ? 1 : -1))
-    setStudentMemberships((memberships) => {
-      const existing = memberships.some((item) => item.studentId === member.studentId && item.organizationId === member.organizationId)
-      const updated = memberships.map((item) => (
-        item.studentId === member.studentId && item.organizationId === member.organizationId
-          ? { ...item, status, position }
-          : item
-      ))
-      return existing
-        ? updated
-        : [...updated, {
-          studentId: member.studentId,
-          organizationId: member.organizationId,
-          status,
-          position,
-          applicationDate: member.dateJoined,
-          approvedDate: member.dateJoined,
-          decisionReason: '',
-        }]
+        reviewed_by: currentUser?.userId || null,
+        review_remarks: reviewRemarks,
+      }),
     })
+    if (!response.ok) return false
+    await refreshPortalData()
     return true
-  }
+  }, [currentUser, refreshPortalData])
 
-  function assignOfficerPosition(memberId, position) {
-    if (currentUser?.role !== 'OFFICER' || currentUser.organizationId !== officerOrganization.id) return { ok: false, reason: 'Only officers of the assigned organization may assign positions.' }
-    const member = officerMembers.find((item) => (
-      item.id === memberId
-      && item.organizationId === officerOrganization.id
-      && item.status === 'ACTIVE'
-    ))
-    if (!member) return { ok: false, reason: 'Only active members of WMSU Computer Society can hold an officer position.' }
-    if (!['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor', 'PIO', 'Committee Head', 'General Member'].includes(position)) {
-      return { ok: false, reason: 'Choose a valid organization position.' }
-    }
-
-    let displacedMember = null
-    if (exclusiveOfficerPositions.includes(position)) {
-      const assigned = officerMembers.find((item) => (
-        item.organizationId === officerOrganization.id
-        && item.status === 'ACTIVE'
-        && item.position === position
-        && item.id !== memberId
-      ))
-      if (assigned) {
-        displacedMember = assigned
-        setOfficerMembers((members) => members.map((item) => item.id === assigned.id
-          ? {
-            ...item,
-            position: 'General Member',
-            history: [...item.history, { date: currentDate(), action: `Position changed from ${position} to General Member` }],
-          }
-          : item))
-      }
-    }
-
-    const date = currentDate()
-    setOfficerMembers((members) => members.map((item) => {
-      if (item.id === memberId) {
-        return {
-          ...item,
-          position,
-          history: [...item.history, { date, action: `Position changed from ${member.position} to ${position}` }],
-        }
-      }
-      if (displacedMember && item.id === displacedMember.id) {
-        return {
-          ...item,
-          position: 'General Member',
-          history: [...item.history, { date, action: `Position changed from ${position} to General Member` }],
-        }
-      }
-      return item
-    }))
-    setStudentMemberships((memberships) => {
-      const synchronized = [
-        { member, position },
-        ...(displacedMember ? [{ member: displacedMember, position: 'General Member' }] : []),
-      ]
-      return synchronized.reduce((currentMemberships, update) => {
-        const hasMembership = currentMemberships.some((item) => (
-          item.studentId === update.member.studentId && item.organizationId === update.member.organizationId
-        ))
-        const updated = currentMemberships.map((item) => (
-          item.studentId === update.member.studentId && item.organizationId === update.member.organizationId
-            ? { ...item, position: update.position }
-            : item
-        ))
-        return hasMembership
-          ? updated
-          : [...updated, {
-            studentId: update.member.studentId,
-            organizationId: update.member.organizationId,
-            status: update.member.status,
-            position: update.position,
-            applicationDate: update.member.dateJoined,
-            approvedDate: update.member.dateJoined,
-            decisionReason: '',
-          }]
-      }, memberships)
+  const assignOrganizationAdviser = useCallback(async (payload) => {
+    const response = await fetch('/api/advisers/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        organization_id: payload.organizationId,
+        adviser_id: payload.adviserId,
+        term_start: payload.termStart,
+        term_end: payload.termEnd,
+      }),
     })
-    return { ok: true }
-  }
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [refreshPortalData])
 
-  const value = {
-    adminAuditLogs,
+  const createAcademicCollege = useCallback(async (payload) => {
+    const response = await fetch('/api/academic/colleges', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [refreshPortalData])
+
+  const createAcademicDepartment = useCallback(async (payload) => {
+    const response = await fetch('/api/academic/departments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [refreshPortalData])
+
+  const createAcademicProgram = useCallback(async (payload) => {
+    const response = await fetch('/api/academic/programs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [refreshPortalData])
+
+  const markNotificationRead = useCallback(async (notificationId) => {
+    const id = typeof notificationId === 'object' ? notificationId?.id : notificationId
+    if (!id) return false
+    const response = await fetch(`/api/notifications/${id}/read`, {
+      method: 'PUT',
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [refreshPortalData])
+
+  const markAllNotificationsRead = useCallback(async () => {
+    if (!currentUser?.userId) return false
+    const response = await fetch(`/api/notifications/user/${currentUser.userId}/read-all`, {
+      method: 'PUT',
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [currentUser, refreshPortalData])
+
+  const saveAdminSettings = useCallback((nextSettings) => {
+    setAdminSettings((prev) => ({ ...prev, ...nextSettings }))
+    return true
+  }, [])
+
+  const value = useMemo(() => ({
+    loading,
+    refreshPortalData,
     captureUndo,
-    adminNotifications,
+    appendAudit: captureUndo,
     adminOrganizations,
-    adminSettings,
-    adminUsers,
-    checkInStudent,
-    addRegisteredStudent,
-    markAdminNotificationRead,
-    markStudentNotificationRead,
-    adviserActivity,
-    adviserDocuments: adviserDocuments.filter((document) => document.organizationId === officerOrganization.id),
-    adviserReports: adviserReports.filter((report) => report.organizationId === officerOrganization.id),
-    appendAudit,
+    studentOrganizations,
     organizationApplications,
-    officerNotifications,
-    assignOfficerPosition,
-    approveOfficerMembershipRequest,
+    officerAnnouncements,
+    officerEvents,
+    officerMembers,
     officerMemberCount,
-    officerMembers: officerMembers.filter((member) => member.organizationId === officerOrganization.id),
-    officerMembershipRequests: officerMembershipRequests.filter((request) => request.organizationId === officerOrganization.id),
-    officerEvents: officerEvents.filter((event) => event.organizationId === officerOrganization.id),
-    studentRegistrations,
-    rejectOfficerMembershipRequest,
-    reviewAccomplishmentReport,
-    reviewAdminDocument,
-    reviewAdminEvent,
-    reviewOrganizationApplication,
-    reviewAdviserRequest,
-    publishAdminEvent,
-    saveAdminSettings,
-    saveOfficerEvent,
-    studentNotifications,
+    officerMembershipRequests,
     studentMemberships,
-    submitMembershipApplication,
-    updateAdminOrganizationStatus,
-    updateAdminOrganization,
-    updateOfficerOrganizationProfile,
-    updateOfficerOrganizationContact,
-    updateOfficerOrganizationLogo,
-    saveOfficerNotificationPreferences,
-    submitOfficerOrganizationRequest,
-    organizationChangeRequests,
-    addOfficerDocument,
+    studentRegistrations,
+    adviserDocuments,
+    adviserReports,
+    adviserActivity: adminAuditLogs,
+    adminUsers,
+    adminAuditLogs,
+    adminSettings,
+    academicHierarchy,
+    academicColleges: academicHierarchy.colleges || [],
+    academicDepartments: academicHierarchy.departments || [],
+    academicPrograms: academicHierarchy.programs || [],
+    advisers: rawAdvisers,
+    adviserChangeRequests: rawAdviserChangeRequests,
+    organizationChangeRequests: rawAdviserChangeRequests,
+    studentNotifications: notifications,
+    officerNotifications: notifications,
+    adviserNotifications: notifications,
+    adminNotifications: notifications,
+    readNotificationIds: notifications.filter((n) => n.read).map((n) => n.id),
+    // Actions
+    getMembershipForOrganization,
+    submitMembershipRequest,
+    submitMembershipApplication: submitMembershipRequest,
+    approveOfficerMembershipRequest,
+    rejectOfficerMembershipRequest,
+    assignOfficerPosition,
+    updateOfficerMemberStatus,
+    registerForEvent,
+    registerStudentForEvent: registerForEvent,
+    cancelEventRegistration,
+    cancelStudentRegistration: cancelEventRegistration,
+    cancelRegistration: cancelEventRegistration,
+    checkInStudent,
+    addRegisteredStudent: checkInStudent,
+    saveOfficerEvent,
+    reviewAdviserRequest,
+    reviewAccomplishmentReport,
+    reviewAdminEvent,
+    publishAdminEvent,
     saveOfficerAnnouncement,
     archiveOfficerAnnouncement,
     deleteOfficerAnnouncement,
+    uploadOfficerDocument: addOfficerDocument,
+    addOfficerDocument,
+    reviewAdviserDocument,
+    reviewAdminDocument: reviewAdviserDocument,
+    updateOfficerOrganizationProfile,
+    updateOfficerOrganizationLogo,
+    updateOfficerOrganizationContact,
+    saveOfficerNotificationPreferences,
+    submitOfficerOrganizationRequest,
+    updateAdminOrganizationStatus,
+    updateAdminOrganization,
+    reviewOrganizationApplication,
     updateAdminUser,
+    updateUserAccount: updateAdminUser,
+    submitAdviserChangeRequest,
+    reviewAdviserChangeRequest,
+    assignOrganizationAdviser,
+    createAcademicCollege,
+    createAcademicDepartment,
+    createAcademicProgram,
+    markNotificationRead,
+    markStudentNotificationRead: markNotificationRead,
+    markAdminNotificationRead: markNotificationRead,
+    markAllNotificationsRead,
+    markAllStudentNotificationsRead: markAllNotificationsRead,
+    markAllAdviserNotificationsRead: markAllNotificationsRead,
+    markAllAdminNotificationsRead: markAllNotificationsRead,
+    saveAdminSettings,
+    updateAdminSettings: saveAdminSettings,
+  }), [
+    loading,
+    refreshPortalData,
+    captureUndo,
+    adminOrganizations,
+    studentOrganizations,
+    organizationApplications,
+    officerAnnouncements,
+    officerEvents,
+    officerMembers,
+    officerMemberCount,
+    officerMembershipRequests,
+    studentMemberships,
+    studentRegistrations,
+    adviserDocuments,
+    adviserReports,
+    adminAuditLogs,
+    adminUsers,
+    adminSettings,
+    academicHierarchy,
+    rawAdvisers,
+    rawAdviserChangeRequests,
+    notifications,
+    getMembershipForOrganization,
+    submitMembershipRequest,
+    approveOfficerMembershipRequest,
+    rejectOfficerMembershipRequest,
+    assignOfficerPosition,
     updateOfficerMemberStatus,
-    registerStudentForEvent,
-    cancelStudentRegistration,
-  }
+    registerForEvent,
+    cancelEventRegistration,
+    checkInStudent,
+    saveOfficerEvent,
+    reviewAdviserRequest,
+    reviewAccomplishmentReport,
+    reviewAdminEvent,
+    publishAdminEvent,
+    saveOfficerAnnouncement,
+    archiveOfficerAnnouncement,
+    deleteOfficerAnnouncement,
+    addOfficerDocument,
+    reviewAdviserDocument,
+    updateOfficerOrganizationProfile,
+    updateOfficerOrganizationLogo,
+    updateOfficerOrganizationContact,
+    saveOfficerNotificationPreferences,
+    submitOfficerOrganizationRequest,
+    updateAdminOrganizationStatus,
+    updateAdminOrganization,
+    reviewOrganizationApplication,
+    updateAdminUser,
+    submitAdviserChangeRequest,
+    reviewAdviserChangeRequest,
+    assignOrganizationAdviser,
+    createAcademicCollege,
+    createAcademicDepartment,
+    createAcademicProgram,
+    markNotificationRead,
+    markAllNotificationsRead,
+    saveAdminSettings,
+  ])
 
   return <PortalDataContext.Provider value={value}>{children}</PortalDataContext.Provider>
 }

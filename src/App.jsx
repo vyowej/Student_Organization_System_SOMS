@@ -112,86 +112,86 @@ function pageRoutes(pages, role) {
 /**
  * Root Application Router (src/App.jsx)
  *
- * Wraps the application in AuthProvider and PortalDataProvider and defines
+ * Wraps the application in ErrorBoundary, AuthProvider, and PortalDataProvider and defines
  * role-protected route trees for Public, Student, Officer, Adviser, and Admin portals.
  */
 function App() {
   return (
-    <AuthProvider>
-      <PortalDataProvider>
-        <DocumentTitle />
-        <ErrorBoundary>
+    <ErrorBoundary>
+      <AuthProvider>
+        <PortalDataProvider>
+          <DocumentTitle />
           <Routes>
-          {/* Public landing and authentication routes */}
-          <Route element={<PublicLayout />}>
-            <Route index element={<PublicPage page="home" />} />
-            <Route path="login" element={<PublicOnly><PublicPage page="login" /></PublicOnly>} />
-            <Route path="register" element={<PublicPage page="register" />} />
-            <Route path="forgot-password" element={<PublicPage page="forgot-password" />} />
-            <Route path="access-denied" element={<AccessDeniedPage />} />
-          </Route>
+            {/* Public landing and authentication routes */}
+            <Route element={<PublicLayout />}>
+              <Route index element={<PublicPage page="home" />} />
+              <Route path="login" element={<PublicOnly><PublicPage page="login" /></PublicOnly>} />
+              <Route path="register" element={<PublicPage page="register" />} />
+              <Route path="forgot-password" element={<PublicPage page="forgot-password" />} />
+              <Route path="access-denied" element={<AccessDeniedPage />} />
+            </Route>
 
-          {/* Student portal routes */}
-          <Route element={<RequireRole role="STUDENT" />}>
-            <Route path="student" element={<StudentLayout />}>
-              <Route index element={<Navigate to="dashboard" replace />} />
-              <Route path="dashboard" element={<StudentDashboardPage />} />
-              <Route path="organizations" element={<StudentOrganizationsPage />} />
-              <Route path="organizations/:id" element={<StudentOrganizationDetailsPage />} />
-              <Route path="my-organizations" element={<StudentMyOrganizationsPage />} />
-              <Route path="events" element={<StudentEventsPage />} />
-              <Route path="events/:id" element={<EventDetailsPage />} />
-              <Route path="registrations" element={<StudentRegistrationsPage />} />
-              <Route path="registrations/:registrationId/pass" element={<StudentEventPassPage />} />
-              <Route path="attendance" element={<StudentAttendancePage />} />
-              <Route path="notifications" element={<StudentNotificationsPage />} />
-              <Route path="profile" element={<StudentProfilePage />} />
-              {pageRoutes(studentPages.filter((page) => !['dashboard', 'organizations', 'organizations/:id', 'my-organizations', 'events', 'events/:id', 'registrations', 'attendance', 'notifications', 'profile'].includes(page.path)), 'Student')}
+            {/* Student portal routes */}
+            <Route element={<RequireRole role="STUDENT" />}>
+              <Route path="student" element={<StudentLayout />}>
+                <Route index element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard" element={<StudentDashboardPage />} />
+                <Route path="organizations" element={<StudentOrganizationsPage />} />
+                <Route path="organizations/:id" element={<StudentOrganizationDetailsPage />} />
+                <Route path="my-organizations" element={<StudentMyOrganizationsPage />} />
+                <Route path="events" element={<StudentEventsPage />} />
+                <Route path="events/:id" element={<EventDetailsPage />} />
+                <Route path="registrations" element={<StudentRegistrationsPage />} />
+                <Route path="registrations/:registrationId/pass" element={<StudentEventPassPage />} />
+                <Route path="attendance" element={<StudentAttendancePage />} />
+                <Route path="notifications" element={<StudentNotificationsPage />} />
+                <Route path="profile" element={<StudentProfilePage />} />
+                {pageRoutes(studentPages.filter((page) => !['dashboard', 'organizations', 'organizations/:id', 'my-organizations', 'events', 'events/:id', 'registrations', 'attendance', 'notifications', 'profile'].includes(page.path)), 'Student')}
+              </Route>
             </Route>
-          </Route>
-          {/* Organization Officer portal routes */}
-          <Route element={<RequireRole role="OFFICER" />}>
-            <Route path="officer" element={<OfficerLayout />}>
-              <Route index element={<Navigate to="dashboard" replace />} />
-              <Route path="dashboard" element={<OfficerDashboardPage />} />
-              <Route path="organization" element={<OfficerOrganizationProfilePage />} />
-              <Route path="members" element={<OfficerMembersPage />} />
-              <Route path="membership-requests" element={<OfficerMembershipRequestsPage />} />
-              <Route path="events" element={<OfficerEventsPage />} />
-              <Route path="events/create" element={<OfficerEventFormPage />} />
-              <Route path="attendance" element={<OfficerAttendancePage />} />
-              <Route path="announcements" element={<OfficerAnnouncementsPage />} />
-              <Route path="settings" element={<OfficerSettingsPage />} />
-              <Route path="documents" element={<OfficerDocumentsPage />} />
-              <Route path="reports" element={<OfficerReportsPage />} />
-              {pageRoutes(officerPages.filter((page) => !['dashboard', 'organization', 'members', 'membership-requests', 'events', 'events/create', 'attendance', 'announcements', 'documents', 'reports', 'settings'].includes(page.path)), 'Organization Officer')}
+            {/* Organization Officer portal routes */}
+            <Route element={<RequireRole role="OFFICER" />}>
+              <Route path="officer" element={<OfficerLayout />}>
+                <Route index element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard" element={<OfficerDashboardPage />} />
+                <Route path="organization" element={<OfficerOrganizationProfilePage />} />
+                <Route path="members" element={<OfficerMembersPage />} />
+                <Route path="membership-requests" element={<OfficerMembershipRequestsPage />} />
+                <Route path="events" element={<OfficerEventsPage />} />
+                <Route path="events/create" element={<OfficerEventFormPage />} />
+                <Route path="attendance" element={<OfficerAttendancePage />} />
+                <Route path="announcements" element={<OfficerAnnouncementsPage />} />
+                <Route path="settings" element={<OfficerSettingsPage />} />
+                <Route path="documents" element={<OfficerDocumentsPage />} />
+                <Route path="reports" element={<OfficerReportsPage />} />
+                {pageRoutes(officerPages.filter((page) => !['dashboard', 'organization', 'members', 'membership-requests', 'events', 'events/create', 'attendance', 'announcements', 'documents', 'reports', 'settings'].includes(page.path)), 'Organization Officer')}
+              </Route>
             </Route>
-          </Route>
-          {/* Faculty Adviser portal routes */}
-          <Route element={<RequireRole role="ADVISER" />}>
-            <Route path="adviser" element={<AdviserLayout />}>
-              <Route index element={<Navigate to="dashboard" replace />} />
-              <Route path="dashboard" element={<AdviserDashboardPage />} />
-              <Route path="organizations" element={<AdviserOrganizationsPage />} />
-              <Route path="organizations/:id" element={<AdviserOrganizationDetailsPage />} />
-              <Route path="approvals" element={<AdviserApprovalsPage />} />
-              <Route path="events" element={<AdviserEventsPage />} />
-              <Route path="reports" element={<AdviserReportsPage />} />
+            {/* Faculty Adviser portal routes */}
+            <Route element={<RequireRole role="ADVISER" />}>
+              <Route path="adviser" element={<AdviserLayout />}>
+                <Route index element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard" element={<AdviserDashboardPage />} />
+                <Route path="organizations" element={<AdviserOrganizationsPage />} />
+                <Route path="organizations/:id" element={<AdviserOrganizationDetailsPage />} />
+                <Route path="approvals" element={<AdviserApprovalsPage />} />
+                <Route path="events" element={<AdviserEventsPage />} />
+                <Route path="reports" element={<AdviserReportsPage />} />
+              </Route>
             </Route>
-          </Route>
-          {/* Student Affairs Admin portal routes */}
-          <Route element={<RequireRole role="ADMIN" />}>
-            <Route path="admin" element={<AdminLayout />}>
-              <Route index element={<Navigate to="dashboard" replace />} />
-              {adminPages.map((page) => <Route key={page.path} path={page.path} element={<AdminPortalPage key={page.path} />} />)}
+            {/* Student Affairs Admin portal routes */}
+            <Route element={<RequireRole role="ADMIN" />}>
+              <Route path="admin" element={<AdminLayout />}>
+                <Route index element={<Navigate to="dashboard" replace />} />
+                {adminPages.map((page) => <Route key={page.path} path={page.path} element={<AdminPortalPage key={page.path} />} />)}
+              </Route>
             </Route>
-          </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-        </ErrorBoundary>
-      </PortalDataProvider>
-    </AuthProvider>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </PortalDataProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 

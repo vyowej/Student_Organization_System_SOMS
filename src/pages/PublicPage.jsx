@@ -1,9 +1,3 @@
-/**
- * Public Landing & Authentication Pages
- *
- * Renders the public home view (`LandingPage`) as well as WMSU email sign-in,
- * student registration, and password reset forms.
- */
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Card from '../components/ui/Card.jsx'
@@ -22,10 +16,9 @@ function PasswordVisibilityIcon({ visible }) {
   return <Icon name={visible ? 'eye-off' : 'eye'} size={20} />
 }
 
-
 function AuthenticationPage({ page }) {
   const { login, registerStudent } = useAuth()
-  const { addRegisteredStudent } = usePortalData()
+  const { academicPrograms = [], refreshPortalData } = usePortalData()
   const { showToast } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
@@ -37,6 +30,7 @@ function AuthenticationPage({ page }) {
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [registrationStep, setRegistrationStep] = useState(1)
   const [form, setForm] = useState({
     lastName: '',
@@ -47,10 +41,15 @@ function AuthenticationPage({ page }) {
     password: '',
     confirmPassword: '',
     program: '',
+    programId: '',
     yearLevel: '',
   })
 
-  function handleLogin(event) {
+  const programOptions = academicPrograms.length > 0
+    ? academicPrograms.map((p) => ({ id: p.id, label: `${p.acronym} — ${p.name}`, value: p.acronym }))
+    : ['BSCS', 'BSIT', 'BSBA', 'BSED', 'BSA', 'BSHM'].map((code) => ({ id: code, label: code, value: code }))
+
+  async function handleLogin(event) {
     event.preventDefault()
     setError('')
     setSuccess('')
@@ -62,13 +61,16 @@ function AuthenticationPage({ page }) {
       setError('Use your WMSU email address ending in @wmsu.edu.ph.')
       return
     }
-    const result = login(identifier, password, rememberMe)
+    setSubmitting(true)
+    const result = await login(identifier, password, rememberMe)
+    setSubmitting(false)
     if (!result.ok) {
       setError(result.error)
       return
     }
+    await refreshPortalData()
     showToast('Signed in successfully.', 'success')
-    navigate(dashboardByRole[result.user.role], { replace: true })
+    navigate(result.redirectTo || dashboardByRole[result.user.role] || '/student/dashboard', { replace: true })
   }
 
   function validateRegistrationStep(step) {
@@ -104,22 +106,25 @@ function AuthenticationPage({ page }) {
     return true
   }
 
-  function handleRegister(event) {
+  async function handleRegister(event) {
     event.preventDefault()
     if (registrationStep === 1) {
       if (validateRegistrationStep(1)) setRegistrationStep(2)
       return
     }
     if (!validateRegistrationStep(registrationStep)) return
-    const result = registerStudent(form)
+    setSubmitting(true)
+    const matchedProg = academicPrograms.find((p) => p.acronym === form.program || String(p.id) === String(form.programId))
+    const result = await registerStudent({
+      ...form,
+      programId: matchedProg?.id ?? null,
+    })
+    setSubmitting(false)
     if (!result.ok) {
       setError(result.error)
       return
     }
-    if (!addRegisteredStudent(result.user)) {
-      setError('The account was created, but its student directory profile could not be added.')
-      return
-    }
+    await refreshPortalData()
     showToast('Account created successfully.', 'success')
     navigate('/login', { replace: true, state: { registered: true } })
   }
@@ -132,7 +137,26 @@ function AuthenticationPage({ page }) {
   const [title, description] = titles[page]
 
   return (
-    <Card className={`auth-card auth-card-${page}`}>
+    <div className="auth-layout">
+      <aside className="auth-feature-panel">
+        <Link aria-label="UNIDOS home" className="auth-feature-brand" to="/">
+          <WmsuLogo className="brand-seal" />
+          <span><strong>UNIDOS</strong><small>WMSU student community</small></span>
+        </Link>
+        <div className="auth-feature-copy">
+          <span className="landing-eyebrow">One campus. Many communities.</span>
+          <h2>Find your people.<br /><em>Make your impact.</em></h2>
+          <p>Discover organizations, connect with students, and take part in campus life.</p>
+        </div>
+        <div aria-hidden="true" className="auth-device-preview">
+          <div className="auth-mini-laptop">
+            <div><span>UNIDOS</span><b>Campus, connected.</b><i /><i /><i /></div>
+          </div>
+          <div className="auth-mini-phone"><span>UNIDOS</span><b>Join a community</b><i /><i /></div>
+        </div>
+        <span className="auth-feature-foot">Western Mindanao State University</span>
+      </aside>
+      <Card className={`auth-card auth-card-${page}`}>
       <div className="auth-brand">
         <WmsuLogo className="brand-seal" />
         <div><strong>UNIDOS</strong><span>Student Organization Management System</span></div>
@@ -152,14 +176,7 @@ function AuthenticationPage({ page }) {
             <Link to="/forgot-password">Forgot Password?</Link>
           </div>
           {error && <p className="auth-error" role="alert">{error}</p>}
-          <Button className="auth-submit" type="submit">Login</Button>
-          <details className="auth-test-accounts">
-            <summary>Development demo accounts</summary>
-            <span className="auth-demo-notice">For preview and testing only. Do not use these credentials for real accounts.</span>
-            <span>Student + Organization Officer · student@wmsu.edu.ph · student123</span>
-            <span>Adviser · adviser@wmsu.edu.ph · adviser123</span>
-            <span>Admin · admin@wmsu.edu.ph · admin123</span>
-          </details>
+          <Button className="auth-submit" disabled={submitting} type="submit">{submitting ? 'Signing in...' : 'Login'}</Button>
         </form>
       )}
       {page === 'register' && (
@@ -189,13 +206,13 @@ function AuthenticationPage({ page }) {
               <label className="form-field" htmlFor="register-program">Course / Program
                 <select id="register-program" onChange={(event) => setForm((current) => ({ ...current, program: event.target.value }))} value={form.program}>
                   <option value="">Select program</option>
-                  {['BSCS', 'BSIT', 'BSBA', 'BSED', 'BSA', 'BSHM', 'Other'].map((program) => <option key={program}>{program}</option>)}
+                  {programOptions.map((prog) => <option key={prog.id} value={prog.value}>{prog.label}</option>)}
                 </select>
               </label>
               <label className="form-field" htmlFor="register-year-level">Year Level
                 <select id="register-year-level" onChange={(event) => setForm((current) => ({ ...current, yearLevel: event.target.value }))} value={form.yearLevel}>
                   <option value="">Select year level</option>
-                  {['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'].map((year) => <option key={year}>{year}</option>)}
+                  {['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year', '6th Year'].map((year) => <option key={year} value={year}>{year}</option>)}
                 </select>
               </label>
               <div className="auth-password-field">
@@ -213,7 +230,7 @@ function AuthenticationPage({ page }) {
             {registrationStep === 2 && <Button onClick={() => { setError(''); setRegistrationStep(1) }} variant="secondary">Back</Button>}
             {registrationStep === 1
               ? <Button className="auth-submit" type="submit">Continue</Button>
-              : <Button className="auth-submit" type="submit">Create Account</Button>}
+              : <Button className="auth-submit" disabled={submitting} type="submit">{submitting ? 'Creating Account...' : 'Create Account'}</Button>}
           </div>
         </form>
       )}
@@ -239,7 +256,8 @@ function AuthenticationPage({ page }) {
           : page === 'register' ? <>Already registered? <Link to="/login">Sign in</Link></>
             : <Link to="/login">Return to sign in</Link>}
       </p>
-    </Card>
+      </Card>
+    </div>
   )
 }
 

@@ -13,7 +13,7 @@ import Modal from '../components/ui/Modal.jsx'
 import ProfileCover from '../components/layout/ProfileCover.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
-import { officerActivity, officerEventStatuses } from '../data/officerPortal.js'
+import { officerEventStatuses } from '../data/officerPortal.js'
 import { formatDisplayName, formatGreetingName, getTimeGreeting } from '../data/displayName.js'
 
 const metricItems = [
@@ -63,46 +63,69 @@ function useCountUp(values) {
 export default function OfficerDashboardPage() {
   const {
     adminOrganizations = [],
-    approveOfficerMembershipRequest = () => {},
-    captureUndo = () => {},
+    adviserDocuments = [],
+    approveOfficerMembershipRequest = async () => false,
+    captureUndo = () => () => {},
     officerEvents = [],
     officerMemberCount = 0,
     officerMembershipRequests = [],
     officerNotifications = [],
-    rejectOfficerMembershipRequest = () => {},
+    rejectOfficerMembershipRequest = async () => false,
     currentUser,
   } = useOutletContext() || {}
-  const organization = adminOrganizations.find((item) => item.id === currentUser?.organizationId)
+  const organization = adminOrganizations.find(
+    (item) => String(item.id) === String(currentUser?.organizationId)
+  ) || adminOrganizations[0]
   const { showToast } = useToast()
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [requestToApprove, setRequestToApprove] = useState(null)
   const [requestToReject, setRequestToReject] = useState(null)
   const [rejectionReason, setRejectionReason] = useState('')
-  const pendingRequests = officerMembershipRequests.filter((request) => request.status === 'PENDING')
-  const metricValues = useMemo(() => [officerMemberCount, pendingRequests.length, 4, 3], [officerMemberCount, pendingRequests.length])
-  const counts = useCountUp(metricValues)
-  const recentActivity = [
-    ...officerNotifications.slice(0, 3).map((notification) => ({
-      id: notification.id,
-      message: notification.message,
-      time: notification.createdAt,
-    })),
-    ...officerActivity,
-  ].slice(0, 5)
 
-  function approve() {
+  const orgEvents = useMemo(
+    () => officerEvents.filter((e) => !organization || String(e.organizationId) === String(organization.id)),
+    [officerEvents, organization]
+  )
+  const orgRequests = useMemo(
+    () => officerMembershipRequests.filter((r) => !organization || String(r.organizationId) === String(organization.id)),
+    [officerMembershipRequests, organization]
+  )
+  const orgDocuments = useMemo(
+    () => adviserDocuments.filter((d) => !organization || String(d.organizationId) === String(organization.id)),
+    [adviserDocuments, organization]
+  )
+
+  const pendingRequests = orgRequests.filter((request) => request.status === 'PENDING')
+  const upcomingEventsCount = orgEvents.filter((e) => ['APPROVED', 'PUBLISHED', 'ONGOING'].includes(e.status)).length
+  const pendingSubmissionsCount =
+    orgEvents.filter((e) => ['SUBMITTED', 'PENDING', 'UNDER_REVIEW'].includes(e.status)).length +
+    orgDocuments.filter((d) => d.status === 'PENDING').length
+
+  const metricValues = useMemo(
+    () => [officerMemberCount, pendingRequests.length, upcomingEventsCount, pendingSubmissionsCount],
+    [officerMemberCount, pendingRequests.length, upcomingEventsCount, pendingSubmissionsCount]
+  )
+  const counts = useCountUp(metricValues)
+  const recentActivity = officerNotifications.slice(0, 5).map((notification) => ({
+    id: notification.id,
+    message: notification.message,
+    time: notification.createdAt,
+  }))
+
+  async function approve() {
     if (!requestToApprove) return
     const request = requestToApprove
     const undo = captureUndo()
-    if (!approveOfficerMembershipRequest(request.id)) return
+    const ok = await approveOfficerMembershipRequest(request.id)
+    if (!ok) return
     showToast(`${formatDisplayName(request)} is now an active member.`, 'success', undoAction(undo))
     setRequestToApprove(null)
   }
 
-  function reject() {
+  async function reject() {
     if (!requestToReject) return
     const undo = captureUndo()
-    const rejected = rejectOfficerMembershipRequest(requestToReject.id, rejectionReason)
+    const rejected = await rejectOfficerMembershipRequest(requestToReject.id, rejectionReason)
     if (rejected) showToast(`${formatDisplayName(requestToReject)}'s application was rejected.`, 'success', undoAction(undo))
     setRequestToReject(null)
     setRejectionReason('')
@@ -118,7 +141,7 @@ export default function OfficerDashboardPage() {
           </>
         )}
         avatarText={organization?.acronym ?? 'ORG'}
-        badges={<Badge tone="crimson">Organization Officer · President</Badge>}
+        badges={<Badge tone="crimson">Organization Officer</Badge>}
         eyebrow={`${getTimeGreeting()}, ${formatGreetingName(currentUser)}!`}
         label="Your organization"
         logo={organization?.logo}
@@ -211,7 +234,7 @@ export default function OfficerDashboardPage() {
               <Link className="officer-org-text-link" to="/officer/events">View events <Icon name="arrow-right" size={13} /></Link>
             </div>
             <div className="officer-event-list">
-              {officerEvents.slice(0, 3).map((event) => (
+              {orgEvents.slice(0, 3).map((event) => (
                 <article className="officer-event-row" key={event.id}>
                   <span aria-hidden="true" className="officer-event-icon">
                     <Icon name="event" size={18} />
@@ -225,6 +248,9 @@ export default function OfficerDashboardPage() {
                   </Badge>
                 </article>
               ))}
+              {orgEvents.length === 0 && (
+                <p className="officer-inline-empty">No events have been created yet.</p>
+              )}
             </div>
             <div className="officer-panel-actions">
               <Link className="button button-primary" to="/officer/events/create">Create Event</Link>
@@ -240,14 +266,18 @@ export default function OfficerDashboardPage() {
               </div>
               <Link className="officer-org-text-link" to="/officer/reports">View reports <Icon name="arrow-right" size={13} /></Link>
             </div>
-            <ol className="officer-activity-list">
-              {recentActivity.map((activity) => (
-                <li key={activity.id}>
-                  <span aria-hidden="true" />
-                  <div><p>{activity.message}</p><time>{activity.time}</time></div>
-                </li>
-              ))}
-            </ol>
+            {recentActivity.length ? (
+              <ol className="officer-activity-list">
+                {recentActivity.map((activity) => (
+                  <li key={activity.id}>
+                    <span aria-hidden="true" />
+                    <div><p>{activity.message}</p><time>{activity.time}</time></div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="officer-inline-empty">No activity logs recorded yet.</p>
+            )}
           </Card>
         </div>
       </div>
@@ -267,7 +297,7 @@ export default function OfficerDashboardPage() {
       </Modal>
 
       <Modal onClose={() => setRequestToApprove(null)} open={Boolean(requestToApprove)} title="Approve Membership?">
-        <p>{requestToApprove && formatDisplayName(requestToApprove)} will become an active member of WMSU Computer Society.</p>
+        <p>{requestToApprove && formatDisplayName(requestToApprove)} will become an active member of {organization?.name ?? 'this organization'}.</p>
         <div className="officer-modal-actions">
           <Button onClick={() => setRequestToApprove(null)} variant="secondary">Cancel</Button>
           <Button onClick={approve} variant="primary">Approve</Button>
@@ -275,7 +305,7 @@ export default function OfficerDashboardPage() {
       </Modal>
 
       <Modal onClose={() => { setRequestToReject(null); setRejectionReason('') }} open={Boolean(requestToReject)} title="Reject Membership Application?">
-        <p>Reject {requestToReject && formatDisplayName(requestToReject)}&apos;s application to WMSU Computer Society?</p>
+        <p>Reject {requestToReject && formatDisplayName(requestToReject)}&apos;s application to {organization?.name ?? 'this organization'}?</p>
         <label className="officer-modal-field">
           <span>Optional reason</span>
           <textarea className="input" onChange={(event) => setRejectionReason(event.target.value)} placeholder="Please provide a reason for rejection." rows="3" value={rejectionReason} />

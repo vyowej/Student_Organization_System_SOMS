@@ -5,16 +5,29 @@
  * Mounts all resource routers and verifies the link to PostgreSQL and
  * ../database/student_org_db.sql on startup.
  */
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { testConnection, SCHEMA_PATH } = require('./db');
 
 const app = express();
 
 // Global middleware: enable CORS for frontend requests and parse JSON request bodies
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// ============================================================
+// [GOOGLE DRIVE API PLACEHOLDER — IMAGE & FILE STORAGE]
+// Insert Google Drive API client setup and upload route here
+// when connecting Google Drive for organization logos, event
+// banners, and supporting documents.
+//
+// Example placeholder space:
+//
+//
+//
+// ============================================================
 
 // Mount REST API route modules mapped to database/student_org_db.sql tables
 app.use('/api/users', require('./routes/users'));

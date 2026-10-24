@@ -1,12 +1,82 @@
 /**
  * Organization Advisers & Change Requests Routes (backend/routes/advisers.js)
  *
- * Links to `organization_advisers` and `adviser_change_requests` tables
- * in ../database/student_org_db.sql.
+ * Links to `advisers`, `organization_advisers`, and `adviser_change_requests`
+ * tables in ../database/student_org_db.sql.
  */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+
+// GET /api/advisers — List all faculty advisers with user, college, and active organization assignments
+router.get('/', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT a.id,
+             a.user_id,
+             a.employee_number,
+             a.college_id,
+             u.email,
+             u.first_name,
+             u.last_name,
+             (u.last_name || ', ' || u.first_name) AS name,
+             c.name AS college_name,
+             c.acronym AS college_acronym,
+             COALESCE(
+               (SELECT json_agg(json_build_object(
+                 'organization_id', oa.organization_id,
+                 'organization_name', o.name,
+                 'organization_acronym', o.acronym,
+                 'assigned_at', oa.assigned_at
+               ))
+                FROM organization_advisers oa
+                JOIN organizations o ON o.id = oa.organization_id
+               WHERE oa.adviser_id = a.id AND oa.ended_at IS NULL),
+               '[]'::json
+             ) AS active_organizations
+        FROM advisers a
+        JOIN users u ON u.id = a.user_id
+   LEFT JOIN colleges c ON c.id = a.college_id
+       ORDER BY u.last_name ASC, u.first_name ASC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/advisers/assignments — List all current and historical organization_advisers records
+router.get('/assignments', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT oa.*,
+             (oa.ended_at IS NULL) AS is_current,
+             o.name AS organization_name,
+             o.acronym AS organization_acronym,
+             a.employee_number,
+             u.id AS adviser_user_id,
+             u.first_name,
+             u.last_name,
+             (u.last_name || ', ' || u.first_name) AS adviser_name,
+             u.email,
+             c.name AS college_name,
+             assigner.first_name AS assigner_first_name,
+             assigner.last_name  AS assigner_last_name
+        FROM organization_advisers oa
+        JOIN organizations o ON o.id = oa.organization_id
+        JOIN advisers a      ON a.id = oa.adviser_id
+        JOIN users u         ON u.id = a.user_id
+   LEFT JOIN colleges c      ON c.id = a.college_id
+   LEFT JOIN users assigner  ON assigner.id = oa.assigned_by
+       ORDER BY oa.assigned_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // GET /api/advisers/org/:organization_id — Fetch current and past advisers for an organization
 router.get('/org/:organization_id', async (req, res) => {
@@ -22,6 +92,7 @@ router.get('/org/:organization_id', async (req, res) => {
               a.employee_number,
               u.first_name,
               u.last_name,
+              (u.last_name || ', ' || u.first_name) AS adviser_name,
               u.email,
               c.name AS college_name,
               assigner.first_name AS assigner_first_name,
@@ -83,10 +154,15 @@ router.get('/requests', async (req, res) => {
              o.acronym AS organization_acronym,
              cu.first_name AS current_adviser_first_name,
              cu.last_name  AS current_adviser_last_name,
+             CASE WHEN cu.id IS NOT NULL THEN (cu.last_name || ', ' || cu.first_name) ELSE NULL END AS current_adviser_name,
              pu.first_name AS proposed_adviser_first_name,
              pu.last_name  AS proposed_adviser_last_name,
+             CASE WHEN pu.id IS NOT NULL THEN (pu.last_name || ', ' || pu.first_name) ELSE NULL END AS proposed_adviser_name,
              req_user.first_name AS requester_first_name,
-             req_user.last_name  AS requester_last_name
+             req_user.last_name  AS requester_last_name,
+             CASE WHEN req_user.id IS NOT NULL THEN (req_user.last_name || ', ' || req_user.first_name) ELSE NULL END AS requester_name,
+             rev_user.first_name AS reviewer_first_name,
+             rev_user.last_name  AS reviewer_last_name
         FROM adviser_change_requests acr
         JOIN organizations o ON o.id = acr.organization_id
    LEFT JOIN advisers ca     ON ca.id = acr.current_adviser_id
@@ -94,6 +170,7 @@ router.get('/requests', async (req, res) => {
    LEFT JOIN advisers pa     ON pa.id = acr.proposed_adviser_id
    LEFT JOIN users pu        ON pu.id = pa.user_id
    LEFT JOIN users req_user  ON req_user.id = acr.requested_by
+   LEFT JOIN users rev_user  ON rev_user.id = acr.reviewed_by
        WHERE 1=1
     `;
     const params = [];
@@ -158,14 +235,15 @@ router.post('/requests', async (req, res) => {
   }
 });
 
-// PUT /api/advisers/requests/:id/review — Approve or reject a pending adviser change request
+// PUT /api/advisers/requests/:id/review — Approve, reject, or cancel a pending adviser change request
 router.put('/requests/:id/review', async (req, res) => {
   try {
     const { id } = req.params;
     const { status, reviewed_by, review_remarks } = req.body;
 
-    if (!['APPROVED', 'REJECTED'].includes(status)) {
-      return res.status(400).json({ error: "status must be 'APPROVED' or 'REJECTED'" });
+    const normalizedStatus = String(status || '').toUpperCase();
+    if (!['APPROVED', 'REJECTED', 'CANCELLED'].includes(normalizedStatus)) {
+      return res.status(400).json({ error: "status must be 'APPROVED', 'REJECTED', or 'CANCELLED'" });
     }
 
     const reqResult = await db.query(
@@ -176,7 +254,7 @@ router.put('/requests/:id/review', async (req, res) => {
               reviewed_at = now()
         WHERE id = $1 AND status = 'PENDING'
         RETURNING *`,
-      [id, status, reviewed_by || null, review_remarks || null]
+      [id, normalizedStatus, reviewed_by || null, review_remarks || null]
     );
 
     if (reqResult.rows.length === 0) {
@@ -186,7 +264,7 @@ router.put('/requests/:id/review', async (req, res) => {
     const changeRequest = reqResult.rows[0];
 
     // When approved, automatically transition the organization's active adviser
-    if (status === 'APPROVED' && changeRequest.proposed_adviser_id) {
+    if (normalizedStatus === 'APPROVED' && changeRequest.proposed_adviser_id) {
       await db.query(
         `UPDATE organization_advisers
             SET ended_at = now()
@@ -201,7 +279,7 @@ router.put('/requests/:id/review', async (req, res) => {
       );
     }
 
-    res.json({ message: `Request ${status.toLowerCase()} successfully`, request: changeRequest });
+    res.json({ message: `Request ${normalizedStatus.toLowerCase()} successfully`, request: changeRequest });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -209,4 +287,3 @@ router.put('/requests/:id/review', async (req, res) => {
 });
 
 module.exports = router;
-

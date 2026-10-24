@@ -14,12 +14,12 @@ const badgeTone = { PENDING: 'warning', SUBMITTED: 'warning', UNDER_REVIEW: 'war
 const approvedStatuses = ['APPROVED', 'PUBLISHED', 'ONGOING', 'COMPLETED', 'ARCHIVED', 'VERIFIED']
 
 export default function AdviserApprovalsPage() {
-  const { adviserDocuments, adviserReports, captureUndo, officerEvents, reviewAccomplishmentReport, reviewAdviserRequest } = useOutletContext()
+  const { adviserDocuments = [], adviserReports = [], captureUndo, officerEvents = [], reviewAccomplishmentReport, reviewAdviserRequest } = useOutletContext()
   const { showToast } = useToast()
   const [filter, setFilter] = useState('Pending')
   const [selected, setSelected] = useState(null)
   const [search, setSearch] = useState('')
-  const events = officerEvents.map((event) => ({ ...event, type: 'EVENT', title: event.title, submittedDate: event.submittedDate ?? 'October 2, 2026' }))
+  const events = officerEvents.map((event) => ({ ...event, type: 'EVENT', title: event.title, submittedDate: event.submittedDate || event.date }))
   const documents = adviserDocuments.map((document) => ({ ...document, type: document.type || 'DOCUMENT' }))
   const reports = adviserReports.map((report) => ({ ...report, type: 'ACCOMPLISHMENT_REPORT', title: report.eventTitle, submittedDate: report.submittedDate }))
   const items = [...events, ...documents, ...reports].filter((item) => (
@@ -36,12 +36,12 @@ export default function AdviserApprovalsPage() {
     return item.status === filter.toUpperCase()
   }
 
-  function decide(decision, comment) {
-    if (!selected) return
+  async function decide(decision, comment) {
+    if (!selected) return false
     const undo = captureUndo()
     const success = selected.type === 'ACCOMPLISHMENT_REPORT'
-      ? reviewAccomplishmentReport(selected.id, decision === 'VERIFIED' ? 'VERIFIED' : decision, comment)
-      : reviewAdviserRequest(selected.type === 'EVENT' ? 'EVENT' : 'DOCUMENT', selected.id, decision, comment)
+      ? await reviewAccomplishmentReport(selected.id, decision === 'VERIFIED' ? 'VERIFIED' : decision, comment)
+      : await reviewAdviserRequest(selected.type === 'EVENT' ? 'EVENT' : 'DOCUMENT', selected.id, decision, comment)
     if (success) {
       const message = decision === 'APPROVED' ? 'Request approved successfully.'
         : decision === 'VERIFIED' ? `${selected.title} report was verified.`
@@ -84,7 +84,7 @@ export default function AdviserApprovalsPage() {
             {visibleItems.map((item) => (
               <article className="adviser-submission-card" key={`${item.type}-${item.id}`}>
                 <div className="adviser-submission-info">
-                  <span className="adviser-muted-label">{item.organizationName ?? 'WMSU Computer Society'} · {item.type.replaceAll('_', ' ')}</span>
+                  <span className="adviser-muted-label">{item.organizationName ?? 'Campus Organization'} · {item.type.replaceAll('_', ' ')}</span>
                   <h2>{item.title}</h2>
                   <p>Submitted by {item.submittedBy ?? 'Organization Officer'} · {item.submittedDate}</p>
                   {(item.revisionNote || item.decisionReason) && <small>Feedback: {item.revisionNote ?? item.decisionReason}</small>}

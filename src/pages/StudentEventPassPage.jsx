@@ -1,17 +1,17 @@
-import { Link, useParams } from 'react-router-dom'
+import { Link, useOutletContext, useParams } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Card from '../components/ui/Card.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { formatDisplayName } from '../data/displayName.js'
-import { useOutletContext } from 'react-router-dom'
 import { studentEvents } from '../data/studentEvents.js'
 import { findStudentEvent } from '../data/officerStudentEvent.js'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 
 export default function StudentEventPassPage() {
   const { registrationId } = useParams()
-  const { currentUser, officerEvents, studentRegistrations } = useOutletContext()
-  const registration = studentRegistrations.find((item) => item.id === registrationId)
+  const { currentUser, officerEvents = [], studentRegistrations = [] } = useOutletContext()
+  const registration = studentRegistrations.find((item) => String(item.id) === String(registrationId))
+    ?? studentRegistrations.find((item) => item.status !== 'CANCELLED')
   const event = registration && findStudentEvent(registration.eventId, officerEvents, studentEvents)
 
   if (!registration || !event || registration.status === 'CANCELLED') {
@@ -19,7 +19,7 @@ export default function StudentEventPassPage() {
       <div className="student-event-pass-page">
         <PageHeader eyebrow="UNIDOS STUDENT PORTAL" title="Event Pass Unavailable" />
         <Card className="event-pass-unavailable">
-          <p>This event pass is not available for the selected registration.</p>
+          <p>Register for a published campus event to view your digital event pass.</p>
           <Link className="button button-primary" to="/student/registrations">Back to My Registrations</Link>
         </Card>
       </div>
@@ -47,10 +47,11 @@ export default function StudentEventPassPage() {
         <h2>{event.title}</h2>
         <div className="event-pass-facts">
           <div><span>Student</span><strong>{formatDisplayName(currentUser)}</strong></div>
+          <div><span>Student ID</span><strong>{currentUser?.studentId || registration.studentId}</strong></div>
           <div><span>Date</span><strong>{event.date}</strong></div>
           <div><span>Time</span><strong>{event.time}</strong></div>
           <div><span>Location</span><strong>{event.location}</strong></div>
-          <div className="event-pass-registration-code"><span>Registration code</span><strong>{registration.id}</strong></div>
+          <div className="event-pass-registration-code"><span>Pass QR / Code</span><strong>{registration.qrCodeValue || registration.id}</strong></div>
           {registration.checkInTime && <div><span>Checked in</span><strong>{registration.checkInTime}</strong></div>}
         </div>
         <div className="event-pass-footer">

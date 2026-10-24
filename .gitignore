@@ -12,6 +12,7 @@ dist
 dist-ssr
 database/
 .agents/
+.vscode/
 *.local
 
 # Editor directories and files

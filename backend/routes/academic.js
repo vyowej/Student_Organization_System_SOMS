@@ -8,6 +8,41 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+// GET /api/academic/hierarchy — Fetch colleges, departments, and programs in one call
+router.get('/hierarchy', async (req, res) => {
+  try {
+    const [collegesRes, departmentsRes, programsRes] = await Promise.all([
+      db.query('SELECT * FROM colleges ORDER BY name ASC'),
+      db.query(`
+        SELECT d.*, c.name AS college_name, c.acronym AS college_acronym
+          FROM departments d
+          JOIN colleges c ON c.id = d.college_id
+         ORDER BY d.name ASC
+      `),
+      db.query(`
+        SELECT p.*,
+               d.name AS department_name,
+               d.acronym AS department_acronym,
+               c.name AS college_name,
+               c.acronym AS college_acronym,
+               c.id   AS college_id
+          FROM programs p
+          JOIN departments d ON d.id = p.department_id
+          JOIN colleges c    ON c.id = d.college_id
+         ORDER BY p.name ASC
+      `),
+    ]);
+    res.json({
+      colleges: collegesRes.rows,
+      departments: departmentsRes.rows,
+      programs: programsRes.rows,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // GET /api/academic/colleges — Fetch all colleges ordered alphabetically
 router.get('/colleges', async (req, res) => {
   try {
@@ -28,7 +63,7 @@ router.post('/colleges', async (req, res) => {
     }
     const result = await db.query(
       'INSERT INTO colleges (name, acronym) VALUES ($1, $2) RETURNING *',
-      [name.trim(), acronym.trim()]
+      [name.trim(), acronym.trim().toUpperCase()]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -37,6 +72,17 @@ router.post('/colleges', async (req, res) => {
       return res.status(409).json({ error: 'College name or acronym already exists' });
     }
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// DELETE /api/academic/colleges/:id — Delete a college if not referenced
+router.delete('/colleges/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM colleges WHERE id = $1', [req.params.id]);
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Cannot delete college while departments or organizations reference it.' });
   }
 });
 
@@ -74,12 +120,26 @@ router.post('/departments', async (req, res) => {
     }
     const result = await db.query(
       'INSERT INTO departments (college_id, name, acronym) VALUES ($1, $2, $3) RETURNING *',
-      [college_id, name.trim(), acronym ? acronym.trim() : null]
+      [college_id, name.trim(), acronym ? acronym.trim().toUpperCase() : null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Department already exists in this college' });
+    }
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// DELETE /api/academic/departments/:id — Delete a department if not referenced
+router.delete('/departments/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM departments WHERE id = $1', [req.params.id]);
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Cannot delete department while programs or organizations reference it.' });
   }
 });
 
@@ -90,7 +150,9 @@ router.get('/programs', async (req, res) => {
     let queryText = `
       SELECT p.*,
              d.name AS department_name,
+             d.acronym AS department_acronym,
              c.name AS college_name,
+             c.acronym AS college_acronym,
              c.id   AS college_id
         FROM programs p
         JOIN departments d ON d.id = p.department_id
@@ -121,12 +183,26 @@ router.post('/programs', async (req, res) => {
     }
     const result = await db.query(
       'INSERT INTO programs (department_id, name, acronym) VALUES ($1, $2, $3) RETURNING *',
-      [department_id, name.trim(), acronym.trim()]
+      [department_id, name.trim(), acronym.trim().toUpperCase()]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Program name or acronym already exists' });
+    }
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// DELETE /api/academic/programs/:id — Delete a program if not referenced
+router.delete('/programs/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM programs WHERE id = $1', [req.params.id]);
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Cannot delete program while students reference it.' });
   }
 });
 
@@ -137,6 +213,7 @@ router.get('/students', async (req, res) => {
       SELECT s.id,
              s.user_id,
              s.student_number,
+             s.program_id,
              s.year_level,
              u.email,
              u.first_name,
@@ -145,8 +222,11 @@ router.get('/students', async (req, res) => {
              u.status AS user_status,
              p.name   AS program_name,
              p.acronym AS program_acronym,
+             d.id     AS department_id,
              d.name   AS department_name,
+             d.acronym AS department_acronym,
              c.name   AS college_name,
+             c.acronym AS college_acronym,
              c.id     AS college_id
         FROM students s
         JOIN users u       ON u.id = s.user_id
@@ -170,12 +250,14 @@ router.get('/students/:id', async (req, res) => {
       `SELECT s.id,
               s.user_id,
               s.student_number,
+              s.program_id,
               s.year_level,
               u.email,
               u.first_name,
               u.last_name,
               p.name   AS program_name,
               p.acronym AS program_acronym,
+              d.id     AS department_id,
               d.name   AS department_name,
               c.name   AS college_name,
               c.id     AS college_id
@@ -279,4 +361,3 @@ router.post('/advisers', async (req, res) => {
 });
 
 module.exports = router;
-

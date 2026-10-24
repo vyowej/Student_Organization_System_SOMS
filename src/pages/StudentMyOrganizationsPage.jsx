@@ -22,19 +22,26 @@ const groups = [
 ]
 
 export default function StudentMyOrganizationsPage() {
-  const { adminOrganizations = [], currentUser, studentMemberships } = useOutletContext()
-  const { setActiveRole } = useAuth()
+  const { adminOrganizations = [], currentUser, studentMemberships = [] } = useOutletContext()
+  const { switchRole } = useAuth()
   const navigate = useNavigate()
   const officerAssignments = currentUser?.organizationRoles ?? []
   const [search, setSearch] = useState('')
 
+  const myMemberships = studentMemberships.filter(
+    (m) =>
+      (currentUser?.studentDbId && String(m.studentDbId) === String(currentUser.studentDbId)) ||
+      (currentUser?.id && String(m.userId) === String(currentUser.id)) ||
+      (currentUser?.studentId && String(m.studentId).toLowerCase() === String(currentUser.studentId).toLowerCase()),
+  )
+
   function findOrganization(organizationId) {
-    return adminOrganizations.find((item) => item.id === organizationId)
-      ?? studentOrganizations.find((item) => item.id === organizationId)
+    return adminOrganizations.find((item) => String(item.id) === String(organizationId))
+      ?? studentOrganizations.find((item) => String(item.id) === String(organizationId))
   }
 
-  function openOrganizationWorkspace(organizationId) {
-    if (setActiveRole('OFFICER', organizationId)) {
+  function openOrganizationWorkspace() {
+    if (switchRole('OFFICER')) {
       navigate('/officer/dashboard')
     }
   }
@@ -48,11 +55,11 @@ export default function StudentMyOrganizationsPage() {
       />
       <SearchBar label="Search my organizations" onChange={setSearch} placeholder="Search by organization, acronym or position…" sticky value={search} />
       {groups.map((group) => {
-        const records = studentMemberships
+        const records = myMemberships
           .filter((membership) => statusContent[membership.status]?.group === group.id)
           .filter((membership) => {
             const organization = findOrganization(membership.organizationId)
-            return organization && matchesQuery(search, organization.name, organization.acronym, membership.position, membership.status)
+            return organization && matchesQuery(search, organization.name, organization.acronym, membership.role || membership.position, membership.status)
           })
         return (
           <section aria-labelledby={`membership-group-${group.id}`} className="membership-group" key={group.id}>
@@ -63,21 +70,20 @@ export default function StudentMyOrganizationsPage() {
             {records.length ? (
               <div className="membership-list">
                 {records.map((membership) => {
-                  const organization = adminOrganizations.find((item) => item.id === membership.organizationId)
-                    ?? studentOrganizations.find((item) => item.id === membership.organizationId)
+                  const organization = findOrganization(membership.organizationId)
                   if (!organization) return null
                   const status = statusContent[membership.status]
                   const officerPositions = officerAssignments
-                    .filter((assignment) => assignment.organizationId === organization.id)
+                    .filter((assignment) => String(assignment.organizationId) === String(organization.id))
                     .flatMap((assignment) => assignment.positions ?? [])
                   return (
                     <article className="membership-card" key={membership.organizationId}>
-                      <div aria-hidden="true" className={`organization-directory-avatar organization-avatar-${organization.color}`}>
-                        {organization.acronym}
+                      <div aria-hidden="true" className={`organization-directory-avatar organization-avatar-${organization.color || 'crimson'}`}>
+                        {organization.acronym || organization.name.slice(0, 3).toUpperCase()}
                       </div>
                       <div className="membership-card-copy">
                         <h3>{organization.name}</h3>
-                        <p>{membership.position}</p>
+                        <p>{membership.role || membership.position}</p>
                         <span>{membership.status === 'ACTIVE' ? 'Joined' : 'Applied'} {membership.approvedDate ?? membership.applicationDate}</span>
                       </div>
                       <Badge tone={status.tone}>{status.label}</Badge>
@@ -86,7 +92,6 @@ export default function StudentMyOrganizationsPage() {
                           View Organization
                         </Link>
                         {membership.status === 'ACTIVE'
-                          && organization.id === 'computer-society'
                           && officerPositions.length > 0 && (
                             <button
                               className="button button-primary membership-workspace-button"

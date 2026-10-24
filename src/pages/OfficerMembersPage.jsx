@@ -23,17 +23,17 @@ function formatStatus(status) {
 
 export default function OfficerMembersPage() {
   const {
-    adminOrganizations,
+    adminOrganizations = [],
     assignOfficerPosition,
     captureUndo,
     currentUser,
     officerMemberCount,
-    officerMembers,
+    officerMembers = [],
     updateOfficerMemberStatus,
   } = useOutletContext()
   const { showToast } = useToast()
-  const orgId = currentUser?.organizationId || 'wmsu-cs'
-  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society', acronym: 'CS' }
+  const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
+  const organization = adminOrganizations?.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0] || { name: 'Your Organization', acronym: 'ORG' }
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [positionFilter, setPositionFilter] = useState('All Positions')
@@ -48,16 +48,21 @@ export default function OfficerMembersPage() {
   const tableRef = useRef(null)
   useStickyOffset(tableRef)
 
+  const orgMembers = useMemo(
+    () => officerMembers.filter((m) => !organization.id || String(m.organizationId) === String(organization.id)),
+    [officerMembers, organization.id]
+  )
+
   const filteredMembers = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
-    return officerMembers.filter((member) => {
+    return orgMembers.filter((member) => {
       const matchesSearch = !normalizedSearch
-        || [formatDisplayName(member), member.studentId, member.program].some((value) => value.toLowerCase().includes(normalizedSearch))
+        || [formatDisplayName(member), member.studentId, member.program].some((value) => String(value || '').toLowerCase().includes(normalizedSearch))
       const matchesStatus = statusFilter === 'All' || member.status === statusFilter.toUpperCase()
       const matchesPosition = positionFilter === 'All Positions' || member.position === positionFilter
       return matchesSearch && matchesStatus && matchesPosition
     })
-  }, [officerMembers, positionFilter, search, statusFilter])
+  }, [orgMembers, positionFilter, search, statusFilter])
 
   useEffect(() => {
     if (tableRef.current) {
@@ -72,10 +77,10 @@ export default function OfficerMembersPage() {
           topStart: null,
           topEnd: null,
           bottomStart: ['pageLength', 'info'],
-          bottomEnd: 'paging'
+          bottomEnd: 'paging',
         },
         columnDefs: [
-          { orderable: false, targets: -1 }
+          { orderable: false, targets: -1 },
         ],
       })
       return () => {
@@ -89,43 +94,43 @@ export default function OfficerMembersPage() {
     setEditPosition(member.position)
   }
 
-  function confirmEdit() {
+  async function confirmEdit() {
     if (!editingMember) return
     const undo = captureUndo()
-    const result = assignOfficerPosition(editingMember.id, editPosition)
-    if (result.ok) {
+    const result = await assignOfficerPosition(editingMember.id, editPosition)
+    if (result?.ok) {
       showToast(`${formatDisplayName(editingMember)}'s position is now ${editPosition}.`, 'success', undoAction(undo))
       setEditingMember(null)
     } else {
-      showToast(result.reason, 'error')
+      showToast(result?.reason || 'Unable to update member position.', 'error')
     }
   }
 
-  function confirmStatusChange() {
+  async function confirmStatusChange() {
     if (!statusTarget) return
     const undo = captureUndo()
-    const changed = updateOfficerMemberStatus(statusTarget.id, nextStatus)
+    const changed = await updateOfficerMemberStatus(statusTarget.id, nextStatus)
     if (changed) showToast(`${formatDisplayName(statusTarget)}'s membership status is now ${formatStatus(nextStatus)}.`, 'success', undoAction(undo))
     setStatusTarget(null)
   }
 
-  function confirmOfficerPosition() {
+  async function confirmOfficerPosition() {
     if (!positionTarget) return
-    const selectedMember = officerMembers.find((member) => member.id === assignedMemberId && member.status === 'ACTIVE')
+    const selectedMember = orgMembers.find((member) => String(member.id) === String(assignedMemberId) && member.status === 'ACTIVE')
     if (!selectedMember) return
     const undo = captureUndo()
-    const result = assignOfficerPosition(selectedMember.id, assignedPosition)
-    if (result.ok) {
+    const result = await assignOfficerPosition(selectedMember.id, assignedPosition)
+    if (result?.ok) {
       showToast(`${formatDisplayName(selectedMember)} is now ${assignedPosition}.`, 'success', undoAction(undo))
       setPositionTarget(null)
     } else {
-      showToast(result.reason, 'error')
+      showToast(result?.reason || 'Unable to assign officer position.', 'error')
     }
   }
 
   const officers = officerRoles.map((position) => ({
     position,
-    member: officerMembers.find((member) => member.status === 'ACTIVE' && member.position === position),
+    member: orgMembers.find((member) => member.status === 'ACTIVE' && member.position === position),
   }))
 
   function getMemberInitials(member) {
@@ -175,7 +180,7 @@ export default function OfficerMembersPage() {
           </label>
         </div>
 
-        <div className="officer-member-table-wrap using-datatables" key={filteredMembers.length + '-' + filteredMembers.map(m => m.id).join('-').slice(0, 50)}>
+        <div className="officer-member-table-wrap using-datatables" key={filteredMembers.length + '-' + filteredMembers.map((m) => m.id).join('-').slice(0, 50)}>
           <table className="officer-member-table" ref={tableRef}>
             <thead>
               <tr>
@@ -231,9 +236,9 @@ export default function OfficerMembersPage() {
               <strong>{member ? formatDisplayName(member) : 'Position unassigned'}</strong>
               {member && <small>{member.studentId}</small>}
               <Button
-                disabled={!member && !officerMembers.some((item) => item.status === 'ACTIVE' && ['General Member', 'Committee Head'].includes(item.position))}
+                disabled={!member && !orgMembers.some((item) => item.status === 'ACTIVE' && ['General Member', 'Committee Head'].includes(item.position))}
                 onClick={() => {
-                  const target = member ?? officerMembers.find((item) => item.status === 'ACTIVE' && ['General Member', 'Committee Head'].includes(item.position))
+                  const target = member ?? orgMembers.find((item) => item.status === 'ACTIVE' && ['General Member', 'Committee Head'].includes(item.position))
                   if (!target) return
                   setPositionTarget(target)
                   setAssignedMemberId(target.id)
@@ -262,7 +267,7 @@ export default function OfficerMembersPage() {
               <div><dt>Date joined</dt><dd>{viewingMember.dateJoined}</dd></div>
             </dl>
             <h3>Membership history</h3>
-            <ul>{viewingMember.history.map((entry, index) => <li key={`${entry.date}-${index}`}><time>{entry.date}</time><span>{entry.action}</span></li>)}</ul>
+            <ul>{(viewingMember.history || []).map((entry, index) => <li key={`${entry.date}-${index}`}><time>{entry.date}</time><span>{entry.action}</span></li>)}</ul>
           </div>
         )}
       </Modal>
@@ -300,13 +305,13 @@ export default function OfficerMembersPage() {
         <label className="officer-modal-field">
           <span>Active organization member</span>
           <select onChange={(event) => setAssignedMemberId(event.target.value)} value={assignedMemberId}>
-            {officerMembers.filter((member) => member.status === 'ACTIVE').map((member) => (
+            {orgMembers.filter((member) => member.status === 'ACTIVE').map((member) => (
               <option key={member.id} value={member.id}>{formatDisplayName(member)} · {member.position}</option>
             ))}
           </select>
         </label>
-        <p>Assign {formatDisplayName(officerMembers.find((member) => member.id === assignedMemberId))} as {assignedPosition} for {organization.name}?</p>
-        <p className="officer-permission-note">Only active members of your assigned organization can be officers. This position will be unassigned from its current holder.</p>
+        <p>Assign {formatDisplayName(orgMembers.find((member) => String(member.id) === String(assignedMemberId)))} as {assignedPosition} for {organization.name}?</p>
+        <p className="officer-permission-note">Only active members of your assigned organization can be officers.</p>
         <div className="officer-modal-actions">
           <Button onClick={() => setPositionTarget(null)} variant="secondary">Cancel</Button>
           <Button onClick={confirmOfficerPosition} variant="primary">Confirm Assignment</Button>

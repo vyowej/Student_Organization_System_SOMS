@@ -119,8 +119,8 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
     }
     setConfirming(true)
   }
-  function applyDecision() {
-    const succeeded = onDecision(decision, comment)
+  async function applyDecision() {
+    const succeeded = await onDecision(decision, comment)
     setConfirming(false)
     if (!succeeded) {
       setError('This item is no longer eligible for this action.')
@@ -1024,22 +1024,30 @@ export default function AdminPortalPage() {
   const pendingAdminEvents = data.officerEvents.filter((event) => event.status === 'APPROVED' && event.adviserDecisionDate && !event.adminApprovedAt)
   const adminDocuments = data.adviserDocuments.filter((item) => item.adminReviewRequired)
   const filteredApplications = data.organizationApplications.filter((item) => matches(item))
-
-  function decideApplication(item, decision, comment) {
+  const adviserChangeRequests = (data.adviserChangeRequests || []).map((req) => ({ id: req.request_id, requestId: req.request_id, title: `${req.organization_name || 'Organization'} — Adviser Change Request`, name: req.organization_name || 'Organization', organizationName: req.organization_name || 'Organization', type: 'Adviser change request', submittedBy: req.requester_first_name ? `${req.requester_last_name}, ${req.requester_first_name}` : 'Organization Officer', submittedDate: req.created_at ? new Date(req.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '', reason: req.reason, status: req.status || 'PENDING', entityKind: 'adviser_change', canReview: req.status === 'PENDING' }))
+  async function decideAdviserChange(item, decision, comment) {
     const undo = data.captureUndo()
-    const ok = data.reviewOrganizationApplication(item.id, decision, comment)
+    const mappedStatus = decision === 'APPROVED' ? 'APPROVED' : 'REJECTED'
+    const ok = await data.reviewAdviserChangeRequest(item.id, mappedStatus, comment)
+    if (ok) showToast(`Adviser change request ${mappedStatus.toLowerCase()}.`, 'success', undoAction(undo))
+    return ok
+  }
+
+  async function decideApplication(item, decision, comment) {
+    const undo = data.captureUndo()
+    const ok = await data.reviewOrganizationApplication(item.id, decision, comment)
     if (ok) showToast(`Organization application ${decision.toLowerCase()}.`, 'success', undoAction(undo))
     return ok
   }
-  function decideEvent(item, decision, comment) {
+  async function decideEvent(item, decision, comment) {
     const undo = data.captureUndo()
-    const ok = data.reviewAdminEvent(item.id, decision, comment)
+    const ok = await data.reviewAdminEvent(item.id, decision, comment)
     if (ok) showToast(`Event proposal ${decision.toLowerCase()}.`, 'success', undoAction(undo))
     return ok
   }
-  function decideDocument(item, decision, comment) {
+  async function decideDocument(item, decision, comment) {
     const undo = data.captureUndo()
-    const ok = data.reviewAdminDocument(item.id, decision, comment)
+    const ok = await data.reviewAdminDocument(item.id, decision, comment)
     if (ok) showToast(`Document ${decision.toLowerCase()}.`, 'success', undoAction(undo))
     return ok
   }
@@ -1084,7 +1092,7 @@ export default function AdminPortalPage() {
         ]} rows={rows} /> : <EmptyState title="No matching records" />}</Card>
         <RecordModal item={selected} onClose={() => setSelected(null)} />
         <Modal onClose={() => setUserChange(null)} open={Boolean(userChange)} title="Confirm account change">
-          {userChange && <><p>Apply this access change for <strong>{formatDisplayName(userChange.user)}</strong>?</p><p>{Object.entries(userChange.changes).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p><Button onClick={() => { const undo = data.captureUndo(); const result = data.updateAdminUser(userChange.user.id, userChange.changes); showToast(result.ok ? 'User account updated.' : result.reason, result.ok ? 'success' : 'error', result.ok ? undoAction(undo) : {}); if (result.ok) setUserChange(null) }}>Confirm change</Button></>}
+          {userChange && <><p>Apply this access change for <strong>{formatDisplayName(userChange.user)}</strong>?</p><p>{Object.entries(userChange.changes).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p><Button onClick={async () => { const undo = data.captureUndo(); const result = await data.updateAdminUser(userChange.user.id, userChange.changes); showToast(result?.ok ? 'User account updated.' : (result?.reason || 'Unable to update user.'), result?.ok ? 'success' : 'error', result?.ok ? undoAction(undo) : {}); if (result?.ok) setUserChange(null) }}>Confirm change</Button></>}
         </Modal>
       </div>
     )
@@ -1103,16 +1111,16 @@ export default function AdminPortalPage() {
         ]} rows={data.adminOrganizations.filter((item) => matches(item, ['name', 'acronym', 'category', 'adviser', 'status']))} /> : <EmptyState title="No organizations found" />}</Card>
         <Modal onClose={() => setTarget(null)} open={Boolean(target)} title={target?.status === 'SUSPENDED' ? 'Reactivate organization' : 'Suspend organization'}>
           {target && <p>Change <strong>{target.name}</strong> status?{target.status !== 'SUSPENDED' && <label className="admin-modal-label">Reason for suspension<textarea onChange={(event) => setReason(event.target.value)} value={reason} /></label>}</p>}
-          <Button onClick={() => {
+          <Button onClick={async () => {
             const next = target?.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED'
             const undo = data.captureUndo()
-            const ok = target && data.updateAdminOrganizationStatus(target.id, next, reason)
+            const ok = target && (await data.updateAdminOrganizationStatus(target.id, next, reason))
             if (ok) { showToast(`Organization ${next.toLowerCase()}.`, 'success', undoAction(undo)); setTarget(null) }
             else showToast('A suspension reason is required.', 'error')
           }}>Confirm</Button>
         </Modal>
-        <OrganizationEditModal key={organizationEdit?.id ?? 'closed'} organization={organizationEdit} onClose={() => setOrganizationEdit(null)} onSave={(changes) => {
-          const ok = organizationEdit && data.updateAdminOrganization(organizationEdit.id, changes)
+        <OrganizationEditModal key={organizationEdit?.id ?? 'closed'} organization={organizationEdit} onClose={() => setOrganizationEdit(null)} onSave={async (changes) => {
+          const ok = organizationEdit && (await data.updateAdminOrganization(organizationEdit.id, changes))
           if (ok) { showToast('Organization details updated.', 'success'); setOrganizationEdit(null) }
           else showToast('Complete all organization fields before saving.', 'error')
         }} />
@@ -1152,9 +1160,9 @@ export default function AdminPortalPage() {
           confirmLabel="Publish event"
           message={`Are you sure you want to publish "${publishTarget?.title ?? 'this event'}"? It will become visible to all students.`}
           onCancel={() => setPublishTarget(null)}
-          onConfirm={() => {
+          onConfirm={async () => {
             const undo = data.captureUndo()
-            const ok = data.publishAdminEvent(publishTarget.id)
+            const ok = await data.publishAdminEvent(publishTarget.id)
             setPublishTarget(null)
             showToast(ok ? 'Event published and visible to students.' : 'Event cannot be published yet.', ok ? 'success' : 'error', ok ? undoAction(undo) : {})
           }}
@@ -1167,7 +1175,7 @@ export default function AdminPortalPage() {
 
   if (pathname.endsWith('/approvals')) {
     const approvals = [
-      ...data.organizationApplications.map((item) => ({ ...item, title: item.name, type: 'Organization application', entityKind: 'application', canReview: item.status === 'PENDING' })),
+      ...data.organizationApplications.map((item) => ({ ...item, title: item.name, type: 'Organization application', entityKind: 'application', canReview: item.status === 'PENDING' })), ...adviserChangeRequests,
       ...orgEvents.filter((item) => item.adviserDecisionDate).map((item) => ({ ...item, type: 'Event proposal', entityKind: 'event', canReview: item.status === 'APPROVED' && !item.adminApprovedAt })),
       ...adminDocuments.map((item) => ({ ...item, title: item.title, type: 'Document review', entityKind: 'document', canReview: item.status === 'APPROVED' })),
       ...data.adviserReports.map((item) => ({
@@ -1196,7 +1204,7 @@ export default function AdminPortalPage() {
         ]} rows={approvals} /> : <EmptyState title="No approvals found" />}</Card>
         <RecordModal canDecide={Boolean(selected?.__approval)} item={selected} onClose={() => setSelected(null)} onDecision={(decision, comment) => selected?.__approval === 'application'
           ? decideApplication(selected, decision, comment)
-          : selected?.__approval === 'event' ? decideEvent(selected, decision, comment)
+          : selected?.__approval === 'adviser_change' ? decideAdviserChange(selected, decision, comment) : selected?.__approval === 'event' ? decideEvent(selected, decision, comment)
             : selected?.__approval === 'document' ? decideDocument(selected, decision, comment) : false} />
       </div>
     )
@@ -1231,7 +1239,7 @@ export default function AdminPortalPage() {
       && (reportFilters.eventType === 'All Event Types' || item.eventCategory === reportFilters.eventType))
     return (
       <div className="admin-page">
-        <PageHeader description="Export current mock system records for administrative review." eyebrow="UNIDOS ADMINISTRATION" title="Reports">
+        <PageHeader description="Export current system records for administrative review." eyebrow="UNIDOS ADMINISTRATION" title="Reports">
           <div className="admin-metrics-grid">
             <Metric label="Total Accredited Organizations" value={data.adminOrganizations.filter(o => o.status === 'ACTIVE').length} />
             <Metric label="Active Student Members" value={data.adminUsers.filter(u => u.role === 'Student').length} />
@@ -1436,13 +1444,13 @@ export default function AdminPortalPage() {
   if (pathname.endsWith('/settings')) {
     return (
       <div className="admin-page">
-        <PageHeader description="Update academic period and notification preferences for this local preview." eyebrow="UNIDOS ADMINISTRATION" title="System Settings" />
+        <PageHeader description="Update academic period, academic hierarchy, and notification preferences." eyebrow="UNIDOS ADMINISTRATION" title="System Settings" />
         <Card className="admin-section-card admin-settings-form">
           <h2>System Information</h2>
           <p><strong>UNIDOS</strong> — Student Organization Management System<br />Western Mindanao State University</p>
           <label>Academic year<input onChange={(event) => setSettings((current) => ({ ...current, academicYear: event.target.value }))} value={settings.academicYear} /></label>
           <label>Current semester<select onChange={(event) => setSettings((current) => ({ ...current, semester: event.target.value }))} value={settings.semester}>{['First Semester', 'Second Semester', 'Summer'].map((value) => <option key={value}>{value}</option>)}</select></label>
-          <h2>Organization categories</h2>
+          <h2>Academic Structure (PostgreSQL Database)</h2><p>Colleges: <strong>{data.academicHierarchy?.colleges?.length ?? 0}</strong> · Departments: <strong>{data.academicHierarchy?.departments?.length ?? 0}</strong> · Programs: <strong>{data.academicHierarchy?.programs?.length ?? 0}</strong></p><h2>Organization categories</h2>
           {(settings.organizationCategories ?? ['Academic', 'Socio-Civic', 'Cultural', 'Sports']).map((category) => <div className="admin-category-row" key={category}><span>{category}</span><Button onClick={() => setSettings((current) => ({ ...current, organizationCategories: (current.organizationCategories ?? ['Academic', 'Socio-Civic', 'Cultural', 'Sports']).filter((item) => item !== category) }))} variant="danger">Remove</Button></div>)}
           <div className="admin-category-add"><input aria-label="New organization category" onChange={(event) => setNewCategory(event.target.value)} placeholder="Add a category" value={newCategory} /><Button onClick={() => { const category = newCategory.trim(); if (!category) return; setSettings((current) => ({ ...current, organizationCategories: [...new Set([...(current.organizationCategories ?? ['Academic', 'Socio-Civic', 'Cultural', 'Sports']), category])] })); setNewCategory('') }}>Add category</Button></div>
           <h2>Notification preferences</h2>
@@ -1453,7 +1461,7 @@ export default function AdminPortalPage() {
           confirmLabel="Save settings"
           message="Are you sure you want to save these system settings? They apply to every user."
           onCancel={() => setSaveSettingsOpen(false)}
-          onConfirm={() => {
+          onConfirm={async () => {
             const undo = data.captureUndo()
             data.saveAdminSettings(settings)
             setSaveSettingsOpen(false)

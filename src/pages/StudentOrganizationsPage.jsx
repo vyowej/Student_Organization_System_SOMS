@@ -1,5 +1,10 @@
-import { useMemo, useState } from 'react'
-import { Link, useOutletContext } from 'react-router-dom'
+/**
+ * StudentOrganizationsPage.jsx
+ *
+ * Student portal — full organization directory with live search + category filter.
+ */
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import FilterSelect from '../components/ui/FilterSelect.jsx'
@@ -9,8 +14,18 @@ import { organizationCategories, studentOrganizations } from '../data/studentOrg
 
 export default function StudentOrganizationsPage() {
   const { adminOrganizations = [] } = useOutletContext()
-  const [search, setSearch] = useState('')
+
+  const [searchParams] = useSearchParams()
+  const initialQuery = searchParams.get('q') ?? ''
+
+  const [search, setSearch] = useState(initialQuery)
   const [category, setCategory] = useState('All')
+
+  useEffect(() => {
+    const q = searchParams.get('q') ?? ''
+    setSearch(q)
+  }, [searchParams])
+
   const visibleOrganizations = useMemo(() => {
     const currentOrganizations = new Map(studentOrganizations.map((organization) => [organization.id, organization]))
     adminOrganizations.forEach((organization) => {
@@ -63,8 +78,16 @@ export default function StudentOrganizationsPage() {
           {filteredOrganizations.map((organization, index) => (
             <article className="organization-directory-card" key={organization.id} style={{ '--organization-index': index }}>
               <div className="organization-card-heading">
-                <div aria-hidden="true" className={`organization-directory-avatar organization-avatar-${organization.color}`}>
-                  {organization.acronym}
+                <div aria-hidden="true" className={`organization-directory-avatar organization-avatar-${organization.color || 'crimson'}`}>
+                  {organization.logo ? (
+                    <img
+                      alt={`${organization.acronym || organization.name} logo`}
+                      src={organization.logo}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }}
+                    />
+                  ) : (
+                    organization.acronym || organization.name.slice(0, 3).toUpperCase()
+                  )}
                 </div>
                 <div className="organization-card-title">
                   <h2>{organization.name}</h2>
@@ -75,7 +98,7 @@ export default function StudentOrganizationsPage() {
               <p className="organization-card-description">{organization.description}</p>
               <div className="organization-card-meta">
                 <span><small>Faculty adviser</small><strong>{organization.adviser}</strong></span>
-                <span><small>Active members</small><strong>{organization.activeMembers}</strong></span>
+                <span><small>Active members</small><strong>{organization.activeMembers ?? organization.memberCount ?? 0}</strong></span>
               </div>
               <Link className="button button-secondary organization-view-button" to={`/student/organizations/${organization.id}`}>
                 View Organization <Icon name="arrow-right" size={13} />

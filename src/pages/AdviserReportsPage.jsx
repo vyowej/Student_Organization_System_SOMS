@@ -39,7 +39,7 @@ function getTurnout(report) {
 }
 
 export default function AdviserReportsPage() {
-  const { adviserReports, captureUndo, reviewAccomplishmentReport } = useOutletContext()
+  const { adviserReports = [], captureUndo, reviewAccomplishmentReport } = useOutletContext()
   const { currentUser } = useAuth()
   const { showToast } = useToast()
   const [selected, setSelected] = useState(null)
@@ -50,7 +50,7 @@ export default function AdviserReportsPage() {
   const adviserName = formatDisplayName(currentUser)
 
   const organizations = useMemo(
-    () => [...new Map(adviserReports.map((report) => [report.organizationId, report.organizationName])).entries()],
+    () => [...new Map(adviserReports.map((report) => [String(report.organizationId), report.organizationName])).entries()],
     [adviserReports],
   )
 
@@ -67,7 +67,7 @@ export default function AdviserReportsPage() {
     return adviserReports.filter((report) => {
       const searchText = `${report.eventTitle} ${report.organizationName}`.toLocaleLowerCase()
       return (!normalizedSearch || searchText.includes(normalizedSearch))
-        && (organizationFilter === 'ALL' || report.organizationId === organizationFilter)
+        && (organizationFilter === 'ALL' || String(report.organizationId) === String(organizationFilter))
         && (statusFilter === 'ALL' || report.status === statusFilter)
     })
   }, [adviserReports, organizationFilter, search, statusFilter])
@@ -77,10 +77,10 @@ export default function AdviserReportsPage() {
     setInitialDecision('')
   }
 
-  function decide(decision, comment) {
-    if (!selected) return
+  async function decide(decision, comment) {
+    if (!selected) return false
     const undo = captureUndo()
-    const saved = reviewAccomplishmentReport(selected.id, decision, comment)
+    const saved = await reviewAccomplishmentReport(selected.id, decision, comment)
     if (saved) showToast(decision === 'VERIFIED'
       ? 'Accomplishment report verified successfully.'
       : `${selected.eventTitle} report returned for revision.`, 'success', undoAction(undo))

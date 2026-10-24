@@ -1,0 +1,327 @@
+@keyframes skeleton-shimmer {
+  from { background-position: -400px 0; }
+  to   { background-position:  400px 0; }
+}
+
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    #f0eff1 25%,
+    #e4e2e6 50%,
+    #f0eff1 75%
+  );
+  background-size: 800px 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+/* A full skeleton card placeholder */
+.skeleton-card {
+  border-radius: var(--radius-card, 14px);
+  background: linear-gradient(
+    90deg,
+    #f0eff1 25%,
+    #e4e2e6 50%,
+    #f0eff1 75%
+  );
+  background-size: 800px 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  min-height: 160px;
+}
+
+/* A single skeleton text line — compose inside a container */
+.skeleton-line {
+  display: block;
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    #e8e6ea 25%,
+    #d8d5db 50%,
+    #e8e6ea 75%
+  );
+  background-size: 800px 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  margin-bottom: 8px;
+}
+
+.skeleton-line:last-child { margin-bottom: 0; }
+
+.hero-search {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 26px;
+  max-width: 520px;
+  border: 1.5px solid #dedbe0;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(31, 26, 29, 0.07);
+  overflow: hidden;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.hero-search:focus-within {
+  border-color: var(--crimson);
+  box-shadow: 0 0 0 3px rgba(143, 21, 56, 0.12);
+}
+
+/* Keep the icon and input in one expanding row beside the submit button. */
+.hero-search-inner {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Icon wrapper */
+.hero-search-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0 10px 0 13px;
+  color: #9b939e;
+  pointer-events: none;
+}
+
+/* Text input */
+.hero-search input[type="search"],
+.hero-search input[type="text"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 11px 10px 11px 2px;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.hero-search input::placeholder {
+  color: #aaa6ad;
+}
+
+/* Remove native clear button in Webkit */
+.hero-search input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+/* Submit button — reuses .button .button-primary styling */
+.hero-search .button.button-primary {
+  flex: 0 0 auto;
+  border-radius: 0 8px 8px 0;
+  padding: 10px 18px;
+  font-size: 13px;
+  white-space: nowrap;
+  /* Override any margin the existing .button rule might add */
+  margin: 0;
+}
+
+.hero-float-card.is-loading .float-stat-value,
+.hero-float-card.is-loading .float-stat-label {
+  display: none;
+}
+
+.hero-float-card.is-loading .float-stat-skeleton {
+  display: block;
+}
+
+.hero-float-card .float-stat-skeleton {
+  display: none; /* hidden by default, shown only while loading */
+}
+
+/* The live value / label layout inside float cards */
+.hero-float-card .float-stat-value {
+  display: block;
+  color: #302b32;
+  font-family: Manrope, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.hero-float-card .float-stat-label {
+  display: block;
+  color: #817b83;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* Skeleton lines inside float cards */
+.hero-float-card .float-skeleton-value {
+  width: 60px;
+  height: 13px;
+  margin-bottom: 5px;
+}
+
+.hero-float-card .float-skeleton-label {
+  width: 80px;
+  height: 11px;
+}
+
+/* Error / fallback state */
+.hero-float-card.has-error .float-stat-value {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.hero-art.has-photo .hero-art-orbit,
+.hero-art.has-photo .hero-art-center,
+.hero-art.has-photo .hero-spark {
+  display: none;
+}
+
+.hero-art.has-photo::before {
+  /* keep the soft background circle as a photo frame */
+  z-index: 0;
+}
+
+.hero-photo {
+  position: relative;
+  z-index: 1;
+  width: 340px;
+  height: 340px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  box-shadow: 0 20px 60px rgba(105, 34, 58, 0.15);
+}
+
+/* ─── 5. BADGE ::before GUARD ───────────────────────────────────────────── */
+
+/*
+ * Section 8 (below) optionally prepends tiny icons to status badges via
+ * ::before. Because EventCard's badge text already reads "Registration Open",
+ * "Almost Full", etc. — with NO icon character — the ::before rules are safe.
+ *
+ * If badge text ever gains an inline icon character, the matching ::before
+ * rule should be removed from Section 8 here.
+ *
+ * Baseline guard: ensure .badge never accumulates extra gap from
+ * simultaneous ::before AND an icon in the text node.
+ */
+.badge:not(:empty)::before {
+  /* Collapsed by default; Section 8 overrides for specific tones. */
+  content: none;
+}
+
+/* ─── 6. RESPONSIVE — 768 px ────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Hero search stacks its button below the input row */
+  .hero-search {
+    flex-direction: column;
+    border-radius: 12px;
+    overflow: visible;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    gap: 10px;
+  }
+
+  .hero-search:focus-within {
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  /* Inner wrapper for icon + input */
+  .hero-search-inner {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    border: 1.5px solid #dedbe0;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 2px 12px rgba(31, 26, 29, 0.07);
+    overflow: hidden;
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .hero-search-inner:focus-within {
+    border-color: var(--crimson);
+    box-shadow: 0 0 0 3px rgba(143, 21, 56, 0.12);
+  }
+
+  .hero-search .button.button-primary {
+    width: 100%;
+    border-radius: 10px;
+    padding: 11px 18px;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .hero-search input[type="search"],
+  .hero-search input[type="text"] {
+    padding-right: 12px;
+  }
+}
+
+/* ─── 7. RESPONSIVE — 375 px ────────────────────────────────────────────── */
+
+@media (max-width: 375px) {
+  .hero-search {
+    max-width: 100%;
+  }
+
+  .hero-search .button.button-primary {
+    font-size: 14px;
+    padding: 12px 16px;
+  }
+}
+
+/* ─── 8. BADGE TONE ICONS (safe to add — no existing ::before in App.css) ── */
+
+/*
+ * These add a tiny dot before success/warning/danger badge text.
+ * The existing Badge component renders plain text only — no icon characters —
+ * so these ::before rules do NOT produce duplicates.
+ *
+ * If you add an icon inside a badge's children, remove the matching rule
+ * below and the badge will look correct without it.
+ */
+.badge-success::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 5px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+.badge-warning::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 5px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+.badge-danger::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 5px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}

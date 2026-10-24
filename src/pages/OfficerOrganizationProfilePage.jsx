@@ -8,7 +8,6 @@ import Modal from '../components/ui/Modal.jsx'
 import ProfileCover from '../components/layout/ProfileCover.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import Icon from '../components/ui/Icon.jsx'
-import { officerActivity, officerOrganization } from '../data/officerPortal.js'
 import { formatDisplayName } from '../data/displayName.js'
 
 const editableFields = ['name', 'acronym', 'category', 'mission', 'vision']
@@ -44,8 +43,8 @@ function formatTime(event) {
 
 export default function OfficerOrganizationProfilePage() {
   const {
-    addOfficerDocument = () => {},
-    captureUndo = () => {},
+    addOfficerDocument = async () => false,
+    captureUndo = () => () => {},
     currentUser,
     adminOrganizations = [],
     adminAuditLogs = [],
@@ -54,11 +53,11 @@ export default function OfficerOrganizationProfilePage() {
     officerMembers = [],
     officerMemberCount = 0,
     officerMembershipRequests = [],
-    updateOfficerOrganizationProfile = () => {},
+    updateOfficerOrganizationProfile = async () => false,
   } = useOutletContext() || {}
   const { showToast } = useToast()
-  const orgId = currentUser?.organizationId || officerOrganization.id
-  const organization = adminOrganizations.find((item) => item.id === orgId) || officerOrganization
+  const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
+  const organization = adminOrganizations.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0]
   const [activeTab, setActiveTab] = useState('posts')
   const [editOpen, setEditOpen] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -70,29 +69,29 @@ export default function OfficerOrganizationProfilePage() {
     return <EmptyState title="Organization profile unavailable" description="The organization assigned to this officer account could not be found." />
   }
 
-  const members = officerMembers.filter((member) => member.organizationId === organization.id)
+  const members = officerMembers.filter((member) => String(member.organizationId) === String(organization.id))
   const activeMembers = members.filter((member) => member.status === 'ACTIVE')
   const executiveOfficers = activeMembers
     .filter((member) => ['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor', 'PIO', 'Committee Head'].includes(member.position))
     .sort((first, second) => ['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor', 'PIO', 'Committee Head'].indexOf(first.position) - ['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor', 'PIO', 'Committee Head'].indexOf(second.position))
-  const pendingRequests = officerMembershipRequests.filter((request) => request.status === 'PENDING')
-  const documents = adviserDocuments.filter((document) => document.organizationId === organization.id)
+  const pendingRequests = officerMembershipRequests.filter(
+    (request) => String(request.organizationId) === String(organization.id) && request.status === 'PENDING'
+  )
+  const documents = adviserDocuments.filter((document) => String(document.organizationId) === String(organization.id))
   const upcomingEvents = officerEvents.filter((event) => (
-    ['APPROVED', 'PUBLISHED', 'ONGOING'].includes(event.status)
+    String(event.organizationId) === String(organization.id)
+    && ['APPROVED', 'PUBLISHED', 'ONGOING'].includes(event.status)
   )).slice(0, 4)
   const announcements = organization.announcements ?? []
   const auditEntries = adminAuditLogs
-    .filter((entry) => entry.entityId === organization.id || entry.description?.includes(organization.name))
+    .filter((entry) => String(entry.entityId) === String(organization.id) || entry.description?.includes(organization.name))
     .slice(0, 5)
-  const activities = [
-    ...auditEntries.map((entry) => ({ id: entry.id, message: entry.description, time: entry.timestamp, person: entry.actor })),
-    ...officerActivity.slice(0, Math.max(0, 5 - auditEntries.length)).map((entry) => ({
-      id: entry.id,
-      message: entry.message,
-      time: entry.time,
-      person: 'Organization team',
-    })),
-  ].slice(0, 5)
+  const activities = auditEntries.map((entry) => ({
+    id: entry.id,
+    message: entry.description,
+    time: entry.timestamp,
+    person: entry.actor,
+  }))
   const totalMembers = officerMemberCount + members.filter((member) => member.status !== 'ACTIVE').length + pendingRequests.length
 
   function openEdit() {
@@ -101,14 +100,15 @@ export default function OfficerOrganizationProfilePage() {
     setEditOpen(true)
   }
 
-  function saveProfile(event) {
+  async function saveProfile(event) {
     event.preventDefault()
     if (editableFields.some((field) => !profileForm[field].trim())) {
       setFormError('Organization name, acronym, category, mission, and vision are required.')
       return
     }
     const undo = captureUndo()
-    if (!updateOfficerOrganizationProfile(profileForm)) {
+    const ok = await updateOfficerOrganizationProfile(profileForm)
+    if (!ok) {
       setFormError('The profile could not be saved. Check your officer permissions and try again.')
       return
     }
@@ -116,14 +116,26 @@ export default function OfficerOrganizationProfilePage() {
     showToast('Organization profile updated successfully.', 'success', undoAction(undo))
   }
 
-  function uploadDocument(event) {
+  async function uploadDocument(event) {
     event.preventDefault()
     if (!documentForm.title.trim() || !documentForm.type || !documentForm.file) {
       setFormError('Enter a document name, choose a type, and select a file.')
       return
     }
     const undo = captureUndo()
-    const saved = addOfficerDocument({
+
+    // =========================================================================
+    // [GOOGLE DRIVE API PLACEHOLDER - ORGANIZATION PROFILE DOCUMENT / IMAGE]
+    // Insert Google Drive API upload logic here to upload `documentForm.file`
+    // to your Google Drive folder and pass the resulting `webViewLink` to
+    // `addOfficerDocument({ ..., fileUrl: driveResponse.webViewLink })`.
+    //
+    //   ...
+    //
+    // =========================================================================
+
+    const saved = await addOfficerDocument({
+      organizationId: organization.id,
       title: documentForm.title,
       type: documentForm.type,
       fileName: documentForm.file.name,
@@ -267,7 +279,7 @@ export default function OfficerOrganizationProfilePage() {
             <>
               <Card className="fb-card fb-composer">
                 <div className="fb-composer-row">
-                  <span aria-hidden="true" className="fb-mini-avatar">{organization.acronym.slice(0, 3)}</span>
+                  <span aria-hidden="true" className="fb-mini-avatar">{(organization.acronym || 'ORG').slice(0, 3)}</span>
                   <Link className="fb-composer-input" to="/officer/announcements">Share an update with your members…</Link>
                 </div>
                 <div className="fb-composer-actions">
@@ -280,7 +292,7 @@ export default function OfficerOrganizationProfilePage() {
               {announcements.length ? announcements.slice(0, 4).map((announcement, index) => (
                 <Card className="fb-card fb-post" key={`${announcement.title}-${index}`}>
                   <div className="fb-post-head">
-                    <span aria-hidden="true" className="fb-mini-avatar">{organization.acronym.slice(0, 3)}</span>
+                    <span aria-hidden="true" className="fb-mini-avatar">{(organization.acronym || 'ORG').slice(0, 3)}</span>
                     <div><strong>{organization.name}</strong><small>{announcement.date} · Announcement</small></div>
                   </div>
                   <h3>{announcement.title}</h3>
@@ -354,7 +366,7 @@ export default function OfficerOrganizationProfilePage() {
           <label>Document Name<input onChange={(event) => setDocumentForm((current) => ({ ...current, title: event.target.value }))} required value={documentForm.title} /></label>
           <label>Document Type<select onChange={(event) => setDocumentForm((current) => ({ ...current, type: event.target.value }))} value={documentForm.type}>{documentTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
           <label>Choose File<input accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={(event) => setDocumentForm((current) => ({ ...current, file: event.target.files?.[0] ?? null }))} required type="file" /></label>
-          <p className="officer-org-upload-note">This frontend preview records the file name and submits the document metadata for adviser review. File storage will require a backend.</p>
+          <p className="officer-org-upload-note">Saves document metadata to PostgreSQL (`documents` table) and reserves a Google Drive API upload hook for `file_url`.</p>
           {formError && <p className="auth-error" role="alert">{formError}</p>}
           <div className="officer-org-modal-actions"><Button onClick={() => setUploadOpen(false)} variant="secondary">Cancel</Button><Button type="submit">Submit Document</Button></div>
         </form>

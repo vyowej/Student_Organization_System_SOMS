@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // Primary database folder and SQL schema path (../database/student_org_db.sql),
 // with fallback to local backend/schema copies if the main database folder is moved.
@@ -72,4 +72,3 @@ module.exports = {
   DATABASE_DIR,
   SCHEMA_PATH,
 };
-

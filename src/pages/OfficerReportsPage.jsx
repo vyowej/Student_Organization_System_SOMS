@@ -14,23 +14,28 @@ const statusTone = {
 }
 
 export default function OfficerReportsPage() {
-  const { adminOrganizations, adviserReports, currentUser } = useOutletContext()
-  const orgId = currentUser?.organizationId || 'wmsu-cs'
-  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society', acronym: 'CS' }
+  const { adminOrganizations = [], adviserReports = [], currentUser } = useOutletContext()
+  const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
+  const organization = adminOrganizations?.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0] || { name: 'Your Organization', acronym: 'ORG' }
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
 
+  const orgReports = useMemo(
+    () => adviserReports.filter((r) => !organization.id || String(r.organizationId) === String(organization.id)),
+    [adviserReports, organization.id]
+  )
+
   const counts = useMemo(() => {
-    const total = adviserReports.length
-    const verified = adviserReports.filter((r) => r.status === 'VERIFIED').length
-    const pending = adviserReports.filter((r) => r.status === 'PENDING_VERIFICATION').length
-    const returned = adviserReports.filter((r) => r.status === 'RETURNED').length
+    const total = orgReports.length
+    const verified = orgReports.filter((r) => r.status === 'VERIFIED').length
+    const pending = orgReports.filter((r) => r.status === 'PENDING_VERIFICATION').length
+    const returned = orgReports.filter((r) => r.status === 'RETURNED').length
     return { total, verified, pending, returned }
-  }, [adviserReports])
+  }, [orgReports])
 
   const visibleReports = useMemo(() => {
-    return adviserReports
+    return orgReports
       .filter((report) => {
         if (statusFilter === 'VERIFIED') return report.status === 'VERIFIED'
         if (statusFilter === 'PENDING_VERIFICATION') return report.status === 'PENDING_VERIFICATION'
@@ -38,7 +43,7 @@ export default function OfficerReportsPage() {
         return true
       })
       .filter((report) => matchesQuery(search, report.eventTitle, report.status, report.eventDate, report.submittedDate, report.organizationName))
-  }, [adviserReports, search, statusFilter])
+  }, [orgReports, search, statusFilter])
 
   return (
     <div className="officer-page">
