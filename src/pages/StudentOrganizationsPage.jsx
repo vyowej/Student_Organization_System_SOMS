@@ -2,14 +2,10 @@
  * StudentOrganizationsPage.jsx
  *
  * Student portal — full organization directory with live search + category filter.
-<<<<<<< HEAD
  *
- * Change from original:
- *  - Reads the `?q=` query-string parameter (set by the hero search bar on the
- *    landing page) and pre-fills the search input with it on mount.
- *    The existing filter/search logic is otherwise unchanged.
-=======
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
+ * Reads the `?q=` query-string parameter (set by the hero search bar on the
+ * landing page) and pre-fills the search input with it on mount.
+ * The existing filter/search logic is otherwise unchanged.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
@@ -23,20 +19,14 @@ import { organizationCategories, studentOrganizations } from '../data/studentOrg
 export default function StudentOrganizationsPage() {
   const { adminOrganizations = [] } = useOutletContext()
 
-<<<<<<< HEAD
   // Read the optional ?q= param from the landing-page hero search
-=======
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
   const [searchParams] = useSearchParams()
   const initialQuery = searchParams.get('q') ?? ''
 
   const [search, setSearch] = useState(initialQuery)
   const [category, setCategory] = useState('All')
 
-<<<<<<< HEAD
   // Keep the search input in sync if the URL param changes (e.g. browser back/forward)
-=======
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
   useEffect(() => {
     const q = searchParams.get('q') ?? ''
     setSearch(q)

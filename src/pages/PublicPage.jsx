@@ -176,14 +176,10 @@ function AuthenticationPage({ page }) {
             <Link to="/forgot-password">Forgot Password?</Link>
           </div>
           {error && <p className="auth-error" role="alert">{error}</p>}
-<<<<<<< HEAD
-          <Button className="auth-submit" type="submit">Login</Button>
+          <Button className="auth-submit" disabled={submitting} type="submit">{submitting ? 'Signing in...' : 'Login'}</Button>
           {import.meta.env.DEV && (
             <p className="auth-test-accounts">Development demo accounts are available for preview and testing.</p>
           )}
-=======
-          <Button className="auth-submit" disabled={submitting} type="submit">{submitting ? 'Signing in...' : 'Login'}</Button>
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
         </form>
       )}
       {page === 'register' && (

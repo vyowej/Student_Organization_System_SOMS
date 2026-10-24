@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-import { useEffect, useRef, useState } from 'react'
-=======
 import { useEffect, useMemo, useRef, useState } from 'react'
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
 import { Link, useNavigate } from 'react-router-dom'
 import Icon from '../components/ui/Icon.jsx'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
@@ -62,14 +58,11 @@ function HeroSearch() {
       onSubmit={handleSubmit}
       role="search"
     >
-<<<<<<< HEAD
       {/*
         .hero-search-inner is used on mobile (≤768 px) so the icon+input
         share one bordered box while the button sits below. On desktop,
         the form itself is the container and .hero-search-inner is transparent.
       */}
-=======
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
       <span className="hero-search-inner">
         <span aria-hidden="true" className="hero-search-icon">
           <svg fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
@@ -82,11 +75,7 @@ function HeroSearch() {
           aria-label="Search organizations"
           autoComplete="off"
           onChange={(e) => setQuery(e.target.value)}
-<<<<<<< HEAD
           placeholder="Search organizations, e.g. Computer Society"
-=======
-          placeholder="Search organizations..."
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
           type="search"
           value={query}
         />
@@ -98,60 +87,6 @@ function HeroSearch() {
   )
 }
 
-<<<<<<< HEAD
-/* ─── Live stat float cards ─────────────────────────────────────────────── */
-
-/**
- * Derives stat counts from mock data (mirrors what a real API would return).
- * Returns a promise so the component can simulate async loading and handle
- * errors the same way it would with a real fetch.
- *
- * When a backend is available, replace this function body with:
- *   const res = await fetch('/api/stats')
- *   return res.json()
- */
-function fetchHeroStats() {
-  return new Promise((resolve) => {
-    // Simulate a short network delay (remove when connected to real API)
-    setTimeout(() => {
-      const activeOrgs = organizations.length          // 12 active orgs
-      const eventsThisMonth = upcomingEvents.filter((e) => {
-        // Events in October or November 2026 (current month window)
-        const dateStr = e.date ?? ''
-        return dateStr.includes('November') || dateStr.includes('October')
-      }).length
-      resolve({ activeOrgs, eventsThisMonth })
-    }, 900)
-  })
-}
-
-function LiveStatCards() {
-  const [stats, setStats] = useState(null)   // null = loading
-  const [error, setError] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    fetchHeroStats()
-      .then((data) => { if (!cancelled) setStats(data) })
-      .catch(() => { if (!cancelled) setError(true) })
-    return () => { cancelled = true }
-  }, [])
-
-  const loading = stats === null && !error
-
-  /* --- Organizations card --- */
-  const orgValue  = error ? '—' : stats ? `${stats.activeOrgs}+` : null
-  const orgLabel  = 'Active Organizations'
-
-  /* --- Events card --- */
-  const evtValue  = error ? '—' : stats ? `${stats.eventsThisMonth}` : null
-  const evtLabel  = error ? 'Events this month' : stats ? `Event${stats.eventsThisMonth !== 1 ? 's' : ''} this month` : 'Events this month'
-
-  return (
-    <>
-      {/* Top-left float card — active organizations */}
-      <div className={`hero-float-card float-organizations${loading ? ' is-loading' : ''}${error ? ' has-error' : ''}`}>
-=======
 function LiveStatCards({ activeOrgs, publishedEvents, loading }) {
   const orgValue = `${activeOrgs}`
   const orgLabel = 'Active Organizations'
@@ -161,34 +96,20 @@ function LiveStatCards({ activeOrgs, publishedEvents, loading }) {
   return (
     <>
       <div className={`hero-float-card float-organizations${loading ? ' is-loading' : ''}`}>
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
         <span className="float-icon">
           <Icon name="organization" size={16} />
         </span>
         <span>
-<<<<<<< HEAD
-          {/* Skeleton shown only while loading */}
-=======
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
           <span className="float-stat-skeleton">
             <span className="skeleton-line float-skeleton-value skeleton" />
             <span className="skeleton-line float-skeleton-label skeleton" />
           </span>
-<<<<<<< HEAD
-          {/* Real data shown once loaded */}
-=======
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
           {!loading && <strong className="float-stat-value">{orgValue}</strong>}
           {!loading && <small className="float-stat-label">{orgLabel}</small>}
         </span>
       </div>
 
-<<<<<<< HEAD
-      {/* Bottom-right float card — events this month */}
-      <div className={`hero-float-card float-events${loading ? ' is-loading' : ''}${error ? ' has-error' : ''}`}>
-=======
       <div className={`hero-float-card float-events${loading ? ' is-loading' : ''}`}>
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
         <span className="float-icon">
           <Icon name="calendar" size={16} />
         </span>
@@ -205,34 +126,15 @@ function LiveStatCards({ activeOrgs, publishedEvents, loading }) {
   )
 }
 
-<<<<<<< HEAD
-function MobileHeroStats() {
-  const activeOrganizations = organizations.length
-  const eventsThisMonth = upcomingEvents.filter((event) => {
-    const date = event.date ?? ''
-    return date.includes('October') || date.includes('November')
-  }).length
-
-  return (
-    <div aria-label="Campus community at a glance" className="hero-mobile-stats">
-      <div><strong>{activeOrganizations}+</strong><span>Active Organizations</span></div>
-      <div><strong>{eventsThisMonth}</strong><span>Events this month</span></div>
-=======
 function MobileHeroStats({ activeOrganizations, publishedEvents }) {
   return (
     <div aria-label="Campus community at a glance" className="hero-mobile-stats">
       <div><strong>{activeOrganizations}</strong><span>Active Organizations</span></div>
       <div><strong>{publishedEvents}</strong><span>Published Events</span></div>
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
     </div>
   )
 }
 
-<<<<<<< HEAD
-/* ─── Main page ─────────────────────────────────────────────────────────── */
-
-=======
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
 function LandingPage() {
   const {
     loading,
@@ -246,8 +148,6 @@ function LandingPage() {
   const [activeCategory, setActiveCategory] = useState('All')
   const [notificationIndex, setNotificationIndex] = useState(0)
   const heroArtRef = useRef(null)
-<<<<<<< HEAD
-=======
 
   const publishedEvents = useMemo(
     () => officerEvents.filter((event) => ['PUBLISHED', 'APPROVED'].includes(event.status)),
@@ -324,7 +224,6 @@ function LandingPage() {
     return items.length >= 2 ? items : defaultNotifications
   }, [studentOrganizations, publishedEvents, officerAnnouncements])
 
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
   const filteredOrganizations = activeCategory === 'All'
     ? studentOrganizations
     : studentOrganizations.filter((organization) => organization.category === activeCategory)
@@ -517,10 +416,6 @@ function LandingPage() {
             discover, participate, and stay connected to everything happening on campus.
           </p>
 
-<<<<<<< HEAD
-          {/* ── Hero search bar ─ above action buttons ── */}
-=======
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
           <HeroSearch />
 
           <div className="hero-actions">
@@ -535,14 +430,10 @@ function LandingPage() {
             <div className="mini-avatars" aria-hidden="true"><span>UN</span><span>ID</span><span>OS</span><span>+</span></div>
             <span><strong>Find your people.</strong> Get involved at WMSU.</span>
           </div>
-<<<<<<< HEAD
-          <MobileHeroStats />
-=======
           <MobileHeroStats
             activeOrganizations={studentOrganizations.length}
             publishedEvents={publishedEvents.length}
           />
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
         </div>
 
         <div aria-hidden="true" className="hero-art" ref={heroArtRef}>
@@ -555,15 +446,6 @@ function LandingPage() {
                 <div className="mock-dashboard-top"><WmsuLogo className="mock-logo" /><span>UNIDOS</span><i /></div>
                 <div className="mock-welcome"><small>STUDENT DASHBOARD</small><strong>Welcome back!</strong></div>
                 <div className="mock-metrics">
-<<<<<<< HEAD
-                  <span><b data-count="12">0</b><small>Organizations</small></span>
-                  <span><b data-count="48">0</b><small>Events</small></span>
-                  <span><b data-count="240">0</b><small>Members</small></span>
-                </div>
-                <div className="mock-dashboard-content">
-                  <div className="mock-org-list"><b>My organizations</b><i /><i /><i /></div>
-                  <div className="mock-event-card"><span>UPCOMING EVENT</span><b>Campus Connect</b><i /><i /></div>
-=======
                   <span><b>{studentOrganizations.length}</b><small>Organizations</small></span>
                   <span><b>{publishedEvents.length}</b><small>Events</small></span>
                   <span><b>{officerMembers.length}</b><small>Members</small></span>
@@ -575,7 +457,6 @@ function LandingPage() {
                     <b>{publishedEvents[0]?.title || 'Campus Activity'}</b>
                     <i /><i />
                   </div>
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
                 </div>
               </div>
             </div>
@@ -585,39 +466,16 @@ function LandingPage() {
             <div className="hero-phone-screen">
               <div className="mock-phone-status"><span>9:41</span><i /></div>
               <div className="mock-phone-header"><WmsuLogo className="mock-logo" /><b>UNIDOS</b><i>•••</i></div>
-<<<<<<< HEAD
-              <div className="mock-org-cover"><span>COMPUTER<br />SOCIETY</span></div>
-              <b className="mock-phone-title">WMSU Computer Society</b>
-=======
               <div className="mock-org-cover">
                 <span>{(studentOrganizations[0]?.acronym || 'UNIDOS').toUpperCase()}</span>
               </div>
               <b className="mock-phone-title">{studentOrganizations[0]?.name || 'WMSU Student Organizations'}</b>
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
               <span className="mock-phone-caption">LEARN · BUILD · CONNECT</span>
               <div className="mock-phone-button">View organization</div>
               <div className="mock-phone-line" /><div className="mock-phone-line short" />
             </div>
           </div>
           <div className="hero-notification hero-notification-primary">
-<<<<<<< HEAD
-            <span className="hero-notification-icon"><Icon name={heroNotifications[notificationIndex].icon} size={17} /></span>
-            <span className="hero-notification-copy">
-              <strong>{heroNotifications[notificationIndex].title}</strong>
-              <span>{heroNotifications[notificationIndex].message}</span>
-            </span>
-            <small>{heroNotifications[notificationIndex].time}</small>
-          </div>
-          <div className="hero-notification hero-notification-secondary">
-            <span className="hero-notification-icon"><Icon name={heroNotifications[(notificationIndex + 1) % heroNotifications.length].icon} size={17} /></span>
-            <span className="hero-notification-copy">
-              <strong>{heroNotifications[(notificationIndex + 1) % heroNotifications.length].title}</strong>
-              <span>{heroNotifications[(notificationIndex + 1) % heroNotifications.length].message}</span>
-            </span>
-            <small>{heroNotifications[(notificationIndex + 1) % heroNotifications.length].time}</small>
-          </div>
-          <LiveStatCards />
-=======
             <span className="hero-notification-icon"><Icon name={primaryNotif.icon} size={17} /></span>
             <span className="hero-notification-copy">
               <strong>{primaryNotif.title}</strong>
@@ -638,7 +496,6 @@ function LandingPage() {
             loading={loading}
             publishedEvents={publishedEvents.length}
           />
->>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
         </div>
       </section>
 
