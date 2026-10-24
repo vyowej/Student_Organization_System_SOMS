@@ -8,26 +8,90 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+async function resolveStudentDbId(identifier) {
+  if (!identifier) return null;
+  if (Number.isFinite(Number(identifier))) {
+    const byId = await db.query(
+      'SELECT id FROM students WHERE id = $1 OR user_id = $1 ORDER BY CASE WHEN id = $1 THEN 0 ELSE 1 END LIMIT 1',
+      [Number(identifier)]
+    );
+    if (byId.rows.length > 0) return byId.rows[0].id;
+  }
+  const byNumber = await db.query(
+    'SELECT id FROM students WHERE lower(student_number) = lower($1) LIMIT 1',
+    [String(identifier).trim()]
+  );
+  if (byNumber.rows.length > 0) return byNumber.rows[0].id;
+  return null;
+}
+
+const REGISTRATION_SELECT_QUERY = `
+  SELECT er.id,
+         er.event_id,
+         er.student_id,
+         er.registered_at,
+         er.status,
+         e.title AS event_title,
+         e.location AS event_location,
+         e.start_date,
+         e.end_date,
+         e.organization_id,
+         o.name AS organization_name,
+         o.acronym AS organization_acronym,
+         s.user_id,
+         s.student_number,
+         s.year_level,
+         u.first_name,
+         u.last_name,
+         (u.last_name || ', ' || u.first_name) AS student_name,
+         u.email,
+         p.name AS program_name,
+         p.acronym AS program_acronym,
+         att.id AS attendance_id,
+         att.checked_in_at,
+         att.method AS checkin_method,
+         att.recorded_by
+    FROM event_registrations er
+    JOIN events e ON e.id = er.event_id
+    JOIN organizations o ON o.id = e.organization_id
+    JOIN students s ON s.id = er.student_id
+    JOIN users u ON u.id = s.user_id
+    JOIN programs p ON p.id = s.program_id
+    LEFT JOIN attendance att ON att.event_id = er.event_id AND att.student_id = er.student_id
+`;
+
+// GET /api/attendance/registrations — List all event registrations (with optional event_id / student_id filter)
+router.get('/registrations', async (req, res) => {
+  try {
+    const { event_id, student_id } = req.query;
+    let queryText = `${REGISTRATION_SELECT_QUERY} WHERE 1=1`;
+    const params = [];
+
+    if (event_id) {
+      params.push(event_id);
+      queryText += ` AND er.event_id = $${params.length}`;
+    }
+    if (student_id) {
+      const resolvedId = await resolveStudentDbId(student_id);
+      params.push(resolvedId || -1);
+      queryText += ` AND er.student_id = $${params.length}`;
+    }
+
+    queryText += ' ORDER BY er.registered_at DESC';
+    const result = await db.query(queryText, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // GET /api/attendance/registrations/:event_id — List all student registrations for an event
 router.get('/registrations/:event_id', async (req, res) => {
   try {
     const { event_id } = req.params;
     const result = await db.query(
-      `SELECT er.id,
-              er.event_id,
-              er.student_id,
-              er.registered_at,
-              er.status,
-              s.student_number,
-              s.year_level,
-              u.first_name,
-              u.last_name,
-              u.email,
-              p.acronym AS program_acronym
-         FROM event_registrations er
-         JOIN students s ON s.id = er.student_id
-         JOIN users u ON u.id = s.user_id
-         JOIN programs p ON p.id = s.program_id
+      `${REGISTRATION_SELECT_QUERY}
         WHERE er.event_id = $1
         ORDER BY er.registered_at ASC`,
       [event_id]
@@ -42,13 +106,14 @@ router.get('/registrations/:event_id', async (req, res) => {
 // POST /api/attendance/register — Register a student for a published event (respecting max_participants)
 router.post('/register', async (req, res) => {
   try {
-    const { event_id, student_id } = req.body;
+    const { event_id, student_id, user_id } = req.body;
+    const resolvedStudentId = await resolveStudentDbId(student_id || user_id);
 
-    if (!event_id || !student_id) {
-      return res.status(400).json({ error: 'event_id and student_id are required' });
+    if (!event_id || !resolvedStudentId) {
+      return res.status(400).json({ error: 'event_id and a valid student_id are required' });
     }
 
-    // Verify event exists and is PUBLISHED before allowing registration
+    // Verify event exists before allowing registration
     const eventRes = await db.query(
       'SELECT id, status, max_participants FROM events WHERE id = $1',
       [event_id]
@@ -59,15 +124,15 @@ router.post('/register', async (req, res) => {
     }
 
     const event = eventRes.rows[0];
-    if (event.status !== 'PUBLISHED') {
-      return res.status(400).json({ error: 'Cannot register for an event that is not published' });
+    if (!['PUBLISHED', 'APPROVED'].includes(event.status)) {
+      return res.status(400).json({ error: 'Cannot register for an event that is not open for registration' });
     }
 
     // Enforce max_participants capacity limit when set on the event
     if (event.max_participants) {
       const countRes = await db.query(
-        "SELECT COUNT(*) FROM event_registrations WHERE event_id = $1 AND status != 'CANCELLED'",
-        [event_id]
+        "SELECT COUNT(*) FROM event_registrations WHERE event_id = $1 AND status != 'CANCELLED' AND student_id != $2",
+        [event_id, resolvedStudentId]
       );
       const currentCount = parseInt(countRes.rows[0].count, 10);
       if (currentCount >= event.max_participants) {
@@ -75,16 +140,41 @@ router.post('/register', async (req, res) => {
       }
     }
 
-    const result = await db.query(
+    const insertRes = await db.query(
       `INSERT INTO event_registrations (event_id, student_id, status)
        VALUES ($1, $2, 'REGISTERED')
        ON CONFLICT (event_id, student_id)
        DO UPDATE SET status = 'REGISTERED', registered_at = now()
-       RETURNING *`,
-      [event_id, student_id]
+       RETURNING id`,
+      [event_id, resolvedStudentId]
     );
 
-    res.status(201).json(result.rows[0]);
+    const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [insertRes.rows[0].id]);
+    res.status(201).json(fullRow.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+// PUT /api/attendance/registrations/:id/cancel — Cancel a registration by registration id
+router.put('/registrations/:id/cancel', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query(
+      `UPDATE event_registrations
+          SET status = 'CANCELLED'
+        WHERE id = $1
+        RETURNING id`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Registration record not found' });
+    }
+
+    const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [id]);
+    res.json({ message: 'Registration cancelled', registration: fullRow.rows[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -95,19 +185,74 @@ router.post('/register', async (req, res) => {
 router.delete('/registrations/:event_id/:student_id', async (req, res) => {
   try {
     const { event_id, student_id } = req.params;
+    const resolvedStudentId = await resolveStudentDbId(student_id);
     const result = await db.query(
       `UPDATE event_registrations
           SET status = 'CANCELLED'
         WHERE event_id = $1 AND student_id = $2
-        RETURNING *`,
-      [event_id, student_id]
+        RETURNING id`,
+      [event_id, resolvedStudentId || student_id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Registration record not found' });
     }
 
-    res.json({ message: 'Registration cancelled', registration: result.rows[0] });
+    const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [result.rows[0].id]);
+    res.json({ message: 'Registration cancelled', registration: fullRow.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/attendance — List all attendance check-ins across events
+router.get('/', async (req, res) => {
+  try {
+    const { event_id, student_id } = req.query;
+    let queryText = `
+      SELECT a.id,
+             a.event_id,
+             a.student_id,
+             a.checked_in_at,
+             a.method,
+             a.recorded_by,
+             e.title AS event_title,
+             e.organization_id,
+             o.name AS organization_name,
+             s.user_id,
+             s.student_number,
+             u.first_name,
+             u.last_name,
+             (u.last_name || ', ' || u.first_name) AS student_name,
+             u.email,
+             p.acronym AS program_acronym,
+             recorder.first_name AS recorder_first_name,
+             recorder.last_name  AS recorder_last_name
+        FROM attendance a
+        JOIN events e ON e.id = a.event_id
+        JOIN organizations o ON o.id = e.organization_id
+        JOIN students s ON s.id = a.student_id
+        JOIN users u ON u.id = s.user_id
+        JOIN programs p ON p.id = s.program_id
+   LEFT JOIN users recorder ON recorder.id = a.recorded_by
+       WHERE 1=1
+    `;
+    const params = [];
+
+    if (event_id) {
+      params.push(event_id);
+      queryText += ` AND a.event_id = $${params.length}`;
+    }
+    if (student_id) {
+      const resolvedId = await resolveStudentDbId(student_id);
+      params.push(resolvedId || -1);
+      queryText += ` AND a.student_id = $${params.length}`;
+    }
+
+    queryText += ' ORDER BY a.checked_in_at DESC';
+    const result = await db.query(queryText, params);
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -125,15 +270,19 @@ router.get('/event/:event_id', async (req, res) => {
               a.checked_in_at,
               a.method,
               a.recorded_by,
+              s.user_id,
               s.student_number,
               u.first_name,
               u.last_name,
+              (u.last_name || ', ' || u.first_name) AS student_name,
               u.email,
+              p.acronym AS program_acronym,
               recorder.first_name AS recorder_first_name,
               recorder.last_name  AS recorder_last_name
          FROM attendance a
          JOIN students s ON s.id = a.student_id
          JOIN users u ON u.id = s.user_id
+         JOIN programs p ON p.id = s.program_id
     LEFT JOIN users recorder ON recorder.id = a.recorded_by
         WHERE a.event_id = $1
         ORDER BY a.checked_in_at DESC`,
@@ -149,13 +298,15 @@ router.get('/event/:event_id', async (req, res) => {
 // POST /api/attendance/check-in — Record student attendance (QR_SCAN, MANUAL, or SELF_CHECKIN)
 router.post('/check-in', async (req, res) => {
   try {
-    const { event_id, student_id, method, recorded_by } = req.body;
+    const { event_id, student_id, user_id, student_number, method, recorded_by } = req.body;
+    const resolvedStudentId = await resolveStudentDbId(student_id || student_number || user_id);
 
-    if (!event_id || !student_id) {
-      return res.status(400).json({ error: 'event_id and student_id are required' });
+    if (!event_id || !resolvedStudentId) {
+      return res.status(400).json({ error: 'event_id and a valid student_id or student_number are required' });
     }
 
-    const checkInMethod = method || 'QR_SCAN';
+    const rawMethod = String(method || 'QR_SCAN').toUpperCase();
+    const checkInMethod = ['QR_SCAN', 'MANUAL', 'SELF_CHECKIN'].includes(rawMethod) ? rawMethod : 'QR_SCAN';
 
     const result = await db.query(
       `INSERT INTO attendance (event_id, student_id, method, recorded_by, checked_in_at)
@@ -163,46 +314,43 @@ router.post('/check-in', async (req, res) => {
        ON CONFLICT (event_id, student_id)
        DO UPDATE SET checked_in_at = now(), method = $3, recorded_by = $4
        RETURNING *`,
-      [event_id, student_id, checkInMethod, recorded_by || null]
+      [event_id, resolvedStudentId, checkInMethod, recorded_by || null]
     );
 
-    // Synchronize corresponding event_registrations status to 'ATTENDED'
-    await db.query(
-      `UPDATE event_registrations
-          SET status = 'ATTENDED'
-        WHERE event_id = $1 AND student_id = $2`,
-      [event_id, student_id]
+    // Synchronize or create corresponding event_registrations record with status = 'ATTENDED'
+    const regRes = await db.query(
+      `INSERT INTO event_registrations (event_id, student_id, status)
+       VALUES ($1, $2, 'ATTENDED')
+       ON CONFLICT (event_id, student_id)
+       DO UPDATE SET status = 'ATTENDED'
+       RETURNING id`,
+      [event_id, resolvedStudentId]
     );
 
-    res.status(201).json({ message: 'Attendance recorded successfully', attendance: result.rows[0] });
+    const fullReg = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [regRes.rows[0].id]);
+
+    res.status(201).json({
+      message: 'Attendance recorded successfully',
+      attendance: result.rows[0],
+      registration: fullReg.rows[0],
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error' });
   }
 });
 
 // GET /api/attendance/student/:student_id — Retrieve a student's event registration and attendance history
 router.get('/student/:student_id', async (req, res) => {
   try {
-    const { student_id } = req.params;
+    const resolvedStudentId = await resolveStudentDbId(req.params.student_id);
+    if (!resolvedStudentId) return res.json([]);
+
     const result = await db.query(
-      `SELECT e.id AS event_id,
-              e.title,
-              e.location,
-              e.start_date,
-              e.end_date,
-              o.name AS organization_name,
-              er.registered_at,
-              er.status AS registration_status,
-              a.checked_in_at,
-              a.method AS checkin_method
-         FROM event_registrations er
-         JOIN events e ON e.id = er.event_id
-         JOIN organizations o ON o.id = e.organization_id
-    LEFT JOIN attendance a ON a.event_id = er.event_id AND a.student_id = er.student_id
+      `${REGISTRATION_SELECT_QUERY}
         WHERE er.student_id = $1
         ORDER BY e.start_date DESC`,
-      [student_id]
+      [resolvedStudentId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -212,4 +360,3 @@ router.get('/student/:student_id', async (req, res) => {
 });
 
 module.exports = router;
-

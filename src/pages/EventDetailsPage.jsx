@@ -20,19 +20,19 @@ const stateTone = {
 
 export default function EventDetailsPage() {
   const { id } = useParams()
-  const { captureUndo, eventRegisteredCounts, officerEvents, registerForEvent, studentRegistrations } = useOutletContext()
+  const { captureUndo, eventRegisteredCounts = {}, officerEvents = [], registerForEvent, studentRegistrations = [] } = useOutletContext()
   const { showToast } = useToast()
   const [registrationDialogOpen, setRegistrationDialogOpen] = useState(false)
-  const baseEvent = studentEvents.find((item) => item.id === id)
-    ?? (officerEvents.some((item) => item.id === id && item.status === 'PUBLISHED')
-      ? officerEventToStudentEvent(officerEvents.find((item) => item.id === id))
-      : undefined)
+
+  const matchedOfficerEvent = officerEvents.find((item) => String(item.id) === String(id) && ['PUBLISHED', 'APPROVED'].includes(item.status))
+  const baseEvent = studentEvents.find((item) => String(item.id) === String(id))
+    ?? (matchedOfficerEvent ? officerEventToStudentEvent(matchedOfficerEvent) : undefined)
   const event = baseEvent && {
     ...baseEvent,
-    registeredCount: eventRegisteredCounts[baseEvent.id] ?? baseEvent.registeredCount,
+    registeredCount: eventRegisteredCounts[baseEvent.id] ?? baseEvent.registeredCount ?? 0,
   }
   const registration = studentRegistrations.find((item) => (
-    item.eventId === id && item.status === 'REGISTERED'
+    String(item.eventId) === String(id) && item.status !== 'CANCELLED'
   ))
 
   if (!event) {
@@ -44,7 +44,7 @@ export default function EventDetailsPage() {
           title="Event not found"
         />
         <Card className="event-not-found">
-          <p>We could not find that event in the current preview.</p>
+          <p>We could not find that event in the current directory.</p>
           <Link className="button button-primary" to="/student/events">Explore all events</Link>
         </Card>
       </div>
@@ -57,10 +57,10 @@ export default function EventDetailsPage() {
   const availableSlots = Math.max(event.capacity - event.registeredCount, 0)
   const displayStatus = isOpen && isEventAlmostFull(event) ? 'ALMOST FULL' : registrationState
 
-  function confirmRegistration() {
+  async function confirmRegistration() {
     if (!canRegister) return
     const undo = captureUndo()
-    const registrationResult = registerForEvent(event.id)
+    const registrationResult = await registerForEvent(event.id)
     if (!registrationResult) {
       showToast('Unable to complete registration. Please refresh the event and try again.', 'error')
       return
@@ -84,7 +84,7 @@ export default function EventDetailsPage() {
       />
 
       <Card className="event-details-card event-module-details">
-        <div aria-hidden="true" className={`event-details-banner event-${event.color}`}>
+        <div aria-hidden="true" className={`event-details-banner event-${event.color || 'crimson'}`}>
           <span className="event-banner-date">{event.date}</span>
           <strong>{event.category}</strong>
         </div>

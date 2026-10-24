@@ -29,10 +29,10 @@ const statusTone = {
 }
 
 export default function OfficerDocumentsPage() {
-  const { addOfficerDocument, adminOrganizations, adviserDocuments, captureUndo, currentUser } = useOutletContext()
+  const { addOfficerDocument, adminOrganizations = [], adviserDocuments = [], captureUndo, currentUser } = useOutletContext()
   const { showToast } = useToast()
-  const orgId = currentUser?.organizationId || 'wmsu-cs'
-  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society', acronym: 'CS' }
+  const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
+  const organization = adminOrganizations?.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0] || { name: 'Your Organization', acronym: 'ORG' }
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
@@ -40,16 +40,21 @@ export default function OfficerDocumentsPage() {
   const [formError, setFormError] = useState('')
   const [documentForm, setDocumentForm] = useState({ title: '', type: documentTypes[0], file: null })
 
+  const orgDocuments = useMemo(
+    () => adviserDocuments.filter((d) => !organization.id || String(d.organizationId) === String(organization.id)),
+    [adviserDocuments, organization.id]
+  )
+
   const counts = useMemo(() => {
-    const total = adviserDocuments.length
-    const approved = adviserDocuments.filter((d) => d.status === 'APPROVED').length
-    const pending = adviserDocuments.filter((d) => d.status === 'PENDING').length
-    const returned = adviserDocuments.filter((d) => ['RETURNED', 'REJECTED'].includes(d.status)).length
+    const total = orgDocuments.length
+    const approved = orgDocuments.filter((d) => d.status === 'APPROVED').length
+    const pending = orgDocuments.filter((d) => d.status === 'PENDING').length
+    const returned = orgDocuments.filter((d) => ['RETURNED', 'REJECTED'].includes(d.status)).length
     return { total, approved, pending, returned }
-  }, [adviserDocuments])
+  }, [orgDocuments])
 
   const visibleDocuments = useMemo(() => {
-    return adviserDocuments
+    return orgDocuments
       .filter((doc) => {
         if (statusFilter === 'APPROVED') return doc.status === 'APPROVED'
         if (statusFilter === 'PENDING') return doc.status === 'PENDING'
@@ -57,16 +62,27 @@ export default function OfficerDocumentsPage() {
         return true
       })
       .filter((document) => matchesQuery(search, document.title, document.type, document.status, document.submittedDate))
-  }, [adviserDocuments, search, statusFilter])
+  }, [orgDocuments, search, statusFilter])
 
-  function uploadDocument(event) {
+  async function uploadDocument(event) {
     event.preventDefault()
     if (!documentForm.title.trim() || !documentForm.type || !documentForm.file) {
       setFormError('Enter a document name, choose a type, and select a file.')
       return
     }
     const undo = captureUndo()
-    const saved = addOfficerDocument({
+
+    // =========================================================================
+    // [GOOGLE DRIVE API PLACEHOLDER - OFFICER DOCUMENT / IMAGE UPLOAD]
+    // Insert Google Drive API upload integration here for `documentForm.file`
+    // and store the returned Google Drive `webViewLink` in `fileUrl` below.
+    //
+    //   ...
+    //
+    // =========================================================================
+
+    const saved = await addOfficerDocument({
+      organizationId: organization.id,
       title: documentForm.title,
       type: documentForm.type,
       fileName: documentForm.file.name,
@@ -199,7 +215,7 @@ export default function OfficerDocumentsPage() {
           <label>Document Name<input onChange={(event) => setDocumentForm((current) => ({ ...current, title: event.target.value }))} required value={documentForm.title} /></label>
           <label>Document Type<select onChange={(event) => setDocumentForm((current) => ({ ...current, type: event.target.value }))} value={documentForm.type}>{documentTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
           <label>Choose File<input accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={(event) => setDocumentForm((current) => ({ ...current, file: event.target.files?.[0] ?? null }))} required type="file" /></label>
-          <p className="officer-org-upload-note">This frontend preview records the file name and submits the document metadata for adviser review. File storage will require a backend.</p>
+          <p className="officer-org-upload-note">Records the document in the PostgreSQL `documents` table and reserves a Google Drive API upload hook for `file_url`.</p>
           {formError && <p className="auth-error" role="alert">{formError}</p>}
           <div className="officer-org-modal-actions">
             <Button onClick={() => setUploadOpen(false)} variant="secondary">Cancel</Button>

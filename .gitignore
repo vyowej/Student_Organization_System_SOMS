@@ -7,14 +7,23 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies & Build
 node_modules
+backend/node_modules
 dist
 dist-ssr
-database/
-.agents/
+
+# Environment variables & secrets (never push real credentials)
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 *.local
 
-# Editor directories and files
+# Local agent / editor folders
+.agents/
 .vscode/*
 !.vscode/extensions.json
 .idea

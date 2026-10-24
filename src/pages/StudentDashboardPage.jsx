@@ -4,16 +4,13 @@
  * Displays personalized greetings, organization membership counts, upcoming
  * campus events, and recent membership/event updates for the signed-in student.
  */
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { formatGreetingName, getTimeGreeting } from '../data/displayName.js'
 import Badge from '../components/ui/Badge.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
 import Icon from '../components/ui/Icon.jsx'
-import {
-  studentDashboardEvents,
-  studentDashboardMetrics,
-  studentDashboardOrganizations,
-} from '../data/studentDashboard.js'
+import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
 
 function SectionHeading({ id, title, to, linkLabel }) {
   return (
@@ -25,30 +22,60 @@ function SectionHeading({ id, title, to, linkLabel }) {
 }
 
 export default function StudentDashboardPage() {
-  const { currentUser } = useOutletContext()
-  const [metricCounts, setMetricCounts] = useState(() => {
-    const reducedMotion = typeof window !== 'undefined'
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    return studentDashboardMetrics.map((metric) => reducedMotion ? Number(metric.value) : 0)
-  })
-  useEffect(() => {
-    const targets = studentDashboardMetrics.map((metric) => Number(metric.value))
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
+  const {
+    currentUser,
+    studentOrganizations = [],
+    studentMemberships = [],
+    officerEvents = [],
+    studentRegistrations = [],
+  } = useOutletContext()
 
-    let frameId
-    const duration = 900
-    const startTime = performance.now()
+  const myMemberships = useMemo(
+    () =>
+      studentMemberships.filter(
+        (m) =>
+          (currentUser?.studentDbId && String(m.studentDbId) === String(currentUser.studentDbId)) ||
+          (currentUser?.id && String(m.userId) === String(currentUser.id)) ||
+          (currentUser?.studentId && String(m.studentId).toLowerCase() === String(currentUser.studentId).toLowerCase()),
+      ),
+    [studentMemberships, currentUser],
+  )
 
-    function updateCounts(now) {
-      const progress = Math.min((now - startTime) / duration, 1)
-      const easedProgress = 1 - ((1 - progress) ** 3)
-      setMetricCounts(targets.map((target) => Math.round(target * easedProgress)))
-      if (progress < 1) frameId = requestAnimationFrame(updateCounts)
-    }
+  const activeMemberships = myMemberships.filter((m) => m.status === 'ACTIVE')
+  const pendingApplications = myMemberships.filter((m) => m.status === 'PENDING')
+  const activeRegs = studentRegistrations.filter((r) => r.status !== 'CANCELLED')
+  const attendedCount = studentRegistrations.filter((r) => r.attendanceStatus === 'ATTENDED').length
 
-    frameId = requestAnimationFrame(updateCounts)
-    return () => cancelAnimationFrame(frameId)
-  }, [])
+  const metrics = [
+    { label: 'Joined Organizations', value: activeMemberships.length, tone: 'crimson' },
+    { label: 'Pending Applications', value: pendingApplications.length, tone: 'gold' },
+    { label: 'Registered Events', value: activeRegs.length, tone: 'emerald' },
+    { label: 'Events Attended', value: attendedCount, tone: 'blue' },
+  ]
+
+  const myOrgCards = useMemo(
+    () =>
+      activeMemberships.map((m, idx) => {
+        const org = studentOrganizations.find((o) => String(o.id) === String(m.organizationId))
+        return {
+          id: m.organizationId,
+          name: org?.name || m.organizationName || 'Student Organization',
+          initials: (org?.acronym || m.organizationName || 'ORG').slice(0, 3).toUpperCase(),
+          role: m.role || m.position || 'Member',
+          tone: ['crimson', 'gold', 'emerald', 'blue'][idx % 4],
+        }
+      }),
+    [activeMemberships, studentOrganizations],
+  )
+
+  const upcomingEvents = useMemo(
+    () =>
+      officerEvents
+        .filter((e) => ['PUBLISHED', 'APPROVED'].includes(e.status))
+        .slice(0, 4)
+        .map(officerEventToStudentEvent),
+    [officerEvents],
+  )
 
   return (
     <div className="student-dashboard">
@@ -63,10 +90,10 @@ export default function StudentDashboardPage() {
         </section>
 
         <section aria-label="Your activity overview" className="student-metrics">
-          {studentDashboardMetrics.map((metric, index) => (
+          {metrics.map((metric, index) => (
             <article className={`student-metric metric-${metric.tone}`} key={metric.label} style={{ '--metric-index': index }}>
               <span className="stat-label">{metric.label}</span>
-              <strong aria-label={`${metric.value} ${metric.label}`} className="stat-value">{metricCounts[index]}</strong>
+              <strong aria-label={`${metric.value} ${metric.label}`} className="stat-value">{metric.value}</strong>
             </article>
           ))}
         </section>
@@ -112,53 +139,67 @@ export default function StudentDashboardPage() {
 
         <section aria-labelledby="my-organizations-title" className="student-dashboard-panel">
           <SectionHeading id="my-organizations-title" linkLabel="View all organizations" title="My Organizations" to="/student/my-organizations" />
-          <div className="student-organization-list">
-            {studentDashboardOrganizations.map((organization) => (
-              <Link
-                aria-label={`${organization.name}, ${organization.role}`}
-                className="student-organization-card"
-                key={organization.id}
-                to={`/student/organizations/${organization.id}`}
-              >
-                <div aria-hidden="true" className={`student-organization-avatar avatar-${organization.tone}`}>
-                  {organization.initials}
-                </div>
-                <div className="student-organization-copy">
-                  <h3>{organization.name}</h3>
-                  <span>{organization.role}</span>
-                </div>
-                <span aria-hidden="true" className="student-card-link"><Icon name="arrow" /></span>
-              </Link>
-            ))}
-          </div>
+          {myOrgCards.length > 0 ? (
+            <div className="student-organization-list">
+              {myOrgCards.map((organization) => (
+                <Link
+                  aria-label={`${organization.name}, ${organization.role}`}
+                  className="student-organization-card"
+                  key={organization.id}
+                  to={`/student/organizations/${organization.id}`}
+                >
+                  <div aria-hidden="true" className={`student-organization-avatar avatar-${organization.tone}`}>
+                    {organization.initials}
+                  </div>
+                  <div className="student-organization-copy">
+                    <h3>{organization.name}</h3>
+                    <span>{organization.role}</span>
+                  </div>
+                  <span aria-hidden="true" className="student-card-link"><Icon name="arrow" /></span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              description="Join an accredited organization to see it listed here."
+              title="No active memberships yet"
+            />
+          )}
         </section>
 
         <section aria-labelledby="upcoming-events-title" className="student-dashboard-panel">
           <SectionHeading id="upcoming-events-title" linkLabel="View all events" title="Upcoming Events" to="/student/events" />
-          <div className="student-event-list">
-            {studentDashboardEvents.map((event) => (
-              <Link
-                aria-label={`View event: ${event.title}`}
-                className="student-event-card"
-                key={event.id}
-                to={`/student/events/${event.id}`}
-              >
-                <div aria-hidden="true" className="student-event-date">
-                  <span>{event.date.split(' ')[0].slice(0, 3)}</span>
-                  <strong>{event.date.match(/\d+/)?.[0]}</strong>
-                </div>
-                <div className="student-event-copy">
-                  <div className="student-event-title-line">
-                    <h3>{event.title}</h3>
-                    <Badge tone={event.status === 'Almost Full' ? 'warning' : 'success'}>{event.status}</Badge>
+          {upcomingEvents.length > 0 ? (
+            <div className="student-event-list">
+              {upcomingEvents.map((event) => (
+                <Link
+                  aria-label={`View event: ${event.title}`}
+                  className="student-event-card"
+                  key={event.id}
+                  to={`/student/events/${event.id}`}
+                >
+                  <div aria-hidden="true" className="student-event-date">
+                    <span>{event.date.split(' ')[0]?.slice(0, 3) || 'EVT'}</span>
+                    <strong>{event.date.match(/\d+/)?.[0] || '•'}</strong>
                   </div>
-                  <p>{event.organization}</p>
-                  <span>{event.time} <i aria-hidden="true">·</i> {event.location}</span>
-                </div>
-                <span aria-hidden="true" className="student-event-arrow"><Icon name="arrow" /></span>
-              </Link>
-            ))}
-          </div>
+                  <div className="student-event-copy">
+                    <div className="student-event-title-line">
+                      <h3>{event.title}</h3>
+                      <Badge tone="success">{event.status}</Badge>
+                    </div>
+                    <p>{event.organization}</p>
+                    <span>{event.time} <i aria-hidden="true">·</i> {event.location}</span>
+                  </div>
+                  <span aria-hidden="true" className="student-event-arrow"><Icon name="arrow" /></span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              description="Published campus events will appear here."
+              title="No upcoming events"
+            />
+          )}
         </section>
       </div>
     </div>

@@ -14,16 +14,16 @@ const eventTone = { DRAFT: 'neutral', SUBMITTED: 'warning', UNDER_REVIEW: 'warni
 
 function matchesEventFilter(event, filter) {
   if (filter === 'All') return true
-  if (filter === 'Pending Review') return ['SUBMITTED', 'UNDER_REVIEW'].includes(event.status)
+  if (filter === 'Pending Review') return ['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].includes(event.status)
   if (filter === 'Approved') return ['APPROVED', 'PUBLISHED'].includes(event.status)
-  if (filter === 'Returned') return event.status === 'RETURNED_FOR_REVISION'
+  if (filter === 'Returned') return ['RETURNED_FOR_REVISION', 'CANCELLED'].includes(event.status)
   if (filter === 'Rejected') return event.status === 'REJECTED'
   if (filter === 'Upcoming') return ['APPROVED', 'PUBLISHED', 'ONGOING'].includes(event.status)
   return ['COMPLETED', 'ARCHIVED'].includes(event.status)
 }
 
 export default function AdviserEventsPage() {
-  const { captureUndo, officerEvents, reviewAdviserRequest } = useOutletContext()
+  const { captureUndo, officerEvents = [], reviewAdviserRequest } = useOutletContext()
   const { showToast } = useToast()
   const [filter, setFilter] = useState('All')
   const [selected, setSelected] = useState(null)
@@ -32,10 +32,10 @@ export default function AdviserEventsPage() {
     .filter((event) => matchesEventFilter(event, filter))
     .filter((event) => matchesQuery(search, event.title, event.organizationName, event.date, event.location, event.category))
 
-  function decide(decision, comment) {
-    if (!selected) return
+  async function decide(decision, comment) {
+    if (!selected) return false
     const undo = captureUndo()
-    const saved = reviewAdviserRequest('EVENT', selected.id, decision, comment)
+    const saved = await reviewAdviserRequest('EVENT', selected.id, decision, comment)
     if (saved) showToast(decision === 'APPROVED'
       ? 'Event proposal approved successfully.'
       : decision === 'RETURNED'
@@ -62,13 +62,13 @@ export default function AdviserEventsPage() {
             {visibleEvents.map((event) => (
               <article className="adviser-event-card" key={event.id}>
                 <div className="adviser-event-main">
-                  <span className="adviser-muted-label">{event.organizationName ?? 'WMSU Computer Society'} · {event.category ?? 'Organization Activity'}</span>
+                  <span className="adviser-muted-label">{event.organizationName ?? 'Campus Organization'} · {event.category ?? 'Organization Activity'}</span>
                   <h2>{event.title}</h2>
                   <p>{event.date} · {event.time || event.startTime || 'Time to be confirmed'} · {event.location || event.venue || 'Venue to be confirmed'}</p>
                   <small>{event.registrations ?? 0} registrations · Capacity {event.capacity ?? 'Not specified'}</small>
                 </div>
                 <Badge tone={eventTone[event.status] ?? 'neutral'}>{event.status.replaceAll('_', ' ')}</Badge>
-                <Button onClick={() => setSelected({ ...event, organizationName: event.organizationName ?? 'WMSU Computer Society', submittedDate: event.submittedDate ?? 'October 2, 2026', type: 'EVENT' })} variant="secondary">View Details</Button>
+                <Button onClick={() => setSelected({ ...event, organizationName: event.organizationName ?? 'Campus Organization', submittedDate: event.submittedDate || event.date, type: 'EVENT' })} variant="secondary">View Details</Button>
               </article>
             ))}
           </div>

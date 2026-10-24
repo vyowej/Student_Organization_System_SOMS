@@ -1,221 +1,211 @@
 /**
- * Authentication Context Provider
+ * Authentication Context Provider (`src/context/AuthContext.jsx`)
  *
- * Manages session state, WMSU email login, student registration, and active
- * role/workspace switching across Student, Officer, Adviser, and Admin portals.
- * Maps to the backend `/api/users` and `/api/academic` endpoints.
+ * Manages the active user session by authenticating directly against the
+ * Express + PostgreSQL backend (`/api/users/login`, `/api/users/register`,
+ * `/api/users/:id`). All mock user accounts and fake credentials have been removed.
  */
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
-import { authSessionKey, mockAuthUsers, registeredUsersKey } from '../data/mockAuthUsers.js'
-import { formatDisplayName } from '../data/displayName.js'
-import { isWmsuEmail } from '../data/email.js'
 
 const AuthContext = createContext(null)
 
-// Frontend mock authentication only; implement real authentication and authorization on the backend before deployment.
-function addNameParts(user) {
-  if (user.lastName && user.firstName) return user
-  const fullName = (user.name ?? user.displayName ?? '').trim()
-  if (fullName.includes(',')) {
-    const [lastName, ...givenParts] = fullName.split(',')
-    const [firstName = '', ...middleName] = givenParts.join(' ').trim().split(/\s+/).filter(Boolean)
-    return { ...user, lastName: lastName.trim(), firstName, middleName: middleName.join(' ') }
+const SESSION_STORAGE_KEY = 'unidos-auth-user-id-v2'
+
+function formatPositionLabel(position, customTitle) {
+  if (customTitle) return customTitle
+  const map = {
+    PRESIDENT: 'President',
+    VICE_PRESIDENT: 'Vice President',
+    SECRETARY: 'Secretary',
+    TREASURER: 'Treasurer',
+    AUDITOR: 'Auditor',
+    PUBLIC_RELATIONS_OFFICER: 'PIO',
+    MEMBER: 'General Member',
+    OTHER: 'Committee Head',
   }
-  const words = fullName.split(/\s+/).filter(Boolean)
-  if (words.length < 2) return { ...user, firstName: words[0] ?? '', middleName: '', lastName: '' }
+  return map[position] || position || 'General Member'
+}
+
+function mapUserRow(row) {
+  if (!row) return null
+  const primaryRole = row.role || 'STUDENT'
+  const memberships = Array.isArray(row.memberships) ? row.memberships : []
+  const advisedOrganizations = Array.isArray(row.advised_organizations) ? row.advised_organizations : []
+  const officerMemberships = memberships.filter(
+    (m) => m.position && m.position !== 'MEMBER' && (!m.status || m.status === 'ACTIVE')
+  )
+  const roles = new Set([primaryRole])
+  if (primaryRole === 'OFFICER' || row.student_id) roles.add('STUDENT')
+  if (officerMemberships.length > 0) roles.add('OFFICER')
+
+  const defaultOrgId =
+    officerMemberships[0]?.organization_id ||
+    memberships[0]?.organization_id ||
+    advisedOrganizations[0]?.organization_id ||
+    null
+
+  const organizationRoles = officerMemberships.map((m) => ({
+    organizationId: m.organization_id,
+    organizationName: m.organization_name,
+    acronym: m.acronym,
+    position: formatPositionLabel(m.position, m.custom_title),
+  }))
+
   return {
-    ...user,
-    firstName: words[0],
-    middleName: words.slice(1, -1).join(' '),
-    lastName: words.at(-1),
-  }
-}
-
-function safeUser(user) {
-  const { password: _password, ...publicUser } = user
-  const displayName = formatDisplayName(publicUser)
-  return { ...publicUser, displayName, name: displayName }
-}
-
-function readRegisteredUsers() {
-  try {
-    const users = JSON.parse(window.localStorage.getItem(registeredUsersKey) ?? '[]')
-    return Array.isArray(users) ? users.map(addNameParts) : []
-  } catch (error) {
-    console.error('Unable to restore local UNIDOS mock accounts.', error)
-    window.localStorage.removeItem(registeredUsersKey)
-    return []
-  }
-}
-
-function readStoredSession() {
-  const stored = window.localStorage.getItem(authSessionKey)
-    ?? window.sessionStorage.getItem(authSessionKey)
-  if (!stored) return null
-  try {
-    const parsed = JSON.parse(stored)
-    if (!parsed || typeof parsed.id !== 'string' || !['STUDENT', 'OFFICER', 'ADVISER', 'ADMIN'].includes(parsed.role)) return null
-    const mockUser = mockAuthUsers.find((user) => user.id === parsed.id || user.email === parsed.email)
-    const normalizedUser = mockUser
-      ? {
-          ...parsed,
-          ...mockUser,
-          role: parsed.role,
-          roles: Array.isArray(parsed.roles) ? parsed.roles : mockUser.roles ?? [parsed.role],
-          organizationRoles: Array.isArray(parsed.organizationRoles) ? parsed.organizationRoles : mockUser.organizationRoles ?? [],
-          status: parsed.status ?? mockUser.status,
-          organizationId: parsed.organizationId ?? mockUser.organizationId,
-        }
-      : addNameParts({
-          ...parsed,
-          roles: Array.isArray(parsed.roles) ? parsed.roles : [parsed.role],
-        })
-    return safeUser(normalizedUser)
-  } catch (error) {
-    console.error('Unable to restore the UNIDOS mock authentication session.', error)
-    window.localStorage.removeItem(authSessionKey)
-    window.sessionStorage.removeItem(authSessionKey)
-    return null
+    id: row.user_id,
+    userId: row.user_id,
+    studentRecordId: row.student_id || null,
+    adviserRecordId: row.adviser_id || null,
+    studentId: row.student_number || row.employee_number || `USER-${row.user_id}`,
+    firstName: row.first_name || '',
+    middleName: row.middle_name || '',
+    lastName: row.last_name || '',
+    email: row.email || '',
+    role: primaryRole,
+    roles: Array.from(roles),
+    status: row.status || 'ACTIVE',
+    yearLevel: row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : '',
+    yearLevelNumber: row.year_level || null,
+    programId: row.program_id || null,
+    program: row.program_name || '',
+    programCode: row.program_code || '',
+    departmentId: row.department_id || row.adviser_department_id || null,
+    department: row.department_name || row.adviser_department_name || '',
+    collegeId: row.college_id || row.adviser_college_id || null,
+    college: row.college_name || '',
+    organizationId: defaultOrgId,
+    organizationRoles,
+    memberships,
+    advisedOrganizations,
   }
 }
 
 export function AuthProvider({ children }) {
-  const [registeredUsers, setRegisteredUsers] = useState(readRegisteredUsers)
-  const [accessOverrides, setAccessOverrides] = useState(() => {
+  const [currentUser, setCurrentUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  const refreshCurrentUser = useCallback(async (userIdToFetch) => {
+    const targetId = userIdToFetch ?? currentUser?.userId
+    if (!targetId) {
+      setAuthLoading(false)
+      return null
+    }
     try {
-      const saved = JSON.parse(window.localStorage.getItem('unidos-auth-access-overrides') ?? '{}')
-      return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}
-    } catch (error) {
-      console.error('Unable to restore UNIDOS mock account access settings.', error)
-      window.localStorage.removeItem('unidos-auth-access-overrides')
-      return {}
+      const response = await fetch(`/api/users/${targetId}`)
+      if (!response.ok) {
+        sessionStorage.removeItem(SESSION_STORAGE_KEY)
+        setCurrentUser(null)
+        setAuthLoading(false)
+        return null
+      }
+      const data = await response.json()
+      const mapped = mapUserRow(data)
+      setCurrentUser((prev) => {
+        if (!prev) return mapped
+        return {
+          ...mapped,
+          role: mapped.roles.includes(prev.role) ? prev.role : mapped.role,
+          organizationId: prev.organizationId ?? mapped.organizationId,
+        }
+      })
+      setAuthLoading(false)
+      return mapped
+    } catch {
+      setAuthLoading(false)
+      return null
     }
-  })
-  const [currentUser, setCurrentUser] = useState(readStoredSession)
+  }, [currentUser?.userId])
 
   useEffect(() => {
-    window.localStorage.setItem(registeredUsersKey, JSON.stringify(registeredUsers))
-  }, [registeredUsers])
-
-  useEffect(() => {
-    window.localStorage.setItem('unidos-auth-access-overrides', JSON.stringify(accessOverrides))
-  }, [accessOverrides])
-
-  const login = useCallback((identifier, password, rememberMe = false) => {
-    const normalizedIdentifier = identifier.trim().toLowerCase()
-    if (!isWmsuEmail(normalizedIdentifier)) {
-      return { ok: false, error: 'Enter your WMSU email address ending in @wmsu.edu.ph.' }
+    const savedId = sessionStorage.getItem(SESSION_STORAGE_KEY)
+    if (savedId) {
+      refreshCurrentUser(savedId)
+    } else {
+      setAuthLoading(false)
     }
-    const sourceUser = [...mockAuthUsers, ...registeredUsers].find((candidate) => (
-      candidate.email.toLowerCase() === normalizedIdentifier
-    ))
-    if (!sourceUser) return { ok: false, error: 'No account was found for that WMSU email address.' }
-    const accessOverride = accessOverrides[sourceUser.email.toLowerCase()]
-    const user = {
-      ...sourceUser,
-      ...accessOverride,
-      ...(accessOverride?.role ? { roles: [accessOverride.role] } : {}),
-    }
-    if (user.status === 'INACTIVE') return { ok: false, error: 'This account is inactive. Contact Student Affairs for help.' }
-    if (user.status === 'SUSPENDED') return { ok: false, error: 'This account is suspended. Contact Student Affairs for help.' }
-    if (user.status !== 'ACTIVE') return { ok: false, error: 'This account is not available for sign in.' }
-    if (user.password !== password) return { ok: false, error: 'The password is incorrect.' }
+  }, [refreshCurrentUser])
 
-    const sessionUser = safeUser(addNameParts(user))
-    window.localStorage.removeItem(authSessionKey)
-    window.sessionStorage.removeItem(authSessionKey)
-    const storage = rememberMe ? window.localStorage : window.sessionStorage
-    storage.setItem(authSessionKey, JSON.stringify(sessionUser))
-    setCurrentUser(sessionUser)
-    return { ok: true, user: sessionUser }
-  }, [accessOverrides, registeredUsers])
+  const login = useCallback(async (identifier, password) => {
+    try {
+      const response = await fetch('/api/users/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return {
+          ok: false,
+          error: payload.error || 'Invalid credentials or account not found.',
+        }
+      }
+      const mapped = mapUserRow(payload)
+      sessionStorage.setItem(SESSION_STORAGE_KEY, String(mapped.userId))
+      setCurrentUser(mapped)
+      return { ok: true, user: mapped }
+    } catch {
+      return {
+        ok: false,
+        error: 'Unable to reach the backend server. Please verify the API and PostgreSQL database are running.',
+      }
+    }
+  }, [])
+
+  const registerStudent = useCallback(async (registrationPayload) => {
+    try {
+      const response = await fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(registrationPayload),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return {
+          ok: false,
+          error: payload.error || 'Unable to register student account.',
+        }
+      }
+      const mapped = mapUserRow(payload)
+      return { ok: true, user: mapped }
+    } catch {
+      return {
+        ok: false,
+        error: 'Unable to reach the backend server. Please verify the API and PostgreSQL database are running.',
+      }
+    }
+  }, [])
 
   const logout = useCallback(() => {
-    window.localStorage.removeItem(authSessionKey)
-    window.sessionStorage.removeItem(authSessionKey)
+    sessionStorage.removeItem(SESSION_STORAGE_KEY)
     setCurrentUser(null)
   }, [])
 
-  const setActiveRole = useCallback((role, organizationId = null) => {
-    if (!currentUser?.roles?.includes(role)) return false
-    if (role === 'OFFICER' && !currentUser.organizationRoles?.some((assignment) => assignment.organizationId === organizationId)) return false
-    const updatedUser = safeUser({ ...currentUser, role, organizationId: role === 'OFFICER' ? organizationId : null })
-    const storage = window.localStorage.getItem(authSessionKey) !== null
-      ? window.localStorage
-      : window.sessionStorage
-    storage.setItem(authSessionKey, JSON.stringify(updatedUser))
-    setCurrentUser(updatedUser)
-    return true
+  const setActiveRole = useCallback((nextRole, organizationId) => {
+    let switched = false
+    setCurrentUser((prev) => {
+      if (!prev) return prev
+      const allowed = prev.roles || [prev.role]
+      if (!allowed.includes(nextRole)) return prev
+      switched = true
+      return {
+        ...prev,
+        role: nextRole,
+        organizationId: organizationId !== undefined ? organizationId : prev.organizationId,
+      }
+    })
+    return switched || Boolean(currentUser)
   }, [currentUser])
-
-  const registerStudent = useCallback((student) => {
-    const email = student.email.trim().toLowerCase()
-    const studentId = student.studentId.trim().toLowerCase()
-    if (!isWmsuEmail(email)) return { ok: false, error: 'Use your WMSU email address ending in @wmsu.edu.ph.' }
-    const exists = [...mockAuthUsers, ...registeredUsers].some((user) => (
-      user.email.toLowerCase() === email || user.studentId?.toLowerCase() === studentId
-    ))
-    if (exists) return { ok: false, error: 'An account with this email or student ID already exists.' }
-    const newUser = {
-      id: `registered-${Date.now()}`,
-      lastName: student.lastName.trim(),
-      firstName: student.firstName.trim(),
-      middleName: student.middleName.trim(),
-      email,
-      studentId: student.studentId.trim(),
-      password: student.password,
-      program: student.program,
-      yearLevel: student.yearLevel,
-      role: 'STUDENT',
-      roles: ['STUDENT'],
-      status: 'ACTIVE',
-      organizationId: null,
-    }
-    setRegisteredUsers((users) => [...users, newUser])
-    return { ok: true, user: safeUser(newUser) }
-  }, [registeredUsers])
-
-  const updateMockUserAccess = useCallback((email, changes) => {
-    const normalizedEmail = email.trim().toLowerCase()
-    const validRoles = ['STUDENT', 'OFFICER', 'ADVISER', 'ADMIN']
-    const validStatuses = ['ACTIVE', 'INACTIVE', 'SUSPENDED']
-    const role = changes.role
-    const status = changes.status
-    if ((role !== undefined && !validRoles.includes(role))
-      || (status !== undefined && !validStatuses.includes(status))) return false
-    if (![...mockAuthUsers, ...registeredUsers].some((user) => user.email.toLowerCase() === normalizedEmail)) return true
-    setAccessOverrides((overrides) => ({
-      ...overrides,
-      [normalizedEmail]: {
-        ...overrides[normalizedEmail],
-        ...(role ? {
-          role,
-          roles: role === 'OFFICER' ? ['STUDENT', 'OFFICER'] : [role],
-          ...(role === 'OFFICER' ? {
-            organizationRoles: [{
-              organizationId: 'computer-society',
-              organizationName: 'WMSU Computer Society',
-              positions: ['President'],
-            }],
-          } : {}),
-          ...(['OFFICER', 'ADVISER'].includes(role) ? { organizationId: 'computer-society' } : {}),
-        } : {}),
-        ...(status ? { status } : {}),
-      },
-    }))
-    return true
-  }, [registeredUsers])
 
   const value = useMemo(() => ({
     currentUser,
-    isAuthenticated: Boolean(currentUser),
-    role: currentUser?.role ?? null,
-    setActiveRole,
+    authLoading,
     login,
     logout,
     registerStudent,
-    updateMockUserAccess,
-  }), [currentUser, login, logout, registerStudent, setActiveRole, updateMockUserAccess])
+    refreshCurrentUser,
+    switchRole: setActiveRole,
+    setActiveRole,
+  }), [currentUser, authLoading, login, logout, registerStudent, refreshCurrentUser, setActiveRole])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

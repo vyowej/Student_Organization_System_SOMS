@@ -50,7 +50,7 @@ export default function AdviserReviewDialog({
     setApprovalConfirmationOpen(true)
   }
 
-  function confirmDecision() {
+  async function confirmDecision() {
     if (approvalProcessing) return
     if (decision === 'RETURNED' || decision === 'REJECTED') {
       if (!comment.trim()) {
@@ -59,7 +59,7 @@ export default function AdviserReviewDialog({
       }
     }
     setApprovalProcessing(true)
-    const saved = onDecision(decision, comment)
+    const saved = await onDecision(decision, comment)
     if (saved) close()
     else setApprovalProcessing(false)
   }

@@ -10,40 +10,45 @@ import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 
 export default function OfficerAttendancePage() {
-  const { adminOrganizations, adminUsers, captureUndo, checkInStudent, currentUser, officerEvents, studentRegistrations } = useOutletContext()
-  const orgId = currentUser?.organizationId || 'wmsu-cs'
-  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society', acronym: 'CS' }
-  const events = officerEvents.filter((event) => ['PUBLISHED', 'COMPLETED', 'ARCHIVED', 'APPROVED', 'ONGOING'].includes(event.status))
+  const { adminOrganizations = [], adminUsers = [], captureUndo, checkInStudent, currentUser, officerEvents = [], studentRegistrations = [] } = useOutletContext()
+  const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
+  const organization = adminOrganizations?.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0] || { name: 'Your Organization', acronym: 'ORG' }
+  const events = officerEvents.filter(
+    (event) =>
+      (!organization.id || String(event.organizationId) === String(organization.id)) &&
+      ['PUBLISHED', 'COMPLETED', 'ARCHIVED', 'APPROVED', 'ONGOING'].includes(event.status)
+  )
   const [selectedEventId, setSelectedEventId] = useState(() => events[0]?.id ?? '')
   const [registrationCode, setRegistrationCode] = useState('')
   const { showToast } = useToast()
   const [feedback, setFeedback] = useState(null)
   const [confirmCheckInOpen, setConfirmCheckInOpen] = useState(false)
   const [rosterSearch, setRosterSearch] = useState('')
-  const selectedEvent = events.find((event) => event.id === selectedEventId)
+  const activeEventId = selectedEventId || events[0]?.id || ''
+  const selectedEvent = events.find((event) => String(event.id) === String(activeEventId))
 
   const attendees = useMemo(() => studentRegistrations
-    .filter((registration) => registration.eventId === selectedEventId && registration.status === 'REGISTERED')
+    .filter((registration) => String(registration.eventId) === String(activeEventId) && registration.status === 'REGISTERED')
     .map((registration) => {
-      const student = adminUsers.find((user) => user.userId === registration.studentId)
+      const student = adminUsers.find((user) => String(user.userId) === String(registration.studentId) || String(user.studentRecordId) === String(registration.studentRecordId))
       return {
         ...registration,
-        studentName: student?.name ?? registration.studentId,
+        studentName: student?.name || `${registration.lastName || ''}, ${registration.firstName || ''}`.replace(/^,\s*/, '') || registration.studentId,
       }
     })
-    .sort((a, b) => a.studentName.localeCompare(b.studentName)), [adminUsers, selectedEventId, studentRegistrations])
+    .sort((a, b) => a.studentName.localeCompare(b.studentName)), [adminUsers, activeEventId, studentRegistrations])
 
   function handleCheckIn(event) {
     event.preventDefault()
     if (registrationCode.trim()) setConfirmCheckInOpen(true)
   }
 
-  function confirmCheckIn() {
+  async function confirmCheckIn() {
     setConfirmCheckInOpen(false)
     const undo = captureUndo()
-    const result = checkInStudent(selectedEventId, registrationCode)
+    const result = await checkInStudent(activeEventId, registrationCode)
     setFeedback({ ...result, id: Date.now() })
-    if (result.ok) {
+    if (result?.ok) {
       setRegistrationCode('')
       showToast(`Attendance recorded for ${registrationCode.trim()}.`, 'success', undoAction(undo))
     }
@@ -126,7 +131,7 @@ export default function OfficerAttendancePage() {
                     setSelectedEventId(event.target.value)
                     setFeedback(null)
                   }}
-                  value={selectedEventId}
+                  value={activeEventId}
                 >
                   {events.map((event) => <option key={event.id} value={event.id}>{event.title} · {event.date}</option>)}
                 </select>
@@ -139,7 +144,7 @@ export default function OfficerAttendancePage() {
                     autoComplete="off"
                     id="registration-code"
                     onChange={(event) => setRegistrationCode(event.target.value)}
-                    placeholder="e.g. UNIDOS-REG-1006"
+                    placeholder="e.g. REG-1 or Student ID"
                     required
                     value={registrationCode}
                   />
@@ -158,7 +163,7 @@ export default function OfficerAttendancePage() {
                 {feedback.message}
               </p>
             )}
-            <p className="attendance-checkin-help">The code must belong to a registered student for the selected event. Duplicate check-ins are blocked.</p>
+            <p className="attendance-checkin-help">The code must belong to a registered student for the selected event. Duplicate check-ins are updated automatically.</p>
           </Card>
 
           <Card className="officer-page-card officer-attendance-roster">
@@ -202,9 +207,11 @@ export default function OfficerAttendancePage() {
       )}
       <ConfirmDialog
         confirmLabel="Record attendance"
-        message={`Are you sure you want to record attendance for code ${registrationCode.trim()} at “${selectedEvent?.title ?? 'this event'}”? Check-ins cannot be undone here.`}
+        message={`Are you sure you want to record attendance for code ${registrationCode.trim()} at “${selectedEvent?.title ?? 'this event'}”?`}
         onCancel={() => setConfirmCheckInOpen(false)}
         onConfirm={confirmCheckIn}
+        open={confirmCheckInOpen}
+        title="Confirm attendance check-in"
       />
     </div>
   )

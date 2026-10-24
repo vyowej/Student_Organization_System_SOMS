@@ -16,7 +16,7 @@ function isPastEvent(event) {
 }
 
 export default function StudentRegistrationsPage() {
-  const { cancelRegistration, captureUndo, officerEvents, studentRegistrations } = useOutletContext()
+  const { cancelRegistration, captureUndo, officerEvents = [], studentRegistrations = [] } = useOutletContext()
   const { showToast } = useToast()
   const [cancelTarget, setCancelTarget] = useState(null)
   const [activeTab, setActiveTab] = useState('Upcoming')
@@ -73,9 +73,9 @@ export default function StudentRegistrationsPage() {
                 : 'neutral'
             return (
               <article className="student-registration-card" key={registration.id}>
-                <div aria-hidden="true" className={`student-registration-date event-${event.color}`}>
-                  <span>{event.date.split(' ')[0].slice(0, 3)}</span>
-                  <strong>{event.date.match(/\d+/)?.[0]}</strong>
+                <div aria-hidden="true" className={`student-registration-date event-${event.color || 'crimson'}`}>
+                  <span>{event.date.split(' ')[0]?.slice(0, 3) || 'EVT'}</span>
+                  <strong>{event.date.match(/\d+/)?.[0] || '•'}</strong>
                 </div>
                 <div className="student-registration-copy">
                   <h2>{event.title}</h2>
@@ -107,7 +107,7 @@ export default function StudentRegistrationsPage() {
         <EmptyState
           description={activeTab === 'Upcoming'
             ? 'When you register for a campus event, it will appear here.'
-            : `You do not have any ${activeTab.toLowerCase()} registrations in this preview.`}
+            : `You do not have any ${activeTab.toLowerCase()} registrations.`}
           title={`No ${activeTab.toLowerCase()} registrations`}
         />
       )}
@@ -116,9 +116,9 @@ export default function StudentRegistrationsPage() {
         confirmLabel="Cancel registration"
         message={`Are you sure you want to cancel your registration for “${cancelTarget?.event.title ?? ''}”? Your digital pass will stop working and your slot will be released.`}
         onCancel={() => setCancelTarget(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           const undo = captureUndo()
-          if (cancelRegistration(cancelTarget.id)) showToast('Registration cancelled.', 'success', undoAction(undo))
+          if (await cancelRegistration(cancelTarget.id)) showToast('Registration cancelled.', 'success', undoAction(undo))
           setCancelTarget(null)
         }}
         open={Boolean(cancelTarget)}

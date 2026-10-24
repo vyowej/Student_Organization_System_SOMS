@@ -93,6 +93,10 @@ CREATE TABLE organizations (
     name          VARCHAR(150) NOT NULL,
     acronym       VARCHAR(20),
     description   TEXT,
+    -- ============================================================
+    -- [GOOGLE DRIVE API PLACEHOLDER — ORGANIZATION LOGO IMAGE]
+    -- Insert Google Drive API shared image URL / file ID here for organization logos.
+    -- ============================================================
     logo          TEXT,                              -- URL of the logo image
     org_type      org_type   NOT NULL DEFAULT 'OTHER',
     scope         org_scope  NOT NULL DEFAULT 'COLLEGE',
@@ -249,6 +253,10 @@ CREATE TABLE documents (
     organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     type            document_type   NOT NULL,
     title           VARCHAR(200)    NOT NULL,
+    -- ============================================================
+    -- [GOOGLE DRIVE API PLACEHOLDER — DOCUMENT / IMAGE STORAGE URL]
+    -- Insert Google Drive API file URL / attachment link here.
+    -- ============================================================
     file_url        TEXT            NOT NULL,
     status          document_status NOT NULL DEFAULT 'PENDING',
     uploaded_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,

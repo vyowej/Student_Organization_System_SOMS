@@ -10,31 +10,36 @@ import Table from '../components/ui/Table.jsx'
 import { officerEventStatuses } from '../data/officerPortal.js'
 
 export default function OfficerEventsPage() {
-  const { adminOrganizations, currentUser, officerEvents } = useOutletContext()
-  const orgId = currentUser?.organizationId || 'wmsu-cs'
-  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society', acronym: 'CS' }
+  const { adminOrganizations = [], currentUser, officerEvents = [] } = useOutletContext()
+  const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
+  const organization = adminOrganizations?.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0] || { name: 'Your Organization', acronym: 'ORG' }
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('ALL')
 
+  const orgEvents = useMemo(
+    () => officerEvents.filter((e) => !organization.id || String(e.organizationId) === String(organization.id)),
+    [officerEvents, organization.id]
+  )
+
   const counts = useMemo(() => {
-    const total = officerEvents.length
-    const published = officerEvents.filter((e) => ['PUBLISHED', 'APPROVED', 'ONGOING'].includes(e.status)).length
-    const inReview = officerEvents.filter((e) => ['SUBMITTED', 'PENDING', 'UNDER_REVIEW'].includes(e.status)).length
-    const returned = officerEvents.filter((e) => ['RETURNED', 'RETURNED_FOR_REVISION'].includes(e.status)).length
+    const total = orgEvents.length
+    const published = orgEvents.filter((e) => ['PUBLISHED', 'APPROVED', 'ONGOING'].includes(e.status)).length
+    const inReview = orgEvents.filter((e) => ['SUBMITTED', 'PENDING', 'UNDER_REVIEW'].includes(e.status)).length
+    const returned = orgEvents.filter((e) => ['RETURNED', 'RETURNED_FOR_REVISION', 'CANCELLED'].includes(e.status)).length
     return { total, published, inReview, returned }
-  }, [officerEvents])
+  }, [orgEvents])
 
   const visibleEvents = useMemo(() => {
-    return officerEvents
+    return orgEvents
       .filter((event) => {
         if (statusFilter === 'PUBLISHED') return ['PUBLISHED', 'APPROVED', 'ONGOING'].includes(event.status)
         if (statusFilter === 'IN_REVIEW') return ['SUBMITTED', 'PENDING', 'UNDER_REVIEW'].includes(event.status)
-        if (statusFilter === 'RETURNED') return ['RETURNED', 'RETURNED_FOR_REVISION'].includes(event.status)
+        if (statusFilter === 'RETURNED') return ['RETURNED', 'RETURNED_FOR_REVISION', 'CANCELLED'].includes(event.status)
         if (statusFilter === 'DRAFT') return event.status === 'DRAFT'
         return true
       })
       .filter((event) => matchesQuery(search, event.title, event.date, event.status, event.location, event.venue))
-  }, [officerEvents, search, statusFilter])
+  }, [orgEvents, search, statusFilter])
 
   const columns = [
     {
@@ -67,7 +72,7 @@ export default function OfficerEventsPage() {
     {
       key: 'actions',
       label: 'Officer actions',
-      render: (_, event) => event.status === 'RETURNED_FOR_REVISION' ? (
+      render: (_, event) => ['RETURNED_FOR_REVISION', 'CANCELLED', 'DRAFT'].includes(event.status) ? (
         <Link className="button button-secondary" to={`/officer/events/create?edit=${encodeURIComponent(event.id)}`}>
           Edit and resubmit
         </Link>

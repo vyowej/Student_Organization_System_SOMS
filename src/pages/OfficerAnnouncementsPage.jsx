@@ -27,7 +27,7 @@ function dateLabel(value) {
 
 export default function OfficerAnnouncementsPage() {
   const {
-    adminOrganizations,
+    adminOrganizations = [],
     captureUndo,
     currentUser,
     saveOfficerAnnouncement,
@@ -35,7 +35,7 @@ export default function OfficerAnnouncementsPage() {
     deleteOfficerAnnouncement,
   } = useOutletContext()
   const { showToast } = useToast()
-  const organization = adminOrganizations.find((item) => item.id === currentUser?.organizationId)
+  const organization = adminOrganizations.find((item) => String(item.id) === String(currentUser?.organizationId)) || adminOrganizations[0]
   const announcements = organization?.announcements ?? emptyAnnouncements
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
@@ -74,7 +74,7 @@ export default function OfficerAnnouncementsPage() {
     setEditorOpen(true)
   }
 
-  function save(status, confirmed = false) {
+  async function save(status, confirmed = false) {
     if (!form.title.trim() || !form.content.trim()) {
       setFormError('Title and content are required.')
       return
@@ -85,8 +85,9 @@ export default function OfficerAnnouncementsPage() {
     }
     setPublishConfirmOpen(false)
     const undo = captureUndo()
-    const saved = saveOfficerAnnouncement({
+    const saved = await saveOfficerAnnouncement({
       id: editingAnnouncement?.id,
+      organizationId: organization?.id,
       title: form.title,
       content: form.content,
       status,
@@ -101,13 +102,13 @@ export default function OfficerAnnouncementsPage() {
       : status === 'DRAFT' ? 'Announcement saved as draft.' : 'Announcement published successfully.', 'success', undoAction(undo))
   }
 
-  function performConfirmedAction() {
+  async function performConfirmedAction() {
     if (!confirmAction) return
     const { action, announcement } = confirmAction
     const undo = captureUndo()
     const completed = action === 'archive'
-      ? archiveOfficerAnnouncement(announcement.id)
-      : deleteOfficerAnnouncement(announcement.id)
+      ? await archiveOfficerAnnouncement(announcement.id)
+      : await deleteOfficerAnnouncement(announcement.id)
     if (!completed) {
       showToast(`Unable to ${action} this announcement.`, 'error')
       return

@@ -6,8 +6,9 @@
  * to the configured PostgreSQL database.
  */
 const fs = require('fs');
+const path = require('path');
 const { Pool } = require('pg');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { SCHEMA_PATH: DB_SCHEMA_PATH } = require('./db');
 
 /**
@@ -56,6 +57,20 @@ async function initializeDatabase() {
     console.log('Database is now fully linked and synchronized with backend.');
     console.log('----------------------------------------------------');
   } catch (err) {
+    if (err.code === '42710' || err.code === '42P07') {
+      console.log('[INFO] Schema types/tables already exist in PostgreSQL. Verifying linked tables...');
+      const tableCheck = await client.query(
+        `SELECT COUNT(*)::int AS table_count
+         FROM information_schema.tables
+         WHERE table_schema = 'public'`
+      );
+      console.log(`[SUCCESS] Verified ${tableCheck.rows[0].table_count} public tables in "${dbConfig.database}".`);
+      console.log('----------------------------------------------------');
+      console.log('Database is already initialized and linked with backend.');
+      console.log('----------------------------------------------------');
+      return;
+    }
+
     console.error('\n[DATABASE ERROR] Failed to initialize database:');
     console.error(err.message);
 
@@ -67,8 +82,6 @@ async function initializeDatabase() {
       console.error('\nHint: Could not connect to PostgreSQL. Ensure PostgreSQL server is running.');
     } else if (err.code === '28P01') {
       console.error('\nHint: Authentication failed. Verify DB_USER and DB_PASSWORD in backend/.env.');
-    } else if (err.code === '42710' || err.code === '42P07') {
-      console.error('\nHint: Some types or tables already exist. If you want a fresh start, drop the database or schema first.');
     }
     process.exit(1);
   } finally {
@@ -88,4 +101,3 @@ module.exports = {
   DB_SCHEMA_PATH,
   initializeDatabase,
 };
-

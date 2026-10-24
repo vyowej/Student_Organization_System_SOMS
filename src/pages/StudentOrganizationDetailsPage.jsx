@@ -9,7 +9,6 @@ import ProfileCover from '../components/layout/ProfileCover.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import Icon from '../components/ui/Icon.jsx'
 import { getOrganizationEvents, studentOrganizations } from '../data/studentOrganizations.js'
-import { formatDisplayName } from '../data/displayName.js'
 
 const statusLabels = {
   NOT_MEMBER: 'NOT A MEMBER',
@@ -44,6 +43,13 @@ function getInitials(name = '') {
 }
 
 function parseEventDate(dateStr = '') {
+  const parsed = dateStr ? new Date(dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`) : null
+  if (parsed && !Number.isNaN(parsed.getTime())) {
+    return {
+      month: parsed.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
+      day: String(parsed.getDate()),
+    }
+  }
   const parts = dateStr.split(' ')
   if (parts.length >= 2) {
     const month = parts[0].slice(0, 3).toUpperCase()
@@ -55,18 +61,27 @@ function parseEventDate(dateStr = '') {
 
 export default function StudentOrganizationDetailsPage() {
   const { id } = useParams()
-  const { adminOrganizations = [], captureUndo, officerMembers = [], studentMemberships = [], submitMembershipApplication } = useOutletContext()
+  const {
+    adminOrganizations = [],
+    studentOrganizations: contextStudentOrganizations = [],
+    officerEvents = [],
+    adviserDocuments = [],
+    captureUndo,
+    getMembershipForOrganization,
+    submitMembershipApplication,
+  } = useOutletContext()
   const { showToast } = useToast()
-  
+
   const [activeTab, setActiveTab] = useState('overview')
   const [applicationOpen, setApplicationOpen] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState(null)
 
-  const managedOrganization = adminOrganizations.find((item) => item.id === id)
+  const managedOrganization = adminOrganizations.find((item) => String(item.id) === String(id))
+    ?? contextStudentOrganizations.find((item) => String(item.id) === String(id))
   const organization = managedOrganization
     ? managedOrganization.status === 'ACTIVE' ? managedOrganization : null
-    : studentOrganizations.find((item) => item.id === id)
-  const membership = studentMemberships.find((item) => item.organizationId === id)
+    : studentOrganizations.find((item) => String(item.id) === String(id))
+  const membership = getMembershipForOrganization ? getMembershipForOrganization(id) : null
   const status = membership?.status ?? 'NOT_MEMBER'
 
   if (!organization) {
@@ -86,23 +101,32 @@ export default function StudentOrganizationDetailsPage() {
     )
   }
 
-  const events = getOrganizationEvents(organization)
-  const visibleOfficers = organization.id === 'computer-society' && officerMembers.length
-    ? officerMembers
-      .filter((member) => member.status === 'ACTIVE' && member.position !== 'General Member' && member.position !== 'Committee Head')
-      .map((member) => ({ name: formatDisplayName(member), position: member.position }))
-    : organization.officers ?? []
+  const events = getOrganizationEvents(organization, officerEvents)
+  const visibleOfficers = (organization.officers ?? []).map((o) => ({
+    name: o.name,
+    position: o.role || o.position,
+  }))
+  const orgDocuments = organization.documents?.length
+    ? organization.documents
+    : adviserDocuments
+        .filter((d) => String(d.organizationId) === String(organization.id) && d.status === 'APPROVED')
+        .map((d) => d.title)
 
   const publishedAnnouncements = (organization.announcements ?? []).filter((announcement) => (
     !announcement.status || announcement.status === 'PUBLISHED'
   ))
   const canApply = status === 'NOT_MEMBER' || status === 'REJECTED' || status === 'INACTIVE'
+  const activeMembersCount = organization.activeMembers ?? organization.memberCount ?? 0
 
-  function confirmApplication() {
+  async function confirmApplication() {
     const undo = captureUndo()
-    submitMembershipApplication(organization.id)
+    const result = await submitMembershipApplication(organization)
     setApplicationOpen(false)
-    showToast('Membership application submitted successfully.', 'success', undoAction(undo))
+    if (result?.ok) {
+      showToast('Membership application submitted successfully.', 'success', undoAction(undo))
+    } else {
+      showToast(result?.error || 'Unable to submit membership application.', 'error')
+    }
   }
 
   const tabs = [
@@ -111,7 +135,7 @@ export default function StudentOrganizationDetailsPage() {
     { key: 'announcements', label: 'Announcements', count: publishedAnnouncements.length, active: activeTab === 'announcements', onClick: () => setActiveTab('announcements') },
     { key: 'events', label: 'Events', count: events.length, active: activeTab === 'events', onClick: () => setActiveTab('events') },
     { key: 'officers', label: 'Officers', count: visibleOfficers.length, active: activeTab === 'officers', onClick: () => setActiveTab('officers') },
-    { key: 'documents', label: 'Documents', count: organization.documents?.length ?? 0, active: activeTab === 'documents', onClick: () => setActiveTab('documents') },
+    { key: 'documents', label: 'Documents', count: orgDocuments.length, active: activeTab === 'documents', onClick: () => setActiveTab('documents') },
   ]
 
   const actionControls = (
@@ -165,7 +189,7 @@ export default function StudentOrganizationDetailsPage() {
         showCover={false}
         subtitle={
           <>
-            {organization.activeMembers} active members <i aria-hidden="true">·</i> Faculty Adviser: <strong>{organization.adviser}</strong>
+            {activeMembersCount} active members <i aria-hidden="true">·</i> Faculty Adviser: <strong>{organization.adviser}</strong>
           </>
         }
         tabs={tabs}
@@ -174,7 +198,6 @@ export default function StudentOrganizationDetailsPage() {
       />
 
       <div className="fb-body">
-        {/* Left Sidebar */}
         <aside aria-label="Organization Information" className="fb-side">
           <Card className="fb-card">
             <div className="fb-card-heading">
@@ -188,7 +211,7 @@ export default function StudentOrganizationDetailsPage() {
               </li>
               <li>
                 <span aria-hidden="true"><Icon name="members" /></span>
-                <div>Active Members: <strong>{organization.activeMembers} students</strong></div>
+                <div>Active Members: <strong>{activeMembersCount} students</strong></div>
               </li>
               <li>
                 <span aria-hidden="true"><Icon name="adviser" /></span>
@@ -203,12 +226,14 @@ export default function StudentOrganizationDetailsPage() {
             <div className="student-mission-vision-grid">
               <div className="student-mission-box">
                 <span className="student-mv-label">Mission</span>
-                <p className="student-mv-text">{organization.mission}</p>
+                <p className="student-mv-text">{organization.mission || organization.description}</p>
               </div>
-              <div className="student-vision-box">
-                <span className="student-mv-label">Vision</span>
-                <p className="student-mv-text">{organization.vision}</p>
-              </div>
+              {organization.vision && (
+                <div className="student-vision-box">
+                  <span className="student-mv-label">Vision</span>
+                  <p className="student-mv-text">{organization.vision}</p>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -239,15 +264,15 @@ export default function StudentOrganizationDetailsPage() {
           <Card className="fb-card">
             <div className="fb-card-heading">
               <h2>Public Documents</h2>
-              {organization.documents?.length > 2 && (
+              {orgDocuments.length > 2 && (
                 <button className="fb-link-button" onClick={() => setActiveTab('documents')} type="button">
                   See all
                 </button>
               )}
             </div>
-            {organization.documents?.length ? (
+            {orgDocuments.length ? (
               <div className="student-documents-stack">
-                {organization.documents.map((doc) => (
+                {orgDocuments.map((doc) => (
                   <div className="student-doc-card" key={doc}>
                     <span aria-hidden="true" className="student-doc-icon"><Icon name="document" size={16} /></span>
                     <div className="student-doc-info">
@@ -270,10 +295,7 @@ export default function StudentOrganizationDetailsPage() {
           </Card>
         </aside>
 
-        {/* Right Main Feed */}
         <div className="fb-feed">
-
-
           {status === 'PENDING' && (
             <div className="student-membership-callout status-pending">
               <div className="student-membership-callout-icon" aria-hidden="true">
@@ -312,10 +334,8 @@ export default function StudentOrganizationDetailsPage() {
             </div>
           )}
 
-          {/* Tab: Overview (Posts / Feed Highlights) */}
           {activeTab === 'overview' && (
             <>
-              {/* Recent Announcements */}
               <Card className="fb-card">
                 <div className="fb-card-heading">
                   <h2>Recent Announcements</h2>
@@ -331,7 +351,7 @@ export default function StudentOrganizationDetailsPage() {
                       <article className="student-announcement-card" key={announcement.id ?? announcement.title ?? index}>
                         <div className="student-announcement-header">
                           <div className="student-announcement-meta">
-                            <span aria-hidden="true" className="fb-mini-avatar">{organization.acronym.slice(0, 3)}</span>
+                            <span aria-hidden="true" className="fb-mini-avatar">{(organization.acronym || organization.name).slice(0, 3)}</span>
                             <div>
                               <strong>{organization.name}</strong>
                               <time>{announcement.datePosted ?? announcement.date}</time>
@@ -351,7 +371,6 @@ export default function StudentOrganizationDetailsPage() {
                 )}
               </Card>
 
-              {/* Upcoming Events */}
               <Card className="fb-card">
                 <div className="fb-card-heading">
                   <h2>Upcoming Events</h2>
@@ -393,7 +412,6 @@ export default function StudentOrganizationDetailsPage() {
             </>
           )}
 
-          {/* Tab: About */}
           {activeTab === 'about' && (
             <Card className="fb-card">
               <div className="fb-card-heading">
@@ -402,16 +420,6 @@ export default function StudentOrganizationDetailsPage() {
               <p className="fb-intro-text" style={{ textAlign: 'left', marginBottom: '20px' }}>
                 {organization.description}
               </p>
-              <div className="student-mission-vision-grid" style={{ marginBottom: '20px' }}>
-                <div className="student-mission-box">
-                  <span className="student-mv-label">Our Mission</span>
-                  <p className="student-mv-text" style={{ fontSize: '14px', lineHeight: 1.6 }}>{organization.mission}</p>
-                </div>
-                <div className="student-vision-box">
-                  <span className="student-mv-label">Our Vision</span>
-                  <p className="student-mv-text" style={{ fontSize: '14px', lineHeight: 1.6 }}>{organization.vision}</p>
-                </div>
-              </div>
               <ul className="fb-intro-list" style={{ marginTop: '16px' }}>
                 <li>
                   <span aria-hidden="true"><Icon name="category" /></span>
@@ -419,17 +427,16 @@ export default function StudentOrganizationDetailsPage() {
                 </li>
                 <li>
                   <span aria-hidden="true"><Icon name="members" /></span>
-                  <div>Active Membership: <strong>{organization.activeMembers} registered members</strong></div>
+                  <div>Active Membership: <strong>{activeMembersCount} registered members</strong></div>
                 </li>
                 <li>
                   <span aria-hidden="true"><Icon name="adviser" /></span>
-                  <div>Faculty Adviser: <strong>{organization.adviser}</strong> (Student Affairs & Services Division verified)</div>
+                  <div>Faculty Adviser: <strong>{organization.adviser}</strong></div>
                 </li>
               </ul>
             </Card>
           )}
 
-          {/* Tab: Announcements */}
           {activeTab === 'announcements' && (
             <Card className="fb-card">
               <div className="fb-card-heading">
@@ -441,7 +448,7 @@ export default function StudentOrganizationDetailsPage() {
                     <article className="student-announcement-card" key={announcement.id ?? announcement.title ?? index}>
                       <div className="student-announcement-header">
                         <div className="student-announcement-meta">
-                          <span aria-hidden="true" className="fb-mini-avatar">{organization.acronym.slice(0, 3)}</span>
+                          <span aria-hidden="true" className="fb-mini-avatar">{(organization.acronym || organization.name).slice(0, 3)}</span>
                           <div>
                             <strong>{organization.name}</strong>
                             <time>{announcement.datePosted ?? announcement.date}</time>
@@ -462,7 +469,6 @@ export default function StudentOrganizationDetailsPage() {
             </Card>
           )}
 
-          {/* Tab: Events */}
           {activeTab === 'events' && (
             <Card className="fb-card">
               <div className="fb-card-heading">
@@ -499,7 +505,6 @@ export default function StudentOrganizationDetailsPage() {
             </Card>
           )}
 
-          {/* Tab: Officers */}
           {activeTab === 'officers' && (
             <Card className="fb-card">
               <div className="fb-card-heading">
@@ -524,15 +529,14 @@ export default function StudentOrganizationDetailsPage() {
             </Card>
           )}
 
-          {/* Tab: Documents */}
           {activeTab === 'documents' && (
             <Card className="fb-card">
               <div className="fb-card-heading">
-                <h2>Public Documents & Records ({organization.documents?.length ?? 0})</h2>
+                <h2>Public Documents & Records ({orgDocuments.length})</h2>
               </div>
-              {organization.documents?.length ? (
+              {orgDocuments.length ? (
                 <div className="student-documents-stack">
-                  {organization.documents.map((doc) => (
+                  {orgDocuments.map((doc) => (
                     <div className="student-doc-card" key={doc}>
                       <span aria-hidden="true" className="student-doc-icon"><Icon name="document" size={16} /></span>
                       <div className="student-doc-info">
@@ -557,7 +561,6 @@ export default function StudentOrganizationDetailsPage() {
         </div>
       </div>
 
-      {/* Join Application Modal */}
       <Modal
         onClose={() => setApplicationOpen(false)}
         open={applicationOpen}
@@ -578,7 +581,6 @@ export default function StudentOrganizationDetailsPage() {
         </div>
       </Modal>
 
-      {/* Document View Modal */}
       <Modal
         onClose={() => setSelectedDoc(null)}
         open={Boolean(selectedDoc)}
@@ -598,22 +600,12 @@ export default function StudentOrganizationDetailsPage() {
               <dd>Public Record</dd>
             </div>
             <div className="student-doc-preview-item">
-              <dt>Academic Year</dt>
-              <dd>2026 – 2027</dd>
-            </div>
-            <div className="student-doc-preview-item">
               <dt>Status</dt>
               <dd>Accredited & On File</dd>
             </div>
           </dl>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
             <Button onClick={() => setSelectedDoc(null)} variant="secondary">Close</Button>
-            <Button onClick={() => {
-              showToast(`Downloading "${selectedDoc}" preview...`, 'success')
-              setSelectedDoc(null)
-            }}>
-              Download PDF
-            </Button>
           </div>
         </div>
       </Modal>

@@ -16,10 +16,9 @@ function PasswordVisibilityIcon({ visible }) {
   return <Icon name={visible ? 'eye-off' : 'eye'} size={20} />
 }
 
-
 function AuthenticationPage({ page }) {
   const { login, registerStudent } = useAuth()
-  const { addRegisteredStudent } = usePortalData()
+  const { academicPrograms = [], refreshPortalData } = usePortalData()
   const { showToast } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
@@ -31,6 +30,7 @@ function AuthenticationPage({ page }) {
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [registrationStep, setRegistrationStep] = useState(1)
   const [form, setForm] = useState({
     lastName: '',
@@ -41,10 +41,15 @@ function AuthenticationPage({ page }) {
     password: '',
     confirmPassword: '',
     program: '',
+    programId: '',
     yearLevel: '',
   })
 
-  function handleLogin(event) {
+  const programOptions = academicPrograms.length > 0
+    ? academicPrograms.map((p) => ({ id: p.id, label: `${p.acronym} — ${p.name}`, value: p.acronym }))
+    : ['BSCS', 'BSIT', 'BSBA', 'BSED', 'BSA', 'BSHM'].map((code) => ({ id: code, label: code, value: code }))
+
+  async function handleLogin(event) {
     event.preventDefault()
     setError('')
     setSuccess('')
@@ -56,13 +61,16 @@ function AuthenticationPage({ page }) {
       setError('Use your WMSU email address ending in @wmsu.edu.ph.')
       return
     }
-    const result = login(identifier, password, rememberMe)
+    setSubmitting(true)
+    const result = await login(identifier, password, rememberMe)
+    setSubmitting(false)
     if (!result.ok) {
       setError(result.error)
       return
     }
+    await refreshPortalData()
     showToast('Signed in successfully.', 'success')
-    navigate(dashboardByRole[result.user.role], { replace: true })
+    navigate(result.redirectTo || dashboardByRole[result.user.role] || '/student/dashboard', { replace: true })
   }
 
   function validateRegistrationStep(step) {
@@ -98,22 +106,25 @@ function AuthenticationPage({ page }) {
     return true
   }
 
-  function handleRegister(event) {
+  async function handleRegister(event) {
     event.preventDefault()
     if (registrationStep === 1) {
       if (validateRegistrationStep(1)) setRegistrationStep(2)
       return
     }
     if (!validateRegistrationStep(registrationStep)) return
-    const result = registerStudent(form)
+    setSubmitting(true)
+    const matchedProg = academicPrograms.find((p) => p.acronym === form.program || String(p.id) === String(form.programId))
+    const result = await registerStudent({
+      ...form,
+      programId: matchedProg?.id ?? null,
+    })
+    setSubmitting(false)
     if (!result.ok) {
       setError(result.error)
       return
     }
-    if (!addRegisteredStudent(result.user)) {
-      setError('The account was created, but its student directory profile could not be added.')
-      return
-    }
+    await refreshPortalData()
     showToast('Account created successfully.', 'success')
     navigate('/login', { replace: true, state: { registered: true } })
   }
@@ -165,10 +176,14 @@ function AuthenticationPage({ page }) {
             <Link to="/forgot-password">Forgot Password?</Link>
           </div>
           {error && <p className="auth-error" role="alert">{error}</p>}
+<<<<<<< HEAD
           <Button className="auth-submit" type="submit">Login</Button>
           {import.meta.env.DEV && (
             <p className="auth-test-accounts">Development demo accounts are available for preview and testing.</p>
           )}
+=======
+          <Button className="auth-submit" disabled={submitting} type="submit">{submitting ? 'Signing in...' : 'Login'}</Button>
+>>>>>>> c06a8d14c816a81be3dd260c00cca8ac0058ef1b
         </form>
       )}
       {page === 'register' && (
@@ -198,13 +213,13 @@ function AuthenticationPage({ page }) {
               <label className="form-field" htmlFor="register-program">Course / Program
                 <select id="register-program" onChange={(event) => setForm((current) => ({ ...current, program: event.target.value }))} value={form.program}>
                   <option value="">Select program</option>
-                  {['BSCS', 'BSIT', 'BSBA', 'BSED', 'BSA', 'BSHM', 'Other'].map((program) => <option key={program}>{program}</option>)}
+                  {programOptions.map((prog) => <option key={prog.id} value={prog.value}>{prog.label}</option>)}
                 </select>
               </label>
               <label className="form-field" htmlFor="register-year-level">Year Level
                 <select id="register-year-level" onChange={(event) => setForm((current) => ({ ...current, yearLevel: event.target.value }))} value={form.yearLevel}>
                   <option value="">Select year level</option>
-                  {['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'].map((year) => <option key={year}>{year}</option>)}
+                  {['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year', '6th Year'].map((year) => <option key={year} value={year}>{year}</option>)}
                 </select>
               </label>
               <div className="auth-password-field">
@@ -222,7 +237,7 @@ function AuthenticationPage({ page }) {
             {registrationStep === 2 && <Button onClick={() => { setError(''); setRegistrationStep(1) }} variant="secondary">Back</Button>}
             {registrationStep === 1
               ? <Button className="auth-submit" type="submit">Continue</Button>
-              : <Button className="auth-submit" type="submit">Create Account</Button>}
+              : <Button className="auth-submit" disabled={submitting} type="submit">{submitting ? 'Creating Account...' : 'Create Account'}</Button>}
           </div>
         </form>
       )}

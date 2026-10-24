@@ -35,7 +35,8 @@ function SettingsSection({ children, description, title, variant = '' }) {
 
 export default function OfficerSettingsPage() {
   const {
-    adminOrganizations,
+    adminOrganizations = [],
+    advisers = [],
     captureUndo,
     currentUser,
     adminSettings,
@@ -46,7 +47,7 @@ export default function OfficerSettingsPage() {
     submitOfficerOrganizationRequest,
   } = useOutletContext()
   const { showToast } = useToast()
-  const organization = adminOrganizations.find((item) => item.id === currentUser?.organizationId)
+  const organization = adminOrganizations.find((item) => String(item.id) === String(currentUser?.organizationId)) || adminOrganizations[0]
   const [organizationForm, setOrganizationForm] = useState(null)
   const [contactForm, setContactForm] = useState(null)
   const [logoOpen, setLogoOpen] = useState(false)
@@ -54,6 +55,7 @@ export default function OfficerSettingsPage() {
   const [pendingLogo, setPendingLogo] = useState('')
   const [logoError, setLogoError] = useState('')
   const [requestType, setRequestType] = useState('')
+  const [requestedAdviserId, setRequestedAdviserId] = useState('')
   const [requestReason, setRequestReason] = useState('')
   const [requestError, setRequestError] = useState('')
   const [preferences, setPreferences] = useState(null)
@@ -99,7 +101,7 @@ export default function OfficerSettingsPage() {
     setContactForm((current) => ({ ...(current ?? savedContactForm), [key]: value }))
   }
 
-  function saveOrganization(event, confirmed = false) {
+  async function saveOrganization(event, confirmed = false) {
     event.preventDefault()
     const values = organizationForm ?? savedOrganizationForm
     if (Object.values(values).some((value) => !value.trim())) {
@@ -109,7 +111,7 @@ export default function OfficerSettingsPage() {
     if (!confirmed) { setOrganizationError(''); setSaveConfirm('organization'); return }
     setSaveConfirm('')
     const undo = captureUndo()
-    if (!updateOfficerOrganizationProfile(values)) {
+    if (!(await updateOfficerOrganizationProfile(values))) {
       setOrganizationError('Unable to save organization information. Verify your officer access and try again.')
       return
     }
@@ -118,7 +120,7 @@ export default function OfficerSettingsPage() {
     showToast('Organization information saved.', 'success', undoAction(undo))
   }
 
-  function saveContact(event, confirmed = false) {
+  async function saveContact(event, confirmed = false) {
     event.preventDefault()
     const values = contactForm ?? savedContactForm
     if (values.officialEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.officialEmail)) {
@@ -136,7 +138,7 @@ export default function OfficerSettingsPage() {
     if (!confirmed) { setContactError(''); setSaveConfirm('contact'); return }
     setSaveConfirm('')
     const undo = captureUndo()
-    if (!updateOfficerOrganizationContact(values)) {
+    if (!(await updateOfficerOrganizationContact(values))) {
       setContactError('Unable to save contact information. Try again.')
       return
     }
@@ -170,6 +172,17 @@ export default function OfficerSettingsPage() {
       event.target.value = ''
       return
     }
+
+    // =========================================================================
+    // [GOOGLE DRIVE API PLACEHOLDER - ORGANIZATION LOGO IMAGE SELECTION]
+    // Insert Google Drive API upload logic here if you want to upload `file`
+    // directly to a Google Drive folder and store the returned `webContentLink`
+    // or `https://drive.google.com/uc?id=${driveFileId}` in `pendingLogo`.
+    //
+    //   ...
+    //
+    // =========================================================================
+
     const reader = new FileReader()
     reader.onload = () => {
       if (typeof reader.result === 'string') setPendingLogo(reader.result)
@@ -179,9 +192,9 @@ export default function OfficerSettingsPage() {
     reader.readAsDataURL(file)
   }
 
-  function commitLogo() {
+  async function commitLogo() {
     const undo = captureUndo()
-    if (!pendingLogo || !updateOfficerOrganizationLogo(pendingLogo)) {
+    if (!pendingLogo || !(await updateOfficerOrganizationLogo(pendingLogo))) {
       setLogoError('Unable to save the logo. Choose another image and try again.')
       return
     }
@@ -190,25 +203,30 @@ export default function OfficerSettingsPage() {
     showToast('Organization logo updated.', 'success', undoAction(undo))
   }
 
-  function removeLogo() {
+  async function removeLogo() {
     const undo = captureUndo()
     setRemoveLogoOpen(false)
-    if (!updateOfficerOrganizationLogo(null)) {
+    if (!(await updateOfficerOrganizationLogo(null))) {
       showToast('Unable to remove the organization logo.', 'error')
       return
     }
     showToast('Organization logo removed.', 'success', undoAction(undo))
   }
 
-  function submitRequest(event) {
+  async function submitRequest(event) {
     event.preventDefault()
     if (!requestReason.trim()) {
       setRequestError('A reason is required to submit this request.')
       return
     }
     const undo = captureUndo()
-    if (!submitOfficerOrganizationRequest(requestType, requestReason)) {
-      setRequestError('Unable to submit the request. Please try again.')
+    const ok = await submitOfficerOrganizationRequest(
+      requestType,
+      requestReason,
+      requestedAdviserId || advisers[0]?.adviser_id
+    )
+    if (!ok) {
+      setRequestError('Unable to submit the request. Ensure at least one faculty adviser exists in the database and no pending request is already active.')
       return
     }
     setRequestType('')
@@ -285,9 +303,9 @@ export default function OfficerSettingsPage() {
           <div className="officer-settings-adviser">
             <span aria-hidden="true" className="officer-settings-adviser-avatar">{organization.adviser?.slice(0, 1) ?? 'A'}</span>
             <div><strong>{organization.adviser || 'No adviser assigned'}</strong><span>Assigned Faculty Adviser</span></div>
-            <Badge tone={organization.adviser ? 'success' : 'warning'}>{organization.adviser ? organization.adviserStatus ?? 'ACTIVE' : 'UNASSIGNED'}</Badge>
+            <Badge tone={organization.adviser && organization.adviser !== 'Unassigned' ? 'success' : 'warning'}>{organization.adviser && organization.adviser !== 'Unassigned' ? organization.adviserStatus ?? 'ACTIVE' : 'UNASSIGNED'}</Badge>
           </div>
-          <Button onClick={() => { setRequestType('ADVISER_CHANGE'); setRequestReason(''); setRequestError('') }} variant="secondary">Request Adviser Change</Button>
+          <Button onClick={() => { setRequestType('ADVISER_CHANGE'); setRequestedAdviserId(advisers[0]?.adviser_id || ''); setRequestReason(''); setRequestError('') }} variant="secondary">Request Adviser Change</Button>
         </SettingsSection>
       </div>
 
@@ -340,7 +358,7 @@ export default function OfficerSettingsPage() {
           <span aria-hidden="true" className="officer-settings-role-icon">
             <Icon name="shield" size={18} />
           </span>
-          <div><strong>Organization Officer</strong><small>{currentUser?.organizationId === organization.id ? organization.name : ''}</small></div>
+          <div><strong>Organization Officer</strong><small>{String(currentUser?.organizationId) === String(organization.id) ? organization.name : ''}</small></div>
           <Badge tone="crimson">ROLE</Badge>
         </div>
         <ul className="officer-settings-permission-list">
@@ -364,7 +382,7 @@ export default function OfficerSettingsPage() {
         <div className="officer-settings-logo-upload">
           <div className="officer-settings-logo-frame"><OrganizationLogo acronym={organization.acronym} image={pendingLogo || organization.logo} /></div>
           <label className="officer-settings-file-label">Choose image<input accept="image/*" onChange={chooseLogo} type="file" /></label>
-          <small>Select an image file up to 1.5 MB. Your existing logo stays in place unless you save the replacement.</small>
+          <small>Select an image file up to 1.5 MB. Saves to `organizations.logo` (supports Google Drive API URL or image data).</small>
         </div>
         {logoError && <p className="auth-error" role="alert">{logoError}</p>}
         <div className="officer-settings-actions"><Button onClick={() => { setLogoOpen(false); setPendingLogo(''); setLogoError('') }} variant="secondary">Cancel</Button><Button disabled={!pendingLogo} onClick={commitLogo}>Save Logo</Button></div>
@@ -373,8 +391,20 @@ export default function OfficerSettingsPage() {
       <Modal onClose={() => { setRequestType(''); setRequestReason(''); setRequestError('') }} open={Boolean(requestType)} title={requestType === 'ADVISER_CHANGE' ? 'Request Adviser Change' : 'Request Organization Deactivation'}>
         <form className="officer-settings-request-form" onSubmit={submitRequest}>
           <p>{requestType === 'ADVISER_CHANGE'
-            ? 'Changing the assigned faculty adviser requires Student Affairs/Admin approval. This request will not change your adviser immediately.'
+            ? 'Changing the assigned faculty adviser requires Student Affairs/Admin approval (`adviser_change_requests` table).'
             : 'Organization deactivation requires Student Affairs/Admin approval. Submitting this request will not immediately deactivate or delete your organization.'}</p>
+          {requestType === 'ADVISER_CHANGE' && advisers.length > 0 && (
+            <label>
+              <span>Requested Faculty Adviser</span>
+              <select onChange={(event) => setRequestedAdviserId(event.target.value)} value={requestedAdviserId}>
+                {advisers.map((adv) => (
+                  <option key={adv.adviser_id} value={adv.adviser_id}>
+                    {adv.last_name}, {adv.first_name} ({adv.department_name || 'Faculty'})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             <span>Reason for request</span>
             <textarea onChange={(event) => setRequestReason(event.target.value)} required rows="5" value={requestReason} />

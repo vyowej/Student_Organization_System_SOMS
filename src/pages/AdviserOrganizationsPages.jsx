@@ -6,7 +6,6 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
-import { adviserAssignedOrganizations } from '../data/adviserPortal.js'
 import { formatDisplayName } from '../data/displayName.js'
 
 function adviserInitials(name = '') {
@@ -136,11 +135,15 @@ function CalendarOfEvents({ events, organizationName }) {
 }
 
 export function AdviserOrganizationsPage() {
-  const { adminOrganizations, officerEvents, officerMemberCount } = useOutletContext()
+  const { adminOrganizations = [], currentUser, officerEvents = [] } = useOutletContext()
   const [search, setSearch] = useState('')
-  const assigned = adviserAssignedOrganizations
-    .map((item) => ({ ...item, ...adminOrganizations.find((entry) => entry.id === item.id) }))
-    .filter((item) => matchesQuery(search, item.name, item.acronym, item.category, item.adviser))
+  const assignedOrgs = adminOrganizations.filter((org) => {
+    if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
+    if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id))) return true
+    return false
+  })
+  const baseOrgs = assignedOrgs.length > 0 ? assignedOrgs : adminOrganizations
+  const assigned = baseOrgs.filter((item) => matchesQuery(search, item.name, item.acronym, item.category, item.adviser))
 
   return (
     <div className="adviser-page">
@@ -153,7 +156,7 @@ export function AdviserOrganizationsPage() {
       {assigned.length === 0 && <EmptyState description="No assigned organizations match your search." title="No organizations found" />}
       <div className="adviser-organization-grid">
         {assigned.map((organization) => {
-          const events = officerEvents.filter((event) => event.organizationId === organization.id)
+          const events = officerEvents.filter((event) => String(event.organizationId) === String(organization.id))
           return (
             <Card className="adviser-organization-card" key={organization.id}>
               <div className="adviser-org-card-top">
@@ -168,7 +171,7 @@ export function AdviserOrganizationsPage() {
                 <div><small>Faculty adviser</small><strong>{organization.adviser}</strong></div>
               </div>
               <div className="adviser-org-facts">
-                <span><strong>{officerMemberCount}</strong> Members</span>
+                <span><strong>{organization.memberCount ?? 0}</strong> Members</span>
                 <span><strong>{events.filter((event) => ['APPROVED', 'PUBLISHED'].includes(event.status)).length}</strong> Upcoming events</span>
               </div>
               <Link className="button button-primary" to={`/adviser/organizations/${organization.id}`}>View Organization</Link>
@@ -182,11 +185,8 @@ export function AdviserOrganizationsPage() {
 
 export function AdviserOrganizationDetailsPage() {
   const { id } = useParams()
-  const { adminOrganizations, adviserActivity, adviserDocuments, officerEvents, officerMemberCount, officerMembers } = useOutletContext()
-  const assignedOrganization = adviserAssignedOrganizations.find((item) => item.id === id)
-  const organization = assignedOrganization
-    ? { ...assignedOrganization, ...adminOrganizations.find((item) => item.id === id) }
-    : null
+  const { adminOrganizations = [], adviserActivity = [], adviserDocuments = [], officerEvents = [], officerMembers = [] } = useOutletContext()
+  const organization = adminOrganizations.find((item) => String(item.id) === String(id))
 
   if (!organization) {
     return (
@@ -197,11 +197,11 @@ export function AdviserOrganizationDetailsPage() {
     )
   }
 
-  const members = officerMembers.filter((member) => member.organizationId === id && member.status === 'ACTIVE')
+  const members = officerMembers.filter((member) => String(member.organizationId) === String(id) && member.status === 'ACTIVE')
   const officers = members.filter((member) => member.position !== 'General Member')
   const generalMembers = members.filter((member) => member.position === 'General Member')
-  const events = officerEvents.filter((event) => event.organizationId === id)
-  const documents = adviserDocuments.filter((document) => document.organizationId === id)
+  const events = officerEvents.filter((event) => String(event.organizationId) === String(id))
+  const documents = adviserDocuments.filter((document) => String(document.organizationId) === String(id))
 
   return (
     <div className="adviser-page">
@@ -217,7 +217,7 @@ export function AdviserOrganizationDetailsPage() {
           <p>{organization.name} is assigned to you for faculty guidance and proposal review.</p>
         </div>
         <div className="adviser-profile-meta">
-          <span className="adviser-profile-count"><strong>{officerMemberCount}</strong> active members</span>
+          <span className="adviser-profile-count"><strong>{members.length}</strong> active members</span>
           <div className="adviser-org-adviser">
             <span aria-hidden="true">{adviserInitials(organization.adviser)}</span>
             <div><small>Faculty adviser</small><strong>{organization.adviser}</strong></div>
@@ -236,12 +236,12 @@ export function AdviserOrganizationDetailsPage() {
         <Card className="adviser-panel adviser-detail-wide">
           <h2>General Members</h2>
           {generalMembers.length ? <div className="adviser-people-list">{generalMembers.map((member) => <div key={member.id}><strong>{formatDisplayName(member)}</strong><span>{member.studentId} · {member.program}</span></div>)}</div> : <p>No active general members are recorded.</p>}
-          <small>{generalMembers.length} visible members of {officerMemberCount} active members</small>
+          <small>{generalMembers.length} visible members of {members.length} active members</small>
         </Card>
         <Card className="adviser-panel">
           <h2>Official Documents</h2>
           <ul className="adviser-simple-list">
-            {organization.documents.map((name) => <li key={name}>{name} <Badge tone="success">On file</Badge></li>)}
+            {(organization.documents ?? []).map((name) => <li key={name}>{name} <Badge tone="success">On file</Badge></li>)}
             {documents.map((document) => <li key={document.id}>{document.title} <Badge tone={document.status === 'APPROVED' ? 'success' : document.status === 'PENDING' ? 'warning' : 'neutral'}>{document.status}</Badge></li>)}
           </ul>
         </Card>
@@ -255,7 +255,7 @@ export function AdviserOrganizationDetailsPage() {
         </Card>
         <Card className="adviser-panel">
           <h2>Activity Log</h2>
-          <ul className="adviser-simple-list">{adviserActivity.slice(0, 4).map((activity) => <li key={activity.id}><span>{activity.message}<small>{activity.time}</small></span></li>)}</ul>
+          <ul className="adviser-simple-list">{adviserActivity.slice(0, 4).map((activity) => <li key={activity.id}><span>{activity.description || activity.message}<small>{activity.timestamp || activity.time}</small></span></li>)}</ul>
         </Card>
       </div>
       <Link className="button button-secondary adviser-back-link" to="/adviser/organizations">Back to My Organizations</Link>

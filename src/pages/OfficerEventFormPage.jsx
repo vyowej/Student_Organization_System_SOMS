@@ -34,18 +34,18 @@ function toDisplayTime(value) {
 export default function OfficerEventFormPage() {
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
-  const { adminOrganizations, captureUndo, currentUser, officerEvents, saveOfficerEvent } = useOutletContext()
-  const orgId = currentUser?.organizationId || 'wmsu-cs'
-  const organization = adminOrganizations?.find((item) => item.id === orgId) || { name: 'WMSU Computer Society' }
-  const existing = officerEvents.find((event) => event.id === editId && event.status === 'RETURNED_FOR_REVISION')
-  const initialDateValue = toDateInputValue(existing?.date)
+  const { adminOrganizations = [], captureUndo, currentUser, officerEvents = [], saveOfficerEvent } = useOutletContext()
+  const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
+  const organization = adminOrganizations?.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0] || { name: 'Your Organization' }
+  const existing = officerEvents.find((event) => String(event.id) === String(editId))
+  const initialDateValue = toDateInputValue(existing?.startDatetime || existing?.date)
   const existingTimes = existing?.time?.split('–').map((value) => value.trim()) ?? []
   const [title, setTitle] = useState(existing?.title ?? '')
   const [date, setDate] = useState(initialDateValue)
   const [location, setLocation] = useState(existing?.location ?? '')
   const [description, setDescription] = useState(existing?.description ?? '')
   const [capacity, setCapacity] = useState(String(existing?.capacity ?? 100))
-  const [category, setCategory] = useState(existing?.category ?? 'Technology')
+  const [category, setCategory] = useState(existing?.category ?? 'Academic')
   const [startTime, setStartTime] = useState(toTimeInputValue(existing?.startTime ?? existingTimes[0]))
   const [endTime, setEndTime] = useState(toTimeInputValue(existing?.endTime ?? existingTimes[1]))
   const [targetAudience, setTargetAudience] = useState(existing?.targetAudience ?? '')
@@ -58,7 +58,7 @@ export default function OfficerEventFormPage() {
   const { showToast } = useToast()
   const navigate = useNavigate()
 
-  function submit(status, confirmed = false) {
+  async function submit(status, confirmed = false) {
     if (!title.trim() || !date || !location.trim() || !description.trim()) {
       setError('Complete the event title, date, location, and description before saving.')
       return
@@ -70,11 +70,14 @@ export default function OfficerEventFormPage() {
     }
     setConfirmSubmitOpen(false)
     const undo = captureUndo()
-    saveOfficerEvent({
+    const saved = await saveOfficerEvent({
       ...(existing ?? {}),
       id: existing?.id,
+      organizationId: organization.id,
       title: title.trim(),
       date: new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      startDatetime: `${date}T${startTime || '08:00'}:00`,
+      endDatetime: `${date}T${endTime || startTime || '17:00'}:00`,
       location: location.trim(),
       description: description.trim(),
       capacity: Number(capacity),
@@ -88,6 +91,10 @@ export default function OfficerEventFormPage() {
       supportingDocuments: supportingDocuments.split(',').map((document) => document.trim()).filter(Boolean),
       registrations: existing?.registrations ?? 0,
     }, status)
+    if (!saved) {
+      setError('Unable to save the event proposal to the database.')
+      return
+    }
     showToast(status === 'SUBMITTED' ? 'Event proposal submitted for adviser review.' : 'Event proposal saved as a draft.', 'success', undoAction(undo))
     navigate('/officer/events')
   }
@@ -97,7 +104,7 @@ export default function OfficerEventFormPage() {
       <PageHeader
         description={existing ? 'Address the adviser’s feedback, then resubmit the proposal for review.' : `Create a proposal for ${organization.name}. An adviser and Student Affairs Admin will review it.`}
         eyebrow={organization.name}
-        title={existing ? 'Edit Returned Event Proposal' : 'Create Event Proposal'}
+        title={existing ? 'Edit Event Proposal' : 'Create Event Proposal'}
       />
       {existing?.revisionNote && (
         <div className="officer-revision-note">
@@ -148,7 +155,7 @@ export default function OfficerEventFormPage() {
       />
       <ConfirmDialog
         confirmLabel={existing ? 'Resubmit proposal' : 'Submit proposal'}
-        message="Are you sure you want to submit this event proposal? It will be sent to your adviser for review, and you won't be able to edit it until they respond."
+        message="Are you sure you want to submit this event proposal? It will be sent to your adviser for review."
         onCancel={() => setConfirmSubmitOpen(false)}
         onConfirm={() => submit('SUBMITTED', true)}
         open={confirmSubmitOpen}

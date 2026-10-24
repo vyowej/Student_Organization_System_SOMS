@@ -10,13 +10,14 @@ const db = require('../db');
 // GET /api/audit-logs — Query system audit trail with optional filters and pagination
 router.get('/', async (req, res) => {
   try {
-    const { user_id, entity, entity_id, action, limit = 50, offset = 0 } = req.query;
+    const { user_id, entity, entity_id, action, limit = 100, offset = 0 } = req.query;
 
     let queryText = `
       SELECT al.*,
              u.email,
              u.first_name,
              u.last_name,
+             CASE WHEN u.id IS NOT NULL THEN (u.last_name || ', ' || u.first_name) ELSE NULL END AS actor_name,
              u.role
         FROM audit_logs al
    LEFT JOIN users u ON u.id = al.user_id
@@ -66,22 +67,35 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'action and entity are required' });
     }
 
-    const clientIp = ip_address || req.ip || null;
-    const metaJson = metadata ? JSON.stringify(metadata) : '{}';
+    const validUserId = user_id && Number.isFinite(Number(user_id)) ? Number(user_id) : null;
+    const clientIp = ip_address || '127.0.0.1';
+    const metaJson = metadata && typeof metadata === 'object' ? JSON.stringify(metadata) : '{}';
 
-    const result = await db.query(
+    const insertRes = await db.query(
       `INSERT INTO audit_logs (user_id, action, entity, entity_id, metadata, ip_address, created_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, now())
-       RETURNING *`,
-      [user_id || null, action.trim(), entity.trim(), entity_id ? String(entity_id) : null, metaJson, clientIp]
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::inet, now())
+       RETURNING id`,
+      [validUserId, action.trim(), entity.trim(), entity_id ? String(entity_id) : null, metaJson, clientIp]
     );
 
-    res.status(201).json(result.rows[0]);
+    const fullLog = await db.query(
+      `SELECT al.*,
+              u.email,
+              u.first_name,
+              u.last_name,
+              CASE WHEN u.id IS NOT NULL THEN (u.last_name || ', ' || u.first_name) ELSE NULL END AS actor_name,
+              u.role
+         FROM audit_logs al
+    LEFT JOIN users u ON u.id = al.user_id
+        WHERE al.id = $1`,
+      [insertRes.rows[0].id]
+    );
+
+    res.status(201).json(fullLog.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error' });
   }
 });
 
 module.exports = router;
-
