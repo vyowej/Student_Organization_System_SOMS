@@ -36,7 +36,7 @@ function unlockBodyScroll() {
   }
 }
 
-export default function Modal({ open, title, onClose, children, size = 'md', className = '' }) {
+export default function Modal({ open, title, onClose, children, size = 'md', className = '', headerless = false }) {
   const titleId = useId()
   const dialogRef = useRef(null)
   const onCloseRef = useRef(onClose)
@@ -109,12 +109,16 @@ export default function Modal({ open, title, onClose, children, size = 'md', cla
         role="dialog"
         tabIndex={-1}
       >
-        <header className="modal-header">
-          <h2 id={titleId}>{title}</h2>
-          <Button aria-label="Close dialog" className="modal-close" onClick={onClose} variant="ghost">
-            <Icon className="topbar-icon" name="close" size={18} />
-          </Button>
-        </header>
+        {headerless
+          ? <h2 className="visually-hidden" id={titleId}>{title}</h2>
+          : (
+            <header className="modal-header">
+              <h2 id={titleId}>{title}</h2>
+              <Button aria-label="Close dialog" className="modal-close" onClick={onClose} variant="ghost">
+                <Icon className="topbar-icon" name="close" size={18} />
+              </Button>
+            </header>
+          )}
         <div className="modal-content">{children}</div>
       </section>
     </div>,

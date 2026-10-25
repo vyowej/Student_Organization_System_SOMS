@@ -15,6 +15,7 @@ import './styles/facebook-layout.css'
 // Keep the existing UI enhancement layer after legacy stylesheets.
 import './ui-improvements.css'
 import './design-system.css'
+import './app-polish.css'
 import { ToastProvider } from './components/ui/Toast.jsx'
 
 createRoot(document.getElementById('root')).render(

@@ -4,13 +4,25 @@
  * Displays personalized greetings, organization membership counts, upcoming
  * campus events, and recent membership/event updates for the signed-in student.
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { formatGreetingName, getTimeGreeting } from '../data/displayName.js'
 import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import { officerEventToStudentEvent } from '../data/studentEvents.js'
+
+function StudentWelcomeMark() {
+  const [logoFailed, setLogoFailed] = useState(false)
+
+  return (
+    <div aria-hidden="true" className="student-welcome-mark">
+      {logoFailed
+        ? <span className="student-welcome-mark-fallback">UNIDOS</span>
+        : <img alt="" onError={() => setLogoFailed(true)} src="/Unidos.png" />}
+    </div>
+  )
+}
 
 function SectionHeading({ id, title, to, linkLabel }) {
   return (
@@ -95,7 +107,7 @@ export default function StudentDashboardPage() {
             <h1 id="student-welcome-title">{getTimeGreeting()}, {formatGreetingName(currentUser)}!</h1>
             <p>Stay connected with your organizations, events, and campus activities.</p>
           </div>
-          <div aria-hidden="true" className="student-welcome-mark">W</div>
+          <StudentWelcomeMark />
         </section>
 
         <section aria-label="Your activity overview" className="student-metrics">

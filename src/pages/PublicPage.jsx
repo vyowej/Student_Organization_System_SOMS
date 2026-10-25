@@ -8,7 +8,6 @@ import { useAuth } from '../context/useAuth.js'
 import { usePortalData } from '../context/usePortalData.js'
 import { dashboardByRole } from '../data/mockAuthUsers.js'
 import { isValidEmail, isWmsuEmail } from '../data/displayName.js'
-import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import LandingPage from './LandingPage.jsx'
 
@@ -192,10 +191,6 @@ function AuthenticationPage({ page }) {
   return (
     <div className="auth-layout">
       <aside className="auth-feature-panel">
-        <Link aria-label="UNIDOS home" className="auth-feature-brand" to="/">
-          <WmsuLogo className="brand-seal" />
-          <span><strong>UNIDOS</strong><small>WMSU student community</small></span>
-        </Link>
         <div className="auth-feature-copy">
           <span className="landing-eyebrow">One campus. Many communities.</span>
           <h2>Find your people.<br /><em>Make your impact.</em></h2>
@@ -210,10 +205,6 @@ function AuthenticationPage({ page }) {
         <span className="auth-feature-foot">Western Mindanao State University</span>
       </aside>
       <Card className={`auth-card auth-card-${page}`}>
-      <div className="auth-brand">
-        <WmsuLogo className="brand-seal" />
-        <div><strong>UNIDOS</strong><span>Student Organization Management System</span></div>
-      </div>
       <h1>{title}</h1>
       <p>{description}</p>
       {page === 'login' && location.state?.registered && <p className="auth-success" role="status">Account created successfully. Sign in with your new account.</p>}

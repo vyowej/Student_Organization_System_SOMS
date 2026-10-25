@@ -302,12 +302,13 @@ export default function Navbar({
         </Link>
         <Button className="topbar-logout" onClick={() => setLogoutOpen(true)} variant="secondary">Logout</Button>
       </div>
-      <Modal onClose={closeLogoutDialog} open={logoutOpen} size="sm" title="Log out of UNIDOS?">
+      <Modal className="logout-confirmation-modal" headerless onClose={closeLogoutDialog} open={logoutOpen} size="sm" title="Log out?">
         <div className="logout-dialog-content">
           <span aria-hidden="true" className="logout-dialog-icon">
             <svg fill="none" viewBox="0 0 24 24"><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10M14 16l4-4-4-4m4 4H9" /></svg>
           </span>
-          <p>You'll need to sign in again to access your account.</p>
+          <h2>Log out?</h2>
+          <p>You’ll need to sign in again to access your account.</p>
         </div>
         <div className="logout-dialog-actions">
           <Button disabled={isLoggingOut} onClick={closeLogoutDialog} variant="secondary">Cancel</Button>
