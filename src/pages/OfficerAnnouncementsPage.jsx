@@ -192,26 +192,31 @@ export default function OfficerAnnouncementsPage() {
 
       <div className="officer-announcements-toolbar" style={{ marginTop: '12px', marginBottom: '8px' }}>
         <div className="officer-announcements-filters">
-          <label className="officer-announcements-search">
-            <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" x2="16.65" y1="21" y2="16.65" />
-            </svg>
-            <input aria-label="Search announcements" onChange={(event) => setSearch(event.target.value)} placeholder="Search announcements" type="search" value={search} />
+          <label className="officer-announcements-filter officer-announcements-filter-search">
+            <span>Search</span>
+            <div className="officer-announcements-search">
+              <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" x2="16.65" y1="21" y2="16.65" />
+              </svg>
+              <input aria-label="Search announcements" onChange={(event) => setSearch(event.target.value)} placeholder="Search announcements..." type="search" value={search} />
+            </div>
           </label>
-          <label className="officer-announcements-filter">Status
+          <label className="officer-announcements-filter">
+            <span>Status</span>
             <select aria-label="Filter announcements by status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
               {statusOptions.map((status) => <option key={status} value={status}>{status === 'All' ? 'All' : status.charAt(0) + status.slice(1).toLowerCase()}</option>)}
             </select>
           </label>
-          <label className="officer-announcements-filter">Sort
+          <label className="officer-announcements-filter">
+            <span>Sort</span>
             <select aria-label="Sort announcements" onChange={(event) => setSortOrder(event.target.value)} value={sortOrder}>
               <option value="newest">Newest</option>
               <option value="oldest">Oldest</option>
             </select>
           </label>
         </div>
-        <Button onClick={openCreate} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <Button className="officer-announcements-create-btn" onClick={openCreate} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
           <svg aria-hidden="true" fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" viewBox="0 0 24 24" width="15">
             <line x1="12" x2="12" y1="5" y2="19" />
             <line x1="5" x2="19" y1="12" y2="12" />

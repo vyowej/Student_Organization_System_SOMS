@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import Card from '../components/ui/Card.jsx'
 import Input from '../components/ui/Input.jsx'
@@ -7,7 +7,7 @@ import { useToast } from '../components/ui/useToast.js'
 import { useAuth } from '../context/useAuth.js'
 import { usePortalData } from '../context/usePortalData.js'
 import { dashboardByRole } from '../data/mockAuthUsers.js'
-import { isValidEmail, isWmsuEmail } from '../data/email.js'
+import { isValidEmail, isWmsuEmail } from '../data/displayName.js'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import LandingPage from './LandingPage.jsx'
@@ -45,6 +45,20 @@ function AuthenticationPage({ page }) {
     yearLevel: '',
   })
 
+  const groupedPrograms = useMemo(() => {
+    if (!academicPrograms.length) return []
+    const groups = {}
+    academicPrograms.forEach((p) => {
+      const groupName = p.college_name ? `${p.college_name} (${p.college_acronym})` : 'Other Programs'
+      if (!groups[groupName]) groups[groupName] = []
+      groups[groupName].push(p)
+    })
+    return Object.entries(groups).map(([college, progs]) => ({
+      college,
+      programs: progs,
+    }))
+  }, [academicPrograms])
+
   const programOptions = academicPrograms.length > 0
     ? academicPrograms.map((p) => ({ id: p.id, label: `${p.acronym} — ${p.name}`, value: p.acronym }))
     : ['BSCS', 'BSIT', 'BSBA', 'BSED', 'BSA', 'BSHM'].map((code) => ({ id: code, label: code, value: code }))
@@ -53,16 +67,17 @@ function AuthenticationPage({ page }) {
     event.preventDefault()
     setError('')
     setSuccess('')
-    if (!identifier.trim() || !password) {
-      setError('Enter your WMSU email address and password.')
+    const trimmedId = identifier.trim()
+    if (!trimmedId || !password) {
+      setError('Enter your email address (or Student/Employee ID) and password.')
       return
     }
-    if (!isWmsuEmail(identifier)) {
-      setError('Use your WMSU email address ending in @wmsu.edu.ph.')
+    if (trimmedId.includes('@') && !isValidEmail(trimmedId)) {
+      setError('Enter a valid email address.')
       return
     }
     setSubmitting(true)
-    const result = await login(identifier, password, rememberMe)
+    const result = await login(trimmedId, password, rememberMe)
     setSubmitting(false)
     if (!result.ok) {
       setError(result.error)
@@ -166,7 +181,7 @@ function AuthenticationPage({ page }) {
       {page === 'login' && location.state?.registered && <p className="auth-success" role="status">Account created successfully. Sign in with your new account.</p>}
       {page === 'login' && (
         <form className="auth-form" noValidate onSubmit={handleLogin}>
-          <Input autoComplete="username" id="login-identifier" label="WMSU Email" onChange={(event) => setIdentifier(event.target.value)} placeholder="name@wmsu.edu.ph" type="email" value={identifier} />
+          <Input autoComplete="username" id="login-identifier" label="WMSU Email or Student/Employee ID" onChange={(event) => setIdentifier(event.target.value)} placeholder="name@wmsu.edu.ph or Student ID" type="text" value={identifier} />
           <div className="auth-password-field">
             <Input autoComplete="current-password" id="login-password" label="Password" onChange={(event) => setPassword(event.target.value)} type={showLoginPassword ? 'text' : 'password'} value={password} />
             <button aria-label={showLoginPassword ? 'Hide password' : 'Show password'} aria-pressed={showLoginPassword} className="auth-show-password" onClick={() => setShowLoginPassword((visible) => !visible)} type="button"><PasswordVisibilityIcon visible={showLoginPassword} /></button>
@@ -206,7 +221,19 @@ function AuthenticationPage({ page }) {
               <label className="form-field" htmlFor="register-program">Course / Program
                 <select id="register-program" onChange={(event) => setForm((current) => ({ ...current, program: event.target.value }))} value={form.program}>
                   <option value="">Select program</option>
-                  {programOptions.map((prog) => <option key={prog.id} value={prog.value}>{prog.label}</option>)}
+                  {groupedPrograms.length > 0 ? (
+                    groupedPrograms.map((group) => (
+                      <optgroup key={group.college} label={group.college}>
+                        {group.programs.map((prog) => (
+                          <option key={prog.id} value={prog.acronym}>
+                            {prog.acronym} — {prog.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))
+                  ) : (
+                    programOptions.map((prog) => <option key={prog.id} value={prog.value}>{prog.label}</option>)
+                  )}
                 </select>
               </label>
               <label className="form-field" htmlFor="register-year-level">Year Level

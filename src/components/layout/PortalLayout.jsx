@@ -85,6 +85,8 @@ export default function PortalLayout({ role }) {
     if (previousLocation.current !== location.pathname) {
       previousLocation.current = location.pathname
       setMenuOpen(false)
+      document.body.style.overflow = ''
+      document.body.style.paddingRight = ''
       window.scrollTo(0, 0)
     }
   }, [location.pathname])
@@ -93,7 +95,7 @@ export default function PortalLayout({ role }) {
     setReadNotificationIds((currentIds) =>
       currentIds.includes(id) ? currentIds : [...currentIds, id],
     )
-    sharedPortalData.markAdminNotificationRead?.(id)
+    sharedPortalData.markNotificationRead?.(id)
   }
 
   async function registerForEvent(eventId) {
@@ -113,7 +115,8 @@ export default function PortalLayout({ role }) {
       ...sharedPortalData,
       eventRegisteredCounts,
       markNotificationRead,
-      markStudentNotificationRead: sharedPortalData.markAdminNotificationRead,
+      markStudentNotificationRead: sharedPortalData.markNotificationRead,
+      markAllNotificationsRead: sharedPortalData.markAllNotificationsRead,
       readNotificationIds,
       registerForEvent,
       cancelRegistration,
@@ -126,28 +129,140 @@ export default function PortalLayout({ role }) {
         captureUndo,
         studentRegistrations,
         currentUser,
+        markNotificationRead,
+        markAllNotificationsRead: sharedPortalData.markAllNotificationsRead,
+        readNotificationIds,
       }
       : role === 'Organization Adviser'
-        ? { ...sharedPortalData, captureUndo, currentUser }
+        ? {
+          ...sharedPortalData,
+          captureUndo,
+          currentUser,
+          markNotificationRead,
+          markAllNotificationsRead: sharedPortalData.markAllNotificationsRead,
+          readNotificationIds,
+        }
         : role === 'Student Affairs Admin'
-          ? { ...sharedPortalData, captureUndo, currentUser, studentRegistrations }
+          ? {
+            ...sharedPortalData,
+            captureUndo,
+            currentUser,
+            studentRegistrations,
+            markNotificationRead,
+            markAllNotificationsRead: sharedPortalData.markAllNotificationsRead,
+            readNotificationIds,
+          }
           : undefined
 
-  const roleNotifications = (sharedPortalData.studentNotifications || []).map((n) => ({
-    id: n.id,
-    source: 'db',
-    title: n.title || n.type || 'Notification',
-    text: n.message,
-    time: n.createdAt || n.time || 'Recently',
-    read: Boolean(n.read) || readNotificationIds.includes(n.id),
-    to: navigation.notifications,
-  }))
+  const currentNotifications = role === 'Student'
+    ? sharedPortalData.studentNotifications
+    : role === 'Organization Officer'
+      ? sharedPortalData.officerNotifications
+      : role === 'Organization Adviser'
+        ? sharedPortalData.adviserNotifications
+        : sharedPortalData.adminNotifications
+
+  const roleNotifications = useMemo(() => {
+    return (currentNotifications || []).map((n) => {
+      const rawType = String(n.rawType || n.type || '').toUpperCase()
+      const isApprovalItem = ['APPROVAL', 'APPLICATION', 'PROPOSAL', 'ACCREDITATION', 'CHANGE_REQUEST'].some((t) => rawType.includes(t))
+
+      let destination = navigation.notifications
+      let canReview = false
+
+      if (rawType.includes('EVENT') && !rawType.includes('REGISTRATION')) {
+        destination = role === 'Student Affairs Admin'
+          ? '/admin/events'
+          : role === 'Organization Adviser'
+            ? '/adviser/events'
+            : role === 'Organization Officer'
+              ? '/officer/events'
+              : '/student/events'
+      } else if (rawType.includes('ANNOUNCEMENT')) {
+        destination = role === 'Organization Officer'
+          ? '/officer/announcements'
+          : role === 'Student'
+            ? '/student/notifications'
+            : role === 'Organization Adviser'
+              ? '/adviser/dashboard'
+              : '/admin/dashboard'
+      } else if (rawType.includes('REGISTRATION')) {
+        destination = role === 'Student'
+          ? '/student/registrations'
+          : role === 'Organization Officer'
+            ? '/officer/attendance'
+            : role === 'Organization Adviser'
+              ? '/adviser/events'
+              : '/admin/events'
+      } else if (rawType.includes('ATTENDANCE')) {
+        destination = role === 'Student'
+          ? '/student/attendance'
+          : role === 'Organization Officer'
+            ? '/officer/attendance'
+            : role === 'Organization Adviser'
+              ? '/adviser/events'
+              : '/admin/events'
+      } else if (rawType.includes('MEMBERSHIP')) {
+        destination = role === 'Organization Officer'
+          ? '/officer/membership-requests'
+          : role === 'Student'
+            ? '/student/my-organizations'
+            : role === 'Organization Adviser'
+              ? '/adviser/organizations'
+              : '/admin/students'
+      } else if (rawType.includes('DOCUMENT')) {
+        destination = role === 'Organization Officer'
+          ? '/officer/documents'
+          : role === 'Organization Adviser'
+            ? '/adviser/approvals'
+            : '/admin/approvals'
+        if (role === 'Organization Adviser' || role === 'Student Affairs Admin') {
+          canReview = true
+        }
+      } else if (rawType.includes('ADVISER')) {
+        destination = role === 'Organization Adviser'
+          ? '/adviser/organizations'
+          : role === 'Organization Officer'
+            ? '/officer/organization-profile'
+            : '/admin/advisers'
+      } else if (rawType.includes('CONFIRMATION')) {
+        destination = role === 'Organization Officer'
+          ? (rawType.includes('DOC') ? '/officer/documents' : '/officer/events')
+          : navigation.notifications
+      } else if (isApprovalItem) {
+        if (role === 'Student Affairs Admin') {
+          destination = '/admin/approvals'
+          canReview = true
+        } else if (role === 'Organization Adviser') {
+          destination = '/adviser/approvals'
+          canReview = true
+        } else if (role === 'Organization Officer') {
+          destination = '/officer/events'
+        } else {
+          destination = '/student/my-organizations'
+        }
+      }
+
+      return {
+        id: n.id,
+        source: 'db',
+        title: n.title || n.type || 'Notification',
+        text: n.message,
+        time: n.createdAt || n.time || 'Recently',
+        read: Boolean(n.read) || readNotificationIds.includes(n.id),
+        icon: n.icon || (rawType.includes('EVENT') ? 'calendar' : isApprovalItem ? 'check' : 'bell'),
+        type: n.type,
+        rawType,
+        canReview,
+        to: destination,
+      }
+    })
+  }, [currentNotifications, navigation.notifications, readNotificationIds, role])
 
   const unreadNotificationCount = roleNotifications.filter((n) => !n.read).length
 
   return (
     <div className={`app-shell portal-layout${menuOpen ? ' sidebar-open' : ''}`}>
-      <a className="skip-link" href="#main-content">Skip to main content</a>
       <Navbar
         isMenuOpen={menuOpen}
         notificationCount={unreadNotificationCount}
@@ -183,4 +298,20 @@ export default function PortalLayout({ role }) {
       </div>
     </div>
   )
+}
+
+export function AdminLayout() {
+  return <PortalLayout role="Student Affairs Admin" />
+}
+
+export function AdviserLayout() {
+  return <PortalLayout role="Organization Adviser" />
+}
+
+export function OfficerLayout() {
+  return <PortalLayout role="Organization Officer" />
+}
+
+export function StudentLayout() {
+  return <PortalLayout role="Student" />
 }

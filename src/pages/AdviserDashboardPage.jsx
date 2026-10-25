@@ -31,6 +31,7 @@ export default function AdviserDashboardPage() {
     adviserReports = [],
     currentUser,
     officerEvents = [],
+    officerMembershipRequests = [],
   } = useOutletContext()
 
   const assignedOrgs = adminOrganizations.filter((org) => {
@@ -39,17 +40,37 @@ export default function AdviserDashboardPage() {
     return false
   })
   const effectiveOrgs = assignedOrgs.length > 0 ? assignedOrgs : adminOrganizations
+  const assignedOrgIds = new Set(effectiveOrgs.map((org) => String(org.id)))
 
-  const pendingEvents = officerEvents.filter((event) => ['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].includes(event.status))
-  const pendingDocuments = adviserDocuments.filter((document) => document.status === 'PENDING')
-  const pendingReports = adviserReports.filter((report) => report.status === 'PENDING_VERIFICATION')
-  const approvalsCount = pendingEvents.length + pendingDocuments.length + pendingReports.length
-  const upcomingEvents = officerEvents.filter((event) => ['APPROVED', 'PUBLISHED'].includes(event.status))
+  const pendingEvents = officerEvents
+    .filter((event) => !event.organizationId || assignedOrgIds.has(String(event.organizationId)))
+    .filter((event) => ['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].includes(event.status))
+  const pendingDocuments = adviserDocuments
+    .filter((document) => !document.organizationId || assignedOrgIds.has(String(document.organizationId)))
+    .filter((document) => document.status === 'PENDING')
+  const pendingReports = adviserReports
+    .filter((report) => !report.organizationId || assignedOrgIds.has(String(report.organizationId)))
+    .filter((report) => report.status === 'PENDING_VERIFICATION')
+  const pendingApplications = officerMembershipRequests
+    .filter((app) => !app.organizationId || assignedOrgIds.has(String(app.organizationId)))
+    .filter((app) => app.status === 'PENDING')
+
+  const approvalsCount = pendingEvents.length + pendingDocuments.length + pendingReports.length + pendingApplications.length
+  const upcomingEvents = officerEvents
+    .filter((event) => !event.organizationId || assignedOrgIds.has(String(event.organizationId)))
+    .filter((event) => ['APPROVED', 'PUBLISHED'].includes(event.status))
 
   const pending = [
     ...pendingEvents.map((event) => ({ ...event, type: 'Event Proposal', title: event.title, submittedDate: event.submittedDate || event.date, to: '/adviser/events' })),
     ...pendingDocuments.map((document) => ({ ...document, type: 'Organization Document', to: '/adviser/approvals' })),
     ...pendingReports.map((report) => ({ ...report, type: 'Accomplishment Report', title: report.eventTitle, submittedDate: report.submittedDate, to: '/adviser/reports' })),
+    ...pendingApplications.map((app) => ({
+      ...app,
+      type: 'Membership Application',
+      title: `${app.name || 'Student'} — Membership Application`,
+      submittedDate: app.applicationDate || 'Recently',
+      to: '/adviser/approvals',
+    })),
   ]
 
   return (

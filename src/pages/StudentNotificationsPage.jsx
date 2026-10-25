@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import Badge from '../components/ui/Badge.jsx'
@@ -7,7 +7,6 @@ import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Icon from '../components/ui/Icon.jsx'
-import { studentDashboardNotifications } from '../data/studentDashboard.js'
 
 export default function StudentNotificationsPage() {
   const {
@@ -15,30 +14,37 @@ export default function StudentNotificationsPage() {
     markStudentNotificationRead,
     readNotificationIds = [],
     markNotificationRead,
+    markAllNotificationsRead,
   } = useOutletContext()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('ALL')
 
   // Combine dynamic notifications from context with the notifications moved from dashboard
   const allNotifications = [
-    ...(studentNotifications || []).map((n) => ({
-      id: n.id,
-      type: n.type || 'Update',
-      message: n.message,
-      createdAt: n.createdAt || n.time || 'Recently',
-      read: Boolean(n.read),
-      icon: n.icon || 'bell',
-    })),
-    ...studentDashboardNotifications
-      .filter((n) => !(studentNotifications || []).some((sn) => sn.id === n.id))
-      .map((n) => ({
+    ...(studentNotifications || []).map((n) => {
+      const rawType = String(n.rawType || n.type || '').toUpperCase()
+      let destination = null
+      if (rawType.includes('EVENT') && !rawType.includes('REGISTRATION')) {
+        destination = '/student/events'
+      } else if (rawType.includes('REGISTRATION')) {
+        destination = '/student/registrations'
+      } else if (rawType.includes('ATTENDANCE')) {
+        destination = '/student/attendance'
+      } else if (rawType.includes('MEMBERSHIP')) {
+        destination = '/student/my-organizations'
+      }
+      return {
         id: n.id,
-        type: n.type,
+        title: n.title,
+        type: n.type || 'Update',
+        rawType,
         message: n.message,
-        createdAt: n.time,
-        read: !n.unread || (readNotificationIds && readNotificationIds.includes(n.id)),
-        icon: n.icon || 'bell',
-      })),
+        createdAt: n.createdAt || n.time || 'Recently',
+        read: Boolean(n.read) || (readNotificationIds && readNotificationIds.includes(n.id)),
+        icon: n.icon || (rawType === 'EVENT' ? 'calendar' : rawType === 'ANNOUNCEMENT' ? 'bell' : rawType === 'EVENT_REGISTRATION' ? 'ticket' : rawType === 'ATTENDANCE' ? 'check' : 'bell'),
+        to: destination,
+      }
+    }),
   ]
 
   const handleMarkRead = (id) => {
@@ -46,10 +52,14 @@ export default function StudentNotificationsPage() {
     if (markNotificationRead) markNotificationRead(id)
   }
 
-  const handleMarkAllRead = () => {
-    allNotifications.forEach((n) => {
-      if (!n.read) handleMarkRead(n.id)
-    })
+  const handleMarkAllRead = async () => {
+    if (markAllNotificationsRead) {
+      await markAllNotificationsRead()
+    } else {
+      allNotifications.forEach((n) => {
+        if (!n.read) handleMarkRead(n.id)
+      })
+    }
   }
 
   const unreadCount = allNotifications.filter((n) => !n.read).length
@@ -111,12 +121,22 @@ export default function StudentNotificationsPage() {
                     {!notification.read && <Badge tone="warning">NEW</Badge>}
                     <span className="student-notif-time">{notification.createdAt}</span>
                   </div>
+                  {notification.title && (
+                    <h4 className="student-notif-title" style={{ margin: '4px 0 2px', fontSize: '0.95rem', fontWeight: 600 }}>
+                      {notification.title}
+                    </h4>
+                  )}
                   <p className="student-notif-message">{notification.message}</p>
                 </div>
               </div>
-              <div className="student-notif-actions">
+              <div className="student-notif-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {notification.to && (
+                  <Link className="button button-secondary" style={{ padding: '4px 10px', fontSize: '0.85rem' }} to={notification.to}>
+                    View
+                  </Link>
+                )}
                 {!notification.read ? (
-                  <Button onClick={() => handleMarkRead(notification.id)} variant="secondary">
+                  <Button onClick={() => handleMarkRead(notification.id)} variant="secondary" style={{ padding: '4px 10px', fontSize: '0.85rem' }}>
                     Mark as read
                   </Button>
                 ) : (

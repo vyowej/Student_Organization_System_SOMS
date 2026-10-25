@@ -24,7 +24,7 @@ backend/.env.*
 
 # Local agent / editor folders
 .agents/
-.vscode/*
+.vscode/
 !.vscode/extensions.json
 .idea
 .DS_Store

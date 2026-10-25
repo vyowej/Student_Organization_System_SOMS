@@ -34,3 +34,14 @@ export function getTimeGreeting(date = new Date()) {
   if (hour < 18) return 'Good afternoon'
   return 'Good evening'
 }
+
+/**
+ * Email Validation Helpers
+ */
+export function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+export function isWmsuEmail(email) {
+  return isValidEmail(email.trim()) && /^[^\s@]+@wmsu\.edu\.ph$/i.test(email.trim())
+}

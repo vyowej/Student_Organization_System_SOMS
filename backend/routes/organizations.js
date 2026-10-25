@@ -8,6 +8,12 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const {
+  notifyUser,
+  notifyAdvisersForOrg,
+  notifyAdmins,
+  recordAuditLog,
+} = require('../notificationsHelper');
 
 const VALID_ORG_TYPES = [
   'STUDENT_COUNCIL',
@@ -30,6 +36,8 @@ function normalizeOrgType(input) {
   if (upper === 'SPORTS' || upper === 'RECREATION') return 'SPORTS_RECREATION';
   if (upper === 'SOCIOCIVIC') return 'SOCIO_CIVIC';
   if (upper === 'COUNCIL') return 'STUDENT_COUNCIL';
+  if (upper === 'TECHNOLOGY') return 'SPECIAL_INTEREST';
+  if (upper === 'LEADERSHIP') return 'SPECIAL_INTEREST';
   return 'OTHER';
 }
 
@@ -216,12 +224,14 @@ router.post('/', async (req, res) => {
     //
     // ============================================================
     const logoUrl = logo || null;
+    const isApproved = orgStatusVal === 'ACTIVE';
 
     const insertRes = await db.query(
       `INSERT INTO organizations (
-        name, acronym, description, logo, org_type, scope,
-        college_id, department_id, created_by, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        name, acronym, description, logo, org_type, category, scope,
+        college_id, department_id, created_by, status,
+        approved_by, approved_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING id`,
       [
         name.trim(),
@@ -229,11 +239,14 @@ router.post('/', async (req, res) => {
         description || null,
         logoUrl,
         orgTypeVal,
+        category ? String(category).trim() : null,
         orgScope,
         collegeIdVal,
         departmentIdVal,
         created_by || null,
         orgStatusVal,
+        isApproved ? (created_by || null) : null,
+        isApproved ? new Date() : null,
       ]
     );
 
@@ -253,6 +266,29 @@ router.post('/', async (req, res) => {
     }
 
     const fullOrg = await db.query(`${ORG_SELECT_QUERY} WHERE o.id = $1`, [createdOrgId]);
+
+    if (orgStatusVal === 'PENDING') {
+      await notifyAdmins({
+        type: 'APPROVAL',
+        title: `New Organization Application: ${name.trim()}`,
+        message: `Organization "${name.trim()}" (${acronym ? acronym.trim() : 'N/A'}) submitted an accreditation application for review.`,
+      });
+      if (created_by) {
+        await notifyUser(created_by, {
+          type: 'CONFIRMATION',
+          title: `Application Submitted: ${name.trim()}`,
+          message: `Your accreditation application for "${name.trim()}" has been submitted and is pending administrative review.`,
+        });
+      }
+      await recordAuditLog({
+        userId: created_by || null,
+        action: 'SUBMIT_ORGANIZATION_ACCREDITATION',
+        entity: 'organizations',
+        entityId: createdOrgId,
+        metadata: { name: name.trim(), scope: orgScope },
+      });
+    }
+
     res.status(201).json(fullOrg.rows[0]);
   } catch (err) {
     console.error(err);
@@ -288,7 +324,33 @@ router.put('/:id/approve', async (req, res) => {
     }
 
     const fullOrg = await db.query(`${ORG_SELECT_QUERY} WHERE o.id = $1`, [id]);
-    res.json(fullOrg.rows[0]);
+    const orgRow = fullOrg.rows[0];
+
+    // Notify active advisers
+    await notifyAdvisersForOrg(id, {
+      type: 'MEMBERSHIP',
+      title: `Organization Accreditation ${targetStatus === 'ACTIVE' ? 'Approved' : 'Updated'}: ${orgRow.name}`,
+      message: `Accreditation status for "${orgRow.name}" was updated to ${targetStatus}.`,
+    });
+
+    if (orgRow?.created_by) {
+      await notifyUser(orgRow.created_by, {
+        type: 'MEMBERSHIP',
+        title: `Organization Accreditation ${targetStatus === 'ACTIVE' ? 'Approved' : 'Updated'}: ${orgRow.name}`,
+        message: `Your organization accreditation application for "${orgRow.name}" has been ${targetStatus === 'ACTIVE' ? 'approved' : targetStatus.toLowerCase()}.`,
+      });
+    }
+
+    await recordAuditLog({
+      userId: approved_by || null,
+      action: `APPROVE_ORGANIZATION_${targetStatus}`,
+      entity: 'organizations',
+      entityId: orgRow.id,
+      metadata: { name: orgRow.name, status: targetStatus },
+    });
+
+    res.json(orgRow);
+    res.json(orgRow);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -344,6 +406,7 @@ router.put('/:id', async (req, res) => {
     }
 
     const nextOrgType = (org_type || category) ? normalizeOrgType(org_type || category) : current.org_type;
+    const nextCategory = category !== undefined ? (category ? String(category).trim() : null) : current.category;
     const nextStatus = status && VALID_ORG_STATUSES.includes(String(status).toUpperCase())
       ? String(status).toUpperCase()
       : current.status;
@@ -365,12 +428,13 @@ router.put('/:id', async (req, res) => {
               description = $4,
               logo = $5,
               org_type = $6,
-              scope = $7,
-              college_id = $8,
-              department_id = $9,
-              status = $10,
-              approved_by = COALESCE($11, approved_by),
-              approved_at = CASE WHEN $10 = 'ACTIVE' AND approved_at IS NULL THEN now() ELSE approved_at END,
+              category = $7,
+              scope = $8,
+              college_id = $9,
+              department_id = $10,
+              status = $11,
+              approved_by = COALESCE($12, approved_by),
+              approved_at = CASE WHEN $11 = 'ACTIVE' AND approved_at IS NULL THEN now() ELSE approved_at END,
               updated_at = now()
         WHERE id = $1`,
       [
@@ -380,6 +444,7 @@ router.put('/:id', async (req, res) => {
         description !== undefined ? description : current.description,
         nextLogo,
         nextOrgType,
+        nextCategory,
         nextScope,
         nextCollegeId,
         nextDepartmentId,
@@ -401,7 +466,34 @@ router.put('/:id', async (req, res) => {
     }
 
     const fullOrg = await db.query(`${ORG_SELECT_QUERY} WHERE o.id = $1`, [id]);
-    res.json(fullOrg.rows[0]);
+    const orgRow = fullOrg.rows[0];
+
+    // 1. Notify active faculty adviser(s) that profile details were updated
+    await notifyAdvisersForOrg(id, {
+      type: 'ORGANIZATION_UPDATE',
+      title: `Organization Details Updated: ${orgRow.name}`,
+      message: `The profile and settings for "${orgRow.name}" were updated by an officer.`,
+    });
+
+    // 2. Dispatch confirmation to officer who performed update
+    if (approved_by) {
+      await notifyUser(approved_by, {
+        type: 'CONFIRMATION',
+        title: `Profile Updated: ${orgRow.name}`,
+        message: `Organization details and profile for "${orgRow.name}" were updated successfully.`,
+      });
+    }
+
+    // 3. Record audit log
+    await recordAuditLog({
+      userId: approved_by || null,
+      action: 'UPDATE_ORGANIZATION',
+      entity: 'organizations',
+      entityId: orgRow.id,
+      metadata: { name: orgRow.name, status: nextStatus },
+    });
+
+    res.json(orgRow);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error' });

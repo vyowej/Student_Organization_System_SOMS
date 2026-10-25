@@ -119,7 +119,8 @@
 }
 
 .landing-page {
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   background: white;
 }
 
@@ -2688,17 +2689,26 @@
   position: fixed;
   z-index: 100;
   inset: 0;
-  display: grid;
-  place-items: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
   padding: 20px;
   background: rgba(26, 20, 23, 0.48);
   animation: modal-backdrop-enter 180ms ease-out both;
 }
 
 .modal {
+  margin: auto;
   width: min(100%, 520px);
-  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 24px;
   border-radius: 14px;
   background: white;
@@ -2707,6 +2717,7 @@
 }
 
 .modal-header {
+  flex-shrink: 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -2721,6 +2732,10 @@
 }
 
 .modal-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   color: #615d65;
   font-size: 14px;
   line-height: 1.6;
@@ -3306,16 +3321,21 @@
   min-width: 0;
 }
 
-.officer-announcements-toolbar,
-.officer-announcements-filters {
+.officer-announcements-toolbar {
   display: flex;
-  align-items: end;
-  flex-wrap: wrap;
-  gap: 12px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
 }
 
-.officer-announcements-toolbar {
-  justify-content: space-between;
+.officer-announcements-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
 }
 
 .officer-toolbar-tabs-row,
@@ -3335,17 +3355,36 @@
   border-bottom: none;
 }
 
+.officer-announcements-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted, #6f6b73);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.officer-announcements-filter-search {
+  flex: 1 1 280px;
+  min-width: 180px;
+  max-width: 380px;
+}
+
 .officer-announcements-search {
   display: flex;
-  min-width: min(320px, 100%);
-  height: 42px;
   align-items: center;
   gap: 9px;
+  width: 100%;
+  height: 42px;
+  min-height: 42px;
   padding: 0 12px;
   border: 1px solid #e0dfe3;
   border-radius: 10px;
   background: #fff;
   color: var(--muted);
+  box-sizing: border-box;
 }
 
 .officer-announcements-search>span {
@@ -3363,19 +3402,10 @@
   font-size: 14px;
 }
 
-.officer-announcements-filter {
-  display: grid;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .05em;
-  text-transform: uppercase;
-}
-
 .officer-announcements-filter select {
-  min-width: 125px;
+  min-width: 130px;
   height: 42px;
+  min-height: 42px;
   padding: 0 30px 0 11px;
   border: 1px solid #e0dfe3;
   border-radius: 10px;
@@ -3385,6 +3415,20 @@
   font-size: 13px;
   letter-spacing: normal;
   text-transform: none;
+  box-sizing: border-box;
+}
+
+.officer-announcements-create-btn,
+.officer-announcements-toolbar > .button,
+.officer-announcements-toolbar > button {
+  height: 42px;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .officer-announcement-list {
@@ -4056,6 +4100,37 @@
 
   .officer-org-info-wide {
     grid-column: span 2;
+  }
+
+  .officer-announcements-toolbar {
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .officer-announcements-filters {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .officer-announcements-filter-search {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+
+  .officer-announcements-filter {
+    flex: 1 1 120px;
+  }
+
+  .officer-announcements-filter select {
+    width: 100%;
+  }
+
+  .officer-announcements-create-btn,
+  .officer-announcements-toolbar > .button,
+  .officer-announcements-toolbar > button {
+    width: 100%;
+    justify-content: center;
   }
 }
 
@@ -9152,8 +9227,8 @@
 .adviser-review-dialog {
   display: grid;
   gap: 16px;
-  max-height: min(70vh, 680px);
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   padding-right: 3px;
 }
 
@@ -9344,6 +9419,7 @@
 .data-table select,
 .admin-settings-form input:not([type="checkbox"]),
 .admin-settings-form select,
+.admin-settings-form textarea,
 .admin-modal-decision select,
 .admin-modal-decision textarea,
 .admin-modal-label textarea {
@@ -9439,7 +9515,8 @@
 
 .admin-modal-decision label,
 .admin-modal-label,
-.admin-settings-form>label {
+.admin-settings-form label,
+.admin-settings-form .admin-field-label {
   display: grid;
   gap: 7px;
   color: #49434a;
@@ -10809,7 +10886,7 @@
 }
 
 .adviser-review-dialog--report {
-  max-height: min(76vh, 760px);
+  max-height: none;
 }
 
 .modal:has(.adviser-review-dialog--report) {

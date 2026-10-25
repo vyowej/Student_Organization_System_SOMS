@@ -6,8 +6,7 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
-import { studentEvents } from '../data/studentEvents.js'
-import { findStudentEvent } from '../data/officerStudentEvent.js'
+import { findStudentEvent, studentEvents } from '../data/studentEvents.js'
 
 const tabs = ['Upcoming', 'Past', 'Cancelled']
 

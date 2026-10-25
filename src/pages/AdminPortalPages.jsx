@@ -5,7 +5,7 @@
  * Organization Accreditation & Change Requests, Approval Center, Compliance
  * Documents, Reports, Analytics, Audit Logs, and System Settings views.
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useLocation, useOutletContext } from 'react-router-dom'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import Badge from '../components/ui/Badge.jsx'
@@ -17,7 +17,7 @@ import Table from '../components/ui/Table.jsx'
 import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
-import { adminPrograms, adminYears } from '../data/adminPortal.js'
+import { adminDefaultSettings, adminPrograms, adminYears } from '../data/adminPortal.js'
 import { studentEvents } from '../data/studentEvents.js'
 import { formatDisplayName } from '../data/displayName.js'
 
@@ -169,21 +169,354 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
   )
 }
 
-function OrganizationEditModal({ organization, onClose, onSave }) {
+function OrganizationEditModal({ organization, onClose, onSave, categories = [] }) {
   const [form, setForm] = useState(null)
   if (!organization) return null
+  const categoryOptions = (Array.isArray(categories) && categories.length > 0)
+    ? categories
+    : (adminDefaultSettings.organizationCategories || ['Academic', 'Technology', 'Leadership', 'Socio-Civic', 'Cultural', 'Sports', 'Other'])
   const values = form ?? {
     name: organization.name,
     acronym: organization.acronym,
     category: organization.category,
     adviser: organization.adviser,
   }
+  const editCategories = [...new Set([...categoryOptions, values.category].filter(Boolean))]
   return (
     <Modal onClose={onClose} open title={`Edit ${organization.name}`}>
       <div className="admin-settings-form">
-        {Object.entries(values).map(([key, value]) => <label key={key}>{key.charAt(0).toUpperCase() + key.slice(1)}<input onChange={(event) => setForm((current) => ({ ...values, ...current, [key]: event.target.value }))} value={value} /></label>)}
+        {Object.entries(values).map(([key, value]) => {
+          if (key === 'category') {
+            return (
+              <label key={key}>
+                Category
+                <select
+                  value={value}
+                  onChange={(event) => setForm((current) => ({ ...values, ...current, category: event.target.value }))}
+                >
+                  {editCategories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )
+          }
+          return (
+            <label key={key}>
+              {key.charAt(0).toUpperCase() + key.slice(1)}
+              <input onChange={(event) => setForm((current) => ({ ...values, ...current, [key]: event.target.value }))} value={value} />
+            </label>
+          )
+        })}
         <Button onClick={() => onSave(values)}>Save organization</Button>
       </div>
+    </Modal>
+  )
+}
+
+function OrganizationCreateModal({
+  open,
+  onClose,
+  onCreate,
+  colleges = [],
+  departments = [],
+  advisers = [],
+  categories = [],
+}) {
+  const categoryOptions = (Array.isArray(categories) && categories.length > 0)
+    ? categories
+    : (adminDefaultSettings.organizationCategories || ['Academic', 'Technology', 'Leadership', 'Socio-Civic', 'Cultural', 'Sports', 'Other'])
+
+  const [name, setName] = useState('')
+  const [acronym, setAcronym] = useState('')
+  const [category, setCategory] = useState('')
+  const [scope, setScope] = useState('UNIVERSITY')
+  const [collegeId, setCollegeId] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
+  const [adviserId, setAdviserId] = useState('')
+  const [description, setDescription] = useState('')
+  const [status, setStatus] = useState('ACTIVE')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const activeCategory = (category && categoryOptions.includes(category))
+    ? category
+    : (categoryOptions[0] || 'Academic')
+
+  if (!open) return null
+
+  const filteredDepartments = collegeId
+    ? departments.filter((d) => String(d.college_id) === String(collegeId))
+    : departments
+
+  const handleScopeChange = (e) => {
+    const nextScope = e.target.value
+    setScope(nextScope)
+    if (nextScope === 'UNIVERSITY') {
+      setCollegeId('')
+      setDepartmentId('')
+    } else if (nextScope === 'COLLEGE') {
+      setDepartmentId('')
+    }
+  }
+
+  const handleCollegeChange = (e) => {
+    const nextCollege = e.target.value
+    setCollegeId(nextCollege)
+    setDepartmentId('')
+  }
+
+  const handleSubmit = async (e) => {
+    if (e) e.preventDefault()
+    if (!name.trim()) {
+      setError('Organization name is required.')
+      return
+    }
+    if (scope === 'COLLEGE' && !collegeId) {
+      setError('Please select a college for a College-scoped organization.')
+      return
+    }
+    if (scope === 'DEPARTMENT') {
+      if (!collegeId) {
+        setError('Please select a college for a Department-scoped organization.')
+        return
+      }
+      if (!departmentId) {
+        setError('Please select a department for a Department-scoped organization.')
+        return
+      }
+    }
+
+    setError('')
+    setSubmitting(true)
+    const result = await onCreate({
+      name: name.trim(),
+      acronym: acronym.trim(),
+      category: activeCategory,
+      scope,
+      college_id: collegeId || null,
+      department_id: departmentId || null,
+      adviser_id: adviserId || null,
+      description: description.trim(),
+      status,
+    })
+    setSubmitting(false)
+    if (result?.ok) {
+      setName('')
+      setAcronym('')
+      setDescription('')
+      setCollegeId('')
+      setDepartmentId('')
+      setAdviserId('')
+      setCategory('')
+      setError('')
+      onClose()
+    } else {
+      setError(result?.error || 'Failed to create organization.')
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} open={open} title="Add New Organization">
+      <form onSubmit={handleSubmit} className="admin-settings-form" style={{ marginTop: '12px' }}>
+        {error && (
+          <div
+            role="alert"
+            style={{
+              color: '#a51e37',
+              backgroundColor: '#fdf2f2',
+              border: '1px solid #f8d7da',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: '500',
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label htmlFor="create-org-name" className="admin-field-label">
+            Organization Name <span style={{ color: '#a51e37' }}>*</span>
+          </label>
+          <input
+            id="create-org-name"
+            type="text"
+            placeholder="e.g. Society of Information Technology Enthusiasts"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label htmlFor="create-org-acronym" className="admin-field-label">
+            Acronym
+          </label>
+          <input
+            id="create-org-acronym"
+            type="text"
+            placeholder="e.g. SITE"
+            value={acronym}
+            onChange={(e) => setAcronym(e.target.value)}
+          />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label htmlFor="create-org-category" className="admin-field-label">
+              Category
+            </label>
+            <select
+              id="create-org-category"
+              value={activeCategory}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              {categoryOptions.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label htmlFor="create-org-scope" className="admin-field-label">
+              Scope
+            </label>
+            <select
+              id="create-org-scope"
+              value={scope}
+              onChange={handleScopeChange}
+            >
+              <option value="UNIVERSITY">University-Wide</option>
+              <option value="COLLEGE">College-Based</option>
+              <option value="DEPARTMENT">Department-Based</option>
+            </select>
+          </div>
+        </div>
+
+        {(scope === 'COLLEGE' || scope === 'DEPARTMENT') && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label htmlFor="create-org-college" className="admin-field-label">
+              College <span style={{ color: '#a51e37' }}>*</span>
+            </label>
+            <select
+              id="create-org-college"
+              value={collegeId}
+              onChange={handleCollegeChange}
+              required
+            >
+              <option value="">Select College</option>
+              {colleges.map((col) => (
+                <option key={col.id} value={col.id}>
+                  {col.name} {col.acronym ? `(${col.acronym})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {scope === 'DEPARTMENT' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label htmlFor="create-org-dept" className="admin-field-label">
+              Department <span style={{ color: '#a51e37' }}>*</span>
+            </label>
+            <select
+              id="create-org-dept"
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value)}
+              required
+            >
+              <option value="">Select Department</option>
+              {filteredDepartments.map((dept) => (
+                <option key={dept.id} value={dept.id}>
+                  {dept.name} {dept.acronym ? `(${dept.acronym})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label htmlFor="create-org-adviser" className="admin-field-label">
+            Faculty Adviser (Optional)
+          </label>
+          <select
+            id="create-org-adviser"
+            value={adviserId}
+            onChange={(e) => setAdviserId(e.target.value)}
+          >
+            <option value="">None / Assign Later</option>
+            {advisers.map((adv) => (
+              <option key={adv.id} value={adv.id}>
+                {adv.name} {adv.college_acronym ? `(${adv.college_acronym})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label htmlFor="create-org-desc" className="admin-field-label">
+            Description
+          </label>
+          <textarea
+            id="create-org-desc"
+            rows={3}
+            placeholder="Brief overview of the organization's mission, objectives, or activities..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            style={{ resize: 'vertical', minHeight: '80px' }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label htmlFor="create-org-status" className="admin-field-label">
+            Status
+          </label>
+          <select
+            id="create-org-status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            <option value="ACTIVE">Active (Accredited)</option>
+            <option value="PENDING">Pending (Accreditation Review)</option>
+          </select>
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            gap: '12px',
+            marginTop: '20px',
+            paddingTop: '16px',
+            borderTop: '1px solid #eee8ec',
+          }}
+        >
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+            disabled={submitting}
+            style={{ minWidth: '100px' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={submitting}
+            style={{ minWidth: '110px' }}
+          >
+            {submitting ? 'Submitting...' : 'Submit'}
+          </Button>
+        </div>
+      </form>
     </Modal>
   )
 }
@@ -993,6 +1326,7 @@ export default function AdminPortalPage() {
   const [reason, setReason] = useState('')
   const [target, setTarget] = useState(null)
   const [organizationEdit, setOrganizationEdit] = useState(null)
+  const [showCreateOrgModal, setShowCreateOrgModal] = useState(false)
   const [userChange, setUserChange] = useState(null)
   const [publishTarget, setPublishTarget] = useState(null)
   const [saveSettingsOpen, setSaveSettingsOpen] = useState(false)
@@ -1004,9 +1338,26 @@ export default function AdminPortalPage() {
   const [reportFilters, setReportFilters] = useState({ college: 'All Colleges', category: 'All Categories', eventType: 'All Event Types' })
   const [settings, setSettings] = useState(() => ({
     ...data.adminSettings,
-    organizationCategories: data.adminSettings.organizationCategories ?? ['Academic', 'Socio-Civic', 'Cultural', 'Sports'],
+    organizationCategories: data.adminSettings?.organizationCategories ?? adminDefaultSettings.organizationCategories,
+    notifications: {
+      ...adminDefaultSettings.notifications,
+      ...(data.adminSettings?.notifications || {}),
+    },
   }))
   const [newCategory, setNewCategory] = useState('')
+
+  useEffect(() => {
+    if (data.adminSettings) {
+      setSettings(() => ({
+        ...data.adminSettings,
+        organizationCategories: data.adminSettings.organizationCategories ?? adminDefaultSettings.organizationCategories,
+        notifications: {
+          ...adminDefaultSettings.notifications,
+          ...(data.adminSettings.notifications || {}),
+        },
+      }))
+    }
+  }, [data.adminSettings])
 
   const matches = (record, keys = ['name', 'title', 'organizationName', 'userId', 'email', 'studentId', 'action', 'description']) => {
     const query = search.trim().toLowerCase()
@@ -1072,13 +1423,39 @@ export default function AdminPortalPage() {
           { key: 'name', label: 'Name', render: (value, row) => isStudents ? formatDisplayName(row) : value }, { key: 'userId', label: 'ID' }, { key: 'email', label: 'Email' },
           ...(isStudents ? [
             { key: 'program', label: 'Program' }, { key: 'yearLevel', label: 'Year' },
-            { key: 'organizationCount', label: 'Organizations', render: (_, row) => data.studentMemberships.filter((membership) => membership.studentId === row.userId && membership.status === 'ACTIVE').length },
+            {
+              key: 'organizationCount',
+              label: 'Organizations',
+              render: (_, row) =>
+                data.studentMemberships.filter(
+                  (membership) =>
+                    membership.status === 'ACTIVE' &&
+                    (
+                      (row.userId && String(membership.studentId).toLowerCase() === String(row.userId).toLowerCase()) ||
+                      (row.studentNumber && String(membership.studentId).toLowerCase() === String(row.studentNumber).toLowerCase()) ||
+                      (row.studentRecordId && String(membership.studentRecordId) === String(row.studentRecordId)) ||
+                      (row.studentDbId && String(membership.studentDbId) === String(row.studentDbId)) ||
+                      (row.id && String(membership.userId) === String(row.id)) ||
+                      (row.dbUserId && String(membership.userId) === String(row.dbUserId))
+                    )
+                ).length,
+            },
             { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
             {
               key: 'actions', label: 'Profile', render: (_, row) => <Button onClick={() => setSelected({
                 ...row,
                 title: `${formatDisplayName(row)} — Student Profile`,
-                organizations: data.studentMemberships.filter((membership) => membership.studentId === row.userId).map((membership) => `${membership.organizationId}: ${membership.status}`),
+                organizations: data.studentMemberships.filter((membership) =>
+                  membership.status === 'ACTIVE' &&
+                  (
+                    (row.userId && String(membership.studentId).toLowerCase() === String(row.userId).toLowerCase()) ||
+                    (row.studentNumber && String(membership.studentId).toLowerCase() === String(row.studentNumber).toLowerCase()) ||
+                    (row.studentRecordId && String(membership.studentRecordId) === String(row.studentRecordId)) ||
+                    (row.studentDbId && String(membership.studentDbId) === String(row.studentDbId)) ||
+                    (row.id && String(membership.userId) === String(row.id)) ||
+                    (row.dbUserId && String(membership.userId) === String(row.dbUserId))
+                  )
+                ).map((membership) => `${membership.organizationName || membership.organizationId}: ${membership.position || 'General Member'}`),
                 registrations: data.studentRegistrations.filter((registration) => registration.studentId === row.userId).map((registration) => `${registration.eventId}: ${registration.status}`),
                 attendance: data.studentRegistrations.filter((registration) => registration.studentId === row.userId).map((registration) => `${registration.eventId}: ${registration.attendanceStatus}`),
               })} variant="secondary">View profile</Button>
@@ -1086,7 +1463,29 @@ export default function AdminPortalPage() {
           ] : [
             { key: 'role', label: 'Role', render: (value, row) => <select aria-label={`Role for ${formatDisplayName(row)}`} disabled={row.id === 'admin-root'} onChange={(event) => setUserChange({ user: row, changes: { role: event.target.value } })} value={value}>{roleOptions.map((role) => <option key={role}>{role}</option>)}</select> },
             { key: 'status', label: 'Status', render: (value, row) => <select aria-label={`Status for ${formatDisplayName(row)}`} disabled={row.id === 'admin-root'} onChange={(event) => setUserChange({ user: row, changes: { status: event.target.value } })} value={value}>{['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((status) => <option key={status} value={status}>{humanize(status)}</option>)}</select> },
-            { key: 'organization', label: 'Organization' },
+            {
+              key: 'organization',
+              label: 'Organization',
+              render: (value, row) => {
+                if (value && value !== '—' && value !== 'Unassigned') return value
+                const activeMemberships = (data.studentMemberships || []).filter(
+                  (m) =>
+                    m.status === 'ACTIVE' &&
+                    (
+                      (row.userId && String(m.studentId).toLowerCase() === String(row.userId).toLowerCase()) ||
+                      (row.studentNumber && String(m.studentId).toLowerCase() === String(row.studentNumber).toLowerCase()) ||
+                      (row.studentRecordId && String(m.studentRecordId) === String(row.studentRecordId)) ||
+                      (row.studentDbId && String(m.studentDbId) === String(row.studentDbId)) ||
+                      (row.id && String(m.userId) === String(row.id)) ||
+                      (row.dbUserId && String(m.userId) === String(row.dbUserId))
+                    )
+                )
+                if (activeMemberships.length > 0) {
+                  return activeMemberships.map((m) => `${m.organizationName || m.organizationId} (${m.position || 'General Member'})`).join(', ')
+                }
+                return value || 'Unassigned'
+              },
+            },
           ]),
           { key: 'lastActivity', label: 'Last Activity' },
         ]} rows={rows} /> : <EmptyState title="No matching records" />}</Card>
@@ -1102,7 +1501,14 @@ export default function AdminPortalPage() {
     return (
       <div className="admin-page">
         <PageHeader description="Monitor accreditation and institutional standing for recognized organizations." eyebrow="UNIDOS ADMINISTRATION" title="Organizations" />
-        <FilterBar search={search} setSearch={setSearch}><FilterSelect label="Status" onChange={setStatusFilter} options={['All', ...['ACTIVE', 'INACTIVE', 'SUSPENDED']]} value={statusFilter} /></FilterBar>
+        <FilterBar search={search} setSearch={setSearch}>
+          <FilterSelect label="Status" onChange={setStatusFilter} options={['All', ...['ACTIVE', 'INACTIVE', 'SUSPENDED']]} value={statusFilter} />
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+            <Button onClick={() => setShowCreateOrgModal(true)} variant="primary">
+              <Icon name="plus" size={14} /> Add Organization
+            </Button>
+          </div>
+        </FilterBar>
         <Card className="admin-section-card">{data.adminOrganizations.filter((item) => matches(item, ['name', 'acronym', 'category', 'adviser', 'status'])).length ? <Table useDataTable columns={[
           { key: 'name', label: 'Organization' }, { key: 'acronym', label: 'Acronym' }, { key: 'category', label: 'Category' },
           { key: 'adviser', label: 'Adviser' }, { key: 'memberCount', label: 'Members' }, { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
@@ -1119,11 +1525,33 @@ export default function AdminPortalPage() {
             else showToast('A suspension reason is required.', 'error')
           }}>Confirm</Button>
         </Modal>
-        <OrganizationEditModal key={organizationEdit?.id ?? 'closed'} organization={organizationEdit} onClose={() => setOrganizationEdit(null)} onSave={async (changes) => {
-          const ok = organizationEdit && (await data.updateAdminOrganization(organizationEdit.id, changes))
-          if (ok) { showToast('Organization details updated.', 'success'); setOrganizationEdit(null) }
-          else showToast('Complete all organization fields before saving.', 'error')
-        }} />
+        <OrganizationEditModal
+          key={organizationEdit?.id ?? 'closed'}
+          organization={organizationEdit}
+          categories={data.adminSettings?.organizationCategories ?? adminDefaultSettings.organizationCategories}
+          onClose={() => setOrganizationEdit(null)}
+          onSave={async (changes) => {
+            const ok = organizationEdit && (await data.updateAdminOrganization(organizationEdit.id, changes))
+            if (ok) { showToast('Organization details updated.', 'success'); setOrganizationEdit(null) }
+            else showToast('Complete all organization fields before saving.', 'error')
+          }}
+        />
+        <OrganizationCreateModal
+          open={showCreateOrgModal}
+          onClose={() => setShowCreateOrgModal(false)}
+          colleges={data.academicColleges}
+          departments={data.academicDepartments}
+          advisers={data.advisers}
+          categories={data.adminSettings?.organizationCategories ?? adminDefaultSettings.organizationCategories}
+          onCreate={async (newOrg) => {
+            const res = await data.createAdminOrganization(newOrg)
+            if (res?.ok) {
+              showToast('Organization created successfully.', 'success')
+              setShowCreateOrgModal(false)
+            }
+            return res
+          }}
+        />
         <RecordModal item={selected} onClose={() => setSelected(null)} />
       </div>
     )
@@ -1248,7 +1676,14 @@ export default function AdminPortalPage() {
           </div>
         </PageHeader>
 
-        <div className="admin-report-actions"><Button onClick={() => showToast(downloadCsv('unidos-campus-report.csv', reportRows) ? 'CSV report downloaded.' : 'There is no report data to export.', reportRows.length ? 'success' : 'error')}>Download CSV</Button><Button onClick={() => showToast(downloadExcel('unidos-campus-report.xls', reportRows) ? 'Excel-compatible report downloaded.' : 'There is no report data to export.', reportRows.length ? 'success' : 'error')} variant="secondary">Download Excel</Button><Button onClick={() => window.print()} variant="secondary">Print / Save as PDF</Button></div>
+        <div className="admin-report-actions">
+          <Button onClick={() => showToast(downloadCsv('unidos-campus-report.csv', reportRows) ? 'CSV report downloaded.' : 'There is no report data to export.', reportRows.length ? 'success' : 'error')}>
+            Download CSV
+          </Button>
+          <Button onClick={() => showToast(downloadExcel('unidos-campus-report.xls', reportRows) ? 'Excel-compatible report downloaded.' : 'There is no report data to export.', reportRows.length ? 'success' : 'error')} variant="secondary">
+            Download Excel
+          </Button>
+        </div>
         <FilterBar search={search} setSearch={setSearch}>
           <select aria-label="Filter report status" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
             <option>All</option>
@@ -1256,7 +1691,7 @@ export default function AdminPortalPage() {
           </select>
           <select aria-label="Filter academic year"><option>{data.adminSettings.academicYear}</option></select>
           <select aria-label="Filter semester"><option>{data.adminSettings.semester}</option></select>
-          <select aria-label="Filter college" onChange={(event) => setReportFilters((current) => ({ ...current, college: event.target.value }))} value={reportFilters.college}>{['All Colleges', 'College of Computing Studies', 'College of Arts and Sciences'].map((value) => <option key={value}>{value}</option>)}</select>
+          <select aria-label="Filter college" onChange={(event) => setReportFilters((current) => ({ ...current, college: event.target.value }))} value={reportFilters.college}>{['All Colleges', ...new Set((data.academicColleges || []).map((col) => col.name))].map((value) => <option key={value}>{value}</option>)}</select>
           <select aria-label="Filter organization category" onChange={(event) => setReportFilters((current) => ({ ...current, category: event.target.value }))} value={reportFilters.category}>{['All Categories', ...new Set(data.adminOrganizations.map((organization) => organization.category))].map((value) => <option key={value}>{value}</option>)}</select>
           <select aria-label="Filter event type" onChange={(event) => setReportFilters((current) => ({ ...current, eventType: event.target.value }))} value={reportFilters.eventType}>{['All Event Types', ...new Set(orgEvents.map((event) => event.category).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select>
         </FilterBar>
@@ -1444,17 +1879,70 @@ export default function AdminPortalPage() {
   if (pathname.endsWith('/settings')) {
     return (
       <div className="admin-page">
-        <PageHeader description="Update academic period, academic hierarchy, and notification preferences." eyebrow="UNIDOS ADMINISTRATION" title="System Settings" />
+        <PageHeader description="Update academic period, organization categories, and notification preferences." eyebrow="UNIDOS ADMINISTRATION" title="System Settings" />
         <Card className="admin-section-card admin-settings-form">
           <h2>System Information</h2>
           <p><strong>UNIDOS</strong> — Student Organization Management System<br />Western Mindanao State University</p>
           <label>Academic year<input onChange={(event) => setSettings((current) => ({ ...current, academicYear: event.target.value }))} value={settings.academicYear} /></label>
           <label>Current semester<select onChange={(event) => setSettings((current) => ({ ...current, semester: event.target.value }))} value={settings.semester}>{['First Semester', 'Second Semester', 'Summer'].map((value) => <option key={value}>{value}</option>)}</select></label>
-          <h2>Academic Structure (PostgreSQL Database)</h2><p>Colleges: <strong>{data.academicHierarchy?.colleges?.length ?? 0}</strong> · Departments: <strong>{data.academicHierarchy?.departments?.length ?? 0}</strong> · Programs: <strong>{data.academicHierarchy?.programs?.length ?? 0}</strong></p><h2>Organization categories</h2>
-          {(settings.organizationCategories ?? ['Academic', 'Socio-Civic', 'Cultural', 'Sports']).map((category) => <div className="admin-category-row" key={category}><span>{category}</span><Button onClick={() => setSettings((current) => ({ ...current, organizationCategories: (current.organizationCategories ?? ['Academic', 'Socio-Civic', 'Cultural', 'Sports']).filter((item) => item !== category) }))} variant="danger">Remove</Button></div>)}
-          <div className="admin-category-add"><input aria-label="New organization category" onChange={(event) => setNewCategory(event.target.value)} placeholder="Add a category" value={newCategory} /><Button onClick={() => { const category = newCategory.trim(); if (!category) return; setSettings((current) => ({ ...current, organizationCategories: [...new Set([...(current.organizationCategories ?? ['Academic', 'Socio-Civic', 'Cultural', 'Sports']), category])] })); setNewCategory('') }}>Add category</Button></div>
+          <h2>Organization categories</h2>
+          {(settings.organizationCategories ?? adminDefaultSettings.organizationCategories).map((category) => (
+            <div className="admin-category-row" key={category}>
+              <span>{category}</span>
+              <Button
+                onClick={() => setSettings((current) => ({
+                  ...current,
+                  organizationCategories: (current.organizationCategories ?? adminDefaultSettings.organizationCategories).filter((item) => item !== category),
+                }))}
+                variant="danger"
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+          <div className="admin-category-add">
+            <input
+              aria-label="New organization category"
+              onChange={(event) => setNewCategory(event.target.value)}
+              placeholder="Add a category"
+              value={newCategory}
+            />
+            <Button
+              onClick={() => {
+                const category = newCategory.trim()
+                if (!category) return
+                setSettings((current) => ({
+                  ...current,
+                  organizationCategories: [
+                    ...new Set([...(current.organizationCategories ?? adminDefaultSettings.organizationCategories), category]),
+                  ],
+                }))
+                setNewCategory('')
+              }}
+            >
+              Add category
+            </Button>
+          </div>
           <h2>Notification preferences</h2>
-          {Object.entries(settings.notifications).map(([key, checked]) => <label className="admin-checkbox-row" key={key}><input checked={checked} onChange={(event) => setSettings((current) => ({ ...current, notifications: { ...current.notifications, [key]: event.target.checked } }))} type="checkbox" />{key.replace(/([A-Z])/g, ' $1')}</label>)}
+          {Object.entries(settings.notifications || adminDefaultSettings.notifications).map(([key, checked]) => (
+            <label className="admin-checkbox-row" key={key}>
+              <input
+                checked={Boolean(checked)}
+                onChange={(event) =>
+                  setSettings((current) => ({
+                    ...current,
+                    notifications: {
+                      ...adminDefaultSettings.notifications,
+                      ...(current.notifications || {}),
+                      [key]: event.target.checked,
+                    },
+                  }))
+                }
+                type="checkbox"
+              />
+              {key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())}
+            </label>
+          ))}
           <Button onClick={() => setSaveSettingsOpen(true)}>Save Settings</Button>
         </Card>
         <ConfirmDialog

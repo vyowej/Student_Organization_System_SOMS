@@ -53,6 +53,25 @@ async function initializeDatabase() {
     await client.query(sqlContent);
 
     console.log('[SUCCESS] All types, tables, functions, triggers, and indexes applied successfully!');
+
+    // Seed default administrative account if users table is empty
+    const userCountRes = await client.query('SELECT COUNT(*)::int AS count FROM users');
+    if (userCountRes.rows[0].count === 0) {
+      const bcrypt = require('bcryptjs');
+      const adminHash = await bcrypt.hash('admin123', 10);
+      await client.query(
+        `INSERT INTO users (email, password_hash, first_name, last_name, role, status)
+         VALUES ('admin@wmsu.edu.ph', $1, 'System', 'Administrator', 'ADMIN', 'ACTIVE')
+         ON CONFLICT DO NOTHING`,
+        [adminHash]
+      );
+      console.log('[SEED] Created default administrator account: admin@wmsu.edu.ph (Password: admin123)');
+    }
+
+    // Seed academic hierarchy (Colleges, Departments, and Programs)
+    const { seedAcademicHierarchy } = require('./scripts/seed_wmsu_academic');
+    await seedAcademicHierarchy(client);
+
     console.log('----------------------------------------------------');
     console.log('Database is now fully linked and synchronized with backend.');
     console.log('----------------------------------------------------');
@@ -65,6 +84,25 @@ async function initializeDatabase() {
          WHERE table_schema = 'public'`
       );
       console.log(`[SUCCESS] Verified ${tableCheck.rows[0].table_count} public tables in "${dbConfig.database}".`);
+
+      // Ensure default administrator account exists
+      const userCountRes = await client.query('SELECT COUNT(*)::int AS count FROM users');
+      if (userCountRes.rows[0].count === 0) {
+        const bcrypt = require('bcryptjs');
+        const adminHash = await bcrypt.hash('admin123', 10);
+        await client.query(
+          `INSERT INTO users (email, password_hash, first_name, last_name, role, status)
+           VALUES ('admin@wmsu.edu.ph', $1, 'System', 'Administrator', 'ADMIN', 'ACTIVE')
+           ON CONFLICT DO NOTHING`,
+          [adminHash]
+        );
+        console.log('[SEED] Created default administrator account: admin@wmsu.edu.ph (Password: admin123)');
+      }
+
+      // Seed academic hierarchy (Colleges, Departments, and Programs)
+      const { seedAcademicHierarchy } = require('./scripts/seed_wmsu_academic');
+      await seedAcademicHierarchy(client);
+
       console.log('----------------------------------------------------');
       console.log('Database is already initialized and linked with backend.');
       console.log('----------------------------------------------------');

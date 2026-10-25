@@ -9,13 +9,14 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
-const { testConnection, SCHEMA_PATH } = require('./db');
+const { testConnection, SCHEMA_PATH, query } = require('./db');
 
 const app = express();
 
-// Global middleware: enable CORS for frontend requests and parse JSON request bodies
+// Global middleware: enable CORS for frontend requests and parse JSON/urlencoded request bodies
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ============================================================
 // [GOOGLE DRIVE API PLACEHOLDER — IMAGE & FILE STORAGE]
@@ -66,8 +67,28 @@ app.listen(PORT, async () => {
   const dbStatus = await testConnection();
   if (dbStatus.connected) {
     console.log(`Database Connected: successfully linked to "${dbStatus.database}"`);
+
+    // Ensure default administrator account is immediately available
+    try {
+      const bcrypt = require('bcryptjs');
+      const adminCheck = await query(`SELECT id FROM users WHERE lower(trim(email)) = 'admin@wmsu.edu.ph' LIMIT 1`);
+      if (adminCheck.rows.length === 0) {
+        const adminHash = await bcrypt.hash('admin123', 10);
+        await query(
+          `INSERT INTO users (email, password_hash, first_name, last_name, role, status)
+           VALUES ('admin@wmsu.edu.ph', $1, 'System', 'Administrator', 'ADMIN', 'ACTIVE')
+           ON CONFLICT (email) DO NOTHING`,
+          [adminHash]
+        );
+        console.log('[AUTO-SEED] Default administrator account ready: admin@wmsu.edu.ph (Password: admin123)');
+      }
+    } catch (seedErr) {
+      console.log('[SEED NOTICE] Users table check skipped:', seedErr.message);
+    }
   } else {
     console.log(`Database Notice: Not connected yet (${dbStatus.error}). Run "npm run db:init" once PostgreSQL is ready.`);
   }
 });
+
+module.exports = app;
 
