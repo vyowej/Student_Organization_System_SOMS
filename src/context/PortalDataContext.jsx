@@ -1600,7 +1600,9 @@ export function PortalDataProvider({ children }) {
   const updateOfficerOrganizationProfile = useCallback(async (orgUpdates) => {
     const orgId = orgUpdates.id || orgUpdates.organizationId || currentUser?.organizationId || adminOrganizations[0]?.id
     if (!orgId) return false
-    const currentOrg = rawOrganizations.find((o) => String(o.organization_id) === String(orgId))
+    const currentOrg = rawOrganizations.find(
+      (organization) => String(organization.organization_id ?? organization.id) === String(orgId),
+    )
     if (!currentOrg) return false
 
     // =========================================================================
@@ -1619,6 +1621,7 @@ export function PortalDataProvider({ children }) {
         name: orgUpdates.name ?? currentOrg.name,
         acronym: orgUpdates.acronym ?? currentOrg.acronym,
         org_type: orgUpdates.category || orgUpdates.orgType || currentOrg.org_type,
+        category: orgUpdates.category ?? currentOrg.category,
         scope: orgUpdates.scope ?? currentOrg.scope,
         college_id: orgUpdates.collegeId ?? currentOrg.college_id,
         department_id: orgUpdates.departmentId ?? currentOrg.department_id,
@@ -1721,13 +1724,19 @@ export function PortalDataProvider({ children }) {
   }, [refreshPortalData])
 
   const updateAdminOrganization = useCallback(async (organizationId, changes) => {
-    if (!changes?.name || !changes?.acronym) return false
-    return updateOfficerOrganizationProfile({
+    if (!changes?.name?.trim()) return false
+    try {
+      return await updateOfficerOrganizationProfile({
       id: organizationId,
       name: changes.name,
       acronym: changes.acronym,
       category: changes.category,
-    })
+      description: changes.description,
+      status: changes.status,
+      })
+    } catch {
+      return false
+    }
   }, [updateOfficerOrganizationProfile])
 
   const createAdminOrganization = useCallback(async (orgData) => {

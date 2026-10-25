@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import Button from './Button.jsx'
 import Icon from './Icon.jsx'
+import ModalContainerContext from './ModalContainerContext.js'
 
 const FOCUSABLE = [
   'a[href]',
@@ -60,14 +61,18 @@ export default function Modal({ open, title, onClose, children, size = 'md', cla
       ; (first ?? dialog)?.focus()
 
     function handleKeyDown(event) {
+      const alert = dialog?.querySelector('.modal-alert-overlay')
       if (event.key === 'Escape') {
+        if (alert) return
         event.stopPropagation()
         onCloseRef.current()
         return
       }
       if (event.key !== 'Tab' || !dialog) return
 
-      const items = focusables()
+      const items = alert
+        ? Array.from(alert.querySelectorAll(FOCUSABLE))
+        : focusables()
       if (items.length === 0) {
         event.preventDefault()
         dialog.focus()
@@ -109,17 +114,19 @@ export default function Modal({ open, title, onClose, children, size = 'md', cla
         role="dialog"
         tabIndex={-1}
       >
-        {headerless
-          ? <h2 className="visually-hidden" id={titleId}>{title}</h2>
-          : (
-            <header className="modal-header">
-              <h2 id={titleId}>{title}</h2>
-              <Button aria-label="Close dialog" className="modal-close" onClick={onClose} variant="ghost">
-                <Icon className="topbar-icon" name="close" size={18} />
-              </Button>
-            </header>
-          )}
-        <div className="modal-content">{children}</div>
+        <ModalContainerContext.Provider value={dialogRef}>
+          {headerless
+            ? <h2 className="visually-hidden" id={titleId}>{title}</h2>
+            : (
+              <header className="modal-header">
+                <h2 id={titleId}>{title}</h2>
+                <Button aria-label="Close dialog" className="modal-close" onClick={onClose} variant="ghost">
+                  <Icon className="topbar-icon" name="close" size={18} />
+                </Button>
+              </header>
+            )}
+          <div className="modal-content">{children}</div>
+        </ModalContainerContext.Provider>
       </section>
     </div>,
     document.body,

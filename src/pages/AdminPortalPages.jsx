@@ -5,7 +5,7 @@
  * Organization Accreditation & Change Requests, Approval Center, Compliance
  * Documents, Reports, Analytics, Audit Logs, and System Settings views.
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation, useOutletContext } from 'react-router-dom'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import Badge from '../components/ui/Badge.jsx'
@@ -13,6 +13,7 @@ import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Modal from '../components/ui/Modal.jsx'
+import ModalAlert from '../components/ui/ModalAlert.jsx'
 import Table from '../components/ui/Table.jsx'
 import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import Icon from '../components/ui/Icon.jsx'
@@ -172,47 +173,114 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
 
 function OrganizationEditModal({ organization, onClose, onSave, categories = [] }) {
   const [form, setForm] = useState(null)
+  const [alert, setAlert] = useState(null)
+  const [invalidFields, setInvalidFields] = useState([])
+  const fieldRefs = useRef({})
+  const alertReturnFocusRef = useRef(null)
   if (!organization) return null
   const categoryOptions = (Array.isArray(categories) && categories.length > 0)
     ? categories
     : adminDefaultSettings.organizationCategories
   const values = form ?? {
-    name: organization.name,
-    acronym: organization.acronym,
-    category: organization.category,
-    adviser: organization.adviser,
+    name: organization.name ?? '',
+    acronym: organization.acronym ?? '',
+    category: organization.category ?? '',
+    description: organization.description ?? '',
+    status: organization.status ?? 'ACTIVE',
   }
   const editCategories = [...new Set([...categoryOptions, values.category].filter(Boolean))]
+
+  function showFormAlert(title, message, fields = []) {
+    setInvalidFields(fields)
+    alertReturnFocusRef.current = fieldRefs.current[fields[0] || 'name']
+    setAlert({ title, message })
+  }
+
+  function updateField(key, value) {
+    setForm((current) => ({ ...values, ...current, [key]: value }))
+    setInvalidFields((current) => current.filter((field) => field !== key))
+  }
+
+  async function handleSave(event) {
+    event.preventDefault()
+    const missingFields = []
+    if (!values.name.trim()) missingFields.push('name')
+    if (!values.category.trim()) missingFields.push('category')
+    if (missingFields.length) {
+      const labels = missingFields.map((field) => field === 'name' ? 'Organization name' : 'Category')
+      showFormAlert('Incomplete fields', `Please fill in: ${labels.join(', ')}.`, missingFields)
+      return
+    }
+    try {
+      if (!await onSave(values)) {
+        showFormAlert('Unable to save organization', 'The organization could not be updated. Please try again.')
+      }
+    } catch {
+      showFormAlert('Unable to save organization', 'The organization could not be updated. Please try again.')
+    }
+  }
+
   return (
     <Modal onClose={onClose} open size="md" title={`Edit ${organization.name}`}>
-      <div className="admin-settings-form">
-        {Object.entries(values).map(([key, value]) => {
-          if (key === 'category') {
-            return (
-              <label key={key}>
-                Category
-                <select
-                  value={value}
-                  onChange={(event) => setForm((current) => ({ ...values, ...current, category: event.target.value }))}
-                >
-                  {editCategories.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )
-          }
-          return (
-            <label key={key}>
-              {key.charAt(0).toUpperCase() + key.slice(1)}
-              <input onChange={(event) => setForm((current) => ({ ...values, ...current, [key]: event.target.value }))} value={value} />
-            </label>
-          )
-        })}
-        <Button onClick={() => onSave(values)}>Save organization</Button>
-      </div>
+      <form className="admin-settings-form" noValidate onSubmit={handleSave}>
+        <label>
+          Organization name
+          <input
+            aria-describedby={invalidFields.includes('name') ? 'edit-org-name-error' : undefined}
+            aria-invalid={invalidFields.includes('name')}
+            className={invalidFields.includes('name') ? 'modal-field-invalid' : ''}
+            id="edit-org-name"
+            onChange={(event) => updateField('name', event.target.value)}
+            ref={(element) => { fieldRefs.current.name = element }}
+            value={values.name}
+          />
+          {invalidFields.includes('name') && <small className="modal-field-error" id="edit-org-name-error">Organization name is required.</small>}
+        </label>
+        <label>
+          Acronym
+          <input onChange={(event) => updateField('acronym', event.target.value)} value={values.acronym} />
+        </label>
+        <label>
+          Category
+          <select
+            aria-describedby={invalidFields.includes('category') ? 'edit-org-category-error' : undefined}
+            aria-invalid={invalidFields.includes('category')}
+            className={invalidFields.includes('category') ? 'modal-field-invalid' : ''}
+            id="edit-org-category"
+            onChange={(event) => updateField('category', event.target.value)}
+            ref={(element) => { fieldRefs.current.category = element }}
+            value={values.category}
+          >
+            <option value="">Select category</option>
+            {editCategories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+          </select>
+          {invalidFields.includes('category') && <small className="modal-field-error" id="edit-org-category-error">Category is required.</small>}
+        </label>
+        <label>
+          Description
+          <textarea onChange={(event) => updateField('description', event.target.value)} rows={3} value={values.description} />
+        </label>
+        <label>
+          Status
+          <select onChange={(event) => updateField('status', event.target.value)} value={values.status}>
+            {['ACTIVE', 'PENDING', 'INACTIVE', 'SUSPENDED'].map((status) => (
+              <option key={status} value={status}>{humanize(status)}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Faculty adviser
+          <input readOnly value={organization.adviser || 'Unassigned'} />
+        </label>
+        <Button type="submit">Save organization</Button>
+      </form>
+      <ModalAlert
+        message={alert?.message}
+        onClose={() => setAlert(null)}
+        open={Boolean(alert)}
+        returnFocusRef={alertReturnFocusRef}
+        title={alert?.title}
+      />
     </Modal>
   )
 }
@@ -240,7 +308,10 @@ function OrganizationCreateModal({
   const [description, setDescription] = useState('')
   const [status, setStatus] = useState('ACTIVE')
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
+  const [alert, setAlert] = useState(null)
+  const [invalidFields, setInvalidFields] = useState([])
+  const fieldRefs = useRef({})
+  const alertReturnFocusRef = useRef(null)
 
   const activeCategory = (category && categoryOptions.includes(category))
     ? category
@@ -269,40 +340,53 @@ function OrganizationCreateModal({
     setDepartmentId('')
   }
 
+  function showFormAlert(title, message, fields = []) {
+    setInvalidFields(fields)
+    alertReturnFocusRef.current = fieldRefs.current[fields[0] || 'name']
+    setAlert({ title, message })
+  }
+
+  function clearInvalidField(field) {
+    setInvalidFields((current) => current.filter((invalidField) => invalidField !== field))
+  }
+
   const handleSubmit = async (e) => {
     if (e) e.preventDefault()
-    if (!name.trim()) {
-      setError('Organization name is required.')
+    const missingFields = []
+    if (!name.trim()) missingFields.push('name')
+    if (!activeCategory.trim()) missingFields.push('category')
+    if (scope !== 'UNIVERSITY' && !collegeId) missingFields.push('college')
+    if (scope === 'DEPARTMENT' && !departmentId) missingFields.push('department')
+    if (missingFields.length) {
+      const labels = missingFields.map((field) => ({
+        name: 'Organization name',
+        category: 'Category',
+        college: 'College',
+        department: 'Department',
+      }[field]))
+      showFormAlert('Incomplete fields', `Please fill in: ${labels.join(', ')}.`, missingFields)
       return
-    }
-    if (scope === 'COLLEGE' && !collegeId) {
-      setError('Please select a college for a College-scoped organization.')
-      return
-    }
-    if (scope === 'DEPARTMENT') {
-      if (!collegeId) {
-        setError('Please select a college for a Department-scoped organization.')
-        return
-      }
-      if (!departmentId) {
-        setError('Please select a department for a Department-scoped organization.')
-        return
-      }
     }
 
-    setError('')
+    setAlert(null)
+    setInvalidFields([])
     setSubmitting(true)
-    const result = await onCreate({
-      name: name.trim(),
-      acronym: acronym.trim(),
-      category: activeCategory,
-      scope,
-      college_id: collegeId || null,
-      department_id: departmentId || null,
-      adviser_id: adviserId || null,
-      description: description.trim(),
-      status,
-    })
+    let result
+    try {
+      result = await onCreate({
+        name: name.trim(),
+        acronym: acronym.trim(),
+        category: activeCategory,
+        scope,
+        college_id: collegeId || null,
+        department_id: departmentId || null,
+        adviser_id: adviserId || null,
+        description: description.trim(),
+        status,
+      })
+    } catch (saveError) {
+      result = { ok: false, error: saveError.message || 'Failed to create organization.' }
+    }
     setSubmitting(false)
     if (result?.ok) {
       setName('')
@@ -312,32 +396,17 @@ function OrganizationCreateModal({
       setDepartmentId('')
       setAdviserId('')
       setCategory('')
-      setError('')
+      setAlert(null)
+      setInvalidFields([])
       onClose()
     } else {
-      setError(result?.error || 'Failed to create organization.')
+      showFormAlert('Unable to create organization', result?.error || 'Failed to create organization.')
     }
   }
 
   return (
     <Modal onClose={onClose} open={open} size="md" title="Add New Organization">
-      <form onSubmit={handleSubmit} className="admin-settings-form" style={{ marginTop: '12px' }}>
-        {error && (
-          <div
-            role="alert"
-            style={{
-              color: '#a51e37',
-              backgroundColor: '#fdf2f2',
-              border: '1px solid #f8d7da',
-              padding: '10px 14px',
-              borderRadius: '8px',
-              fontSize: '13px',
-              fontWeight: '500',
-            }}
-          >
-            {error}
-          </div>
-        )}
+      <form onSubmit={handleSubmit} className="admin-settings-form" noValidate style={{ marginTop: '12px' }}>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <label htmlFor="create-org-name" className="admin-field-label">
@@ -348,9 +417,13 @@ function OrganizationCreateModal({
             type="text"
             placeholder="e.g. Society of Information Technology Enthusiasts"
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
+            aria-invalid={invalidFields.includes('name')}
+            aria-describedby={invalidFields.includes('name') ? 'create-org-name-error' : undefined}
+            className={invalidFields.includes('name') ? 'modal-field-invalid' : ''}
+            onChange={(e) => { setName(e.target.value); clearInvalidField('name') }}
+            ref={(element) => { fieldRefs.current.name = element }}
           />
+          {invalidFields.includes('name') && <small className="modal-field-error" id="create-org-name-error">Organization name is required.</small>}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -374,14 +447,20 @@ function OrganizationCreateModal({
             <select
               id="create-org-category"
               value={activeCategory}
-              onChange={(e) => setCategory(e.target.value)}
+              aria-invalid={invalidFields.includes('category')}
+              aria-describedby={invalidFields.includes('category') ? 'create-org-category-error' : undefined}
+              className={invalidFields.includes('category') ? 'modal-field-invalid' : ''}
+              onChange={(e) => { setCategory(e.target.value); clearInvalidField('category') }}
+              ref={(element) => { fieldRefs.current.category = element }}
             >
+              <option value="">Select category</option>
               {categoryOptions.map((cat) => (
                 <option key={cat} value={cat}>
                   {cat}
                 </option>
               ))}
             </select>
+            {invalidFields.includes('category') && <small className="modal-field-error" id="create-org-category-error">Category is required.</small>}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -408,8 +487,11 @@ function OrganizationCreateModal({
             <select
               id="create-org-college"
               value={collegeId}
-              onChange={handleCollegeChange}
-              required
+              aria-invalid={invalidFields.includes('college')}
+              aria-describedby={invalidFields.includes('college') ? 'create-org-college-error' : undefined}
+              className={invalidFields.includes('college') ? 'modal-field-invalid' : ''}
+              onChange={(event) => { handleCollegeChange(event); clearInvalidField('college'); clearInvalidField('department') }}
+              ref={(element) => { fieldRefs.current.college = element }}
             >
               <option value="">Select College</option>
               {colleges.map((col) => (
@@ -418,6 +500,7 @@ function OrganizationCreateModal({
                 </option>
               ))}
             </select>
+            {invalidFields.includes('college') && <small className="modal-field-error" id="create-org-college-error">College is required.</small>}
           </div>
         )}
 
@@ -429,8 +512,11 @@ function OrganizationCreateModal({
             <select
               id="create-org-dept"
               value={departmentId}
-              onChange={(e) => setDepartmentId(e.target.value)}
-              required
+              aria-invalid={invalidFields.includes('department')}
+              aria-describedby={invalidFields.includes('department') ? 'create-org-dept-error' : undefined}
+              className={invalidFields.includes('department') ? 'modal-field-invalid' : ''}
+              onChange={(e) => { setDepartmentId(e.target.value); clearInvalidField('department') }}
+              ref={(element) => { fieldRefs.current.department = element }}
             >
               <option value="">Select Department</option>
               {filteredDepartments.map((dept) => (
@@ -439,6 +525,7 @@ function OrganizationCreateModal({
                 </option>
               ))}
             </select>
+            {invalidFields.includes('department') && <small className="modal-field-error" id="create-org-dept-error">Department is required.</small>}
           </div>
         )}
 
@@ -518,6 +605,13 @@ function OrganizationCreateModal({
           </Button>
         </div>
       </form>
+      <ModalAlert
+        message={alert?.message}
+        onClose={() => setAlert(null)}
+        open={Boolean(alert)}
+        returnFocusRef={alertReturnFocusRef}
+        title={alert?.title}
+      />
     </Modal>
   )
 }
@@ -1586,7 +1680,7 @@ export default function AdminPortalPage() {
           onSave={async (changes) => {
             const ok = organizationEdit && (await data.updateAdminOrganization(organizationEdit.id, changes))
             if (ok) { showToast('Organization details updated.', 'success'); setOrganizationEdit(null) }
-            else showToast('Complete all organization fields before saving.', 'error')
+            return Boolean(ok)
           }}
         />
         <OrganizationCreateModal

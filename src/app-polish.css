@@ -543,6 +543,102 @@ table.dataTable tbody tr:hover td,
   border: 0 !important;
 }
 
+.toast-region {
+  z-index: 1400 !important;
+}
+
+.modal-alert-overlay {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: clamp(12px, 4vw, 28px);
+  border-radius: inherit;
+  background: rgba(43, 20, 28, .48);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: modal-alert-fade-in 150ms ease-out both;
+}
+
+.modal-alert-card {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: min(100%, 360px);
+  padding: clamp(20px, 5vw, 28px);
+  border: 1px solid #ead8de;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(40, 7, 18, .24);
+  text-align: center;
+  animation: modal-alert-scale-in 180ms cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.modal-alert-icon {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  place-items: center;
+  border: 1px solid #f0cbd5;
+  border-radius: 50%;
+  color: var(--crimson, #8f1538);
+  background: #fbeef2;
+}
+
+.modal-alert-card h2 {
+  margin: 0;
+  color: #33262b;
+  font-family: Manrope, 'Segoe UI', sans-serif;
+  font-size: 19px;
+  line-height: 1.35;
+}
+
+.modal-alert-card p {
+  max-width: 42ch;
+  margin: 0;
+  color: #6d6268;
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.modal-alert-card .button {
+  min-width: 108px;
+  min-height: 42px;
+  margin-top: 4px;
+  color: #fff;
+  background: var(--crimson, #8f1538);
+}
+
+.modal-alert-card .button:hover {
+  background: var(--crimson-dark, #4a0b1f);
+}
+
+.modal-field-invalid {
+  border-color: #b42318 !important;
+  box-shadow: 0 0 0 2px rgba(180, 35, 24, .1) !important;
+}
+
+.modal-field-error {
+  display: block;
+  margin-top: 4px;
+  color: #a51e37;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@keyframes modal-alert-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-alert-scale-in {
+  from { opacity: 0; transform: translateY(6px) scale(.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @media (max-width: 760px) {
   .topbar-user-name {
     display: block;
@@ -809,6 +905,8 @@ table.dataTable tbody tr:hover td,
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop,
   .modal,
+  .modal-alert-overlay,
+  .modal-alert-card,
   .adviser-panel-heading > a,
   .adviser-activity-row {
     animation: none !important;
