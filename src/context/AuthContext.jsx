@@ -47,26 +47,6 @@ function mapUserRow(row) {
   const rawRoles = Array.isArray(row.roles) ? row.roles : [primaryRole]
   const roles = new Set(rawRoles)
 
-  const hasActiveMembership =
-    activeMemberships.length > 0 ||
-    (Array.isArray(row.organizationRoles) && row.organizationRoles.length > 0) ||
-    primaryRole === 'OFFICER'
-
-  if (primaryRole === 'OFFICER' || row.student_id || row.studentDbId || row.studentRecordId || row.student_number || row.studentNumber) {
-    roles.add('STUDENT')
-  }
-
-  if (hasActiveMembership) {
-    roles.add('OFFICER')
-    roles.add('STUDENT')
-  } else if (primaryRole !== 'OFFICER') {
-    roles.delete('OFFICER')
-  }
-
-  const resolvedRole = (hasActiveMembership || primaryRole === 'OFFICER') && primaryRole !== 'ADMIN' && primaryRole !== 'ADVISER'
-    ? 'OFFICER'
-    : primaryRole
-
   const defaultOrgId =
     row.organizationId ||
     activeMemberships[0]?.organization_id ||
@@ -76,6 +56,33 @@ function mapUserRow(row) {
     advisedOrganizations[0]?.organization_id ||
     advisedOrganizations[0]?.organizationId ||
     null
+
+  const hasActiveOrg =
+    activeMemberships.length > 0 ||
+    (Array.isArray(row.organizationRoles) && row.organizationRoles.length > 0) ||
+    Boolean(defaultOrgId)
+
+  // Every student organization officer or student account has the STUDENT capability
+  if (primaryRole === 'OFFICER' || row.role === 'OFFICER' || row.student_id || row.studentDbId || row.studentRecordId || row.student_number || row.studentNumber) {
+    roles.add('STUDENT')
+  }
+
+  if (primaryRole === 'OFFICER' || row.role === 'OFFICER' || hasActiveOrg) {
+    roles.add('STUDENT')
+    roles.add('OFFICER')
+  } else if (primaryRole !== 'OFFICER' && row.role !== 'OFFICER') {
+    roles.delete('OFFICER')
+  }
+
+  // An officer account without an active organization workspace can enter the student portal,
+  // but not the organization portal. Their active working role is STUDENT until an organization is active.
+  const resolvedRole = (hasActiveOrg && (primaryRole === 'OFFICER' || row.role === 'OFFICER') && primaryRole !== 'ADMIN' && primaryRole !== 'ADVISER')
+    ? 'OFFICER'
+    : ((primaryRole === 'OFFICER' || row.role === 'OFFICER') && !hasActiveOrg)
+      ? 'STUDENT'
+      : (row.role === 'STUDENT' || primaryRole === 'STUDENT')
+        ? 'STUDENT'
+        : primaryRole
 
   const organizationRoles = Array.isArray(row.organizationRoles) && row.organizationRoles.length > 0
     ? row.organizationRoles
@@ -108,8 +115,9 @@ function mapUserRow(row) {
     firstName: row.firstName || row.first_name || '',
     middleName: row.middleName || row.middle_name || '',
     lastName: row.lastName || row.last_name || '',
-    name: row.name || row.displayName || `${row.lastName || row.last_name || ''}, ${row.firstName || row.first_name || ''}`.replace(/^,\s*/, ''),
-    displayName: row.displayName || `${row.lastName || row.last_name || ''}, ${row.firstName || row.first_name || ''}`.replace(/^,\s*/, ''),
+    suffix: row.suffix || '',
+    name: row.name || row.displayName || `${row.lastName || row.last_name || ''}, ${row.firstName || row.first_name || ''}${row.middleName || row.middle_name ? ` ${row.middleName || row.middle_name}` : ''}${row.suffix ? ` ${row.suffix}` : ''}`.replace(/^,\s*/, ''),
+    displayName: row.displayName || `${row.lastName || row.last_name || ''}, ${row.firstName || row.first_name || ''}${row.middleName || row.middle_name ? ` ${row.middleName || row.middle_name}` : ''}${row.suffix ? ` ${row.suffix}` : ''}`.replace(/^,\s*/, ''),
     email: row.email || '',
     role: resolvedRole,
     roles: Array.from(roles),
@@ -224,6 +232,10 @@ export function AuthProvider({ children }) {
         }
       }
       const mapped = mapUserRow(payload)
+      if (mapped?.id) {
+        sessionStorage.setItem(SESSION_STORAGE_KEY, String(mapped.id))
+      }
+      setCurrentUser(mapped)
       return { ok: true, user: mapped }
     } catch {
       return {
@@ -242,6 +254,19 @@ export function AuthProvider({ children }) {
     if (!currentUser) return false
     const allowed = currentUser.roles || [currentUser.role]
     if (!allowed.includes(nextRole)) return false
+    if (nextRole === 'OFFICER') {
+      const targetOrg = organizationId || currentUser.organizationId || currentUser.organizationRoles?.[0]?.organizationId
+      if (!targetOrg) return false
+      setCurrentUser((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          role: 'OFFICER',
+          organizationId: targetOrg,
+        }
+      })
+      return true
+    }
     setCurrentUser((prev) => {
       if (!prev) return prev
       return {

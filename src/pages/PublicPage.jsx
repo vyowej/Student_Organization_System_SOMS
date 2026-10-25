@@ -36,6 +36,7 @@ function AuthenticationPage({ page }) {
     lastName: '',
     firstName: '',
     middleName: '',
+    suffix: '',
     studentId: '',
     email: '',
     password: '',
@@ -69,7 +70,7 @@ function AuthenticationPage({ page }) {
     setSuccess('')
     const trimmedId = identifier.trim()
     if (!trimmedId || !password) {
-      setError('Enter your email address (or Student/Employee ID) and password.')
+      setError('Enter your email address (or Employee/Student ID) and password.')
       return
     }
     if (trimmedId.includes('@') && !isValidEmail(trimmedId)) {
@@ -85,7 +86,11 @@ function AuthenticationPage({ page }) {
     }
     await refreshPortalData()
     showToast('Signed in successfully.', 'success')
-    navigate(result.redirectTo || dashboardByRole[result.user.role] || '/student/dashboard', { replace: true })
+    const hasOrgWorkspace = (result.user?.organizationRoles && result.user.organizationRoles.length > 0) || Boolean(result.user?.organizationId)
+    const targetDashboard = (result.user?.role === 'OFFICER' && !hasOrgWorkspace)
+      ? '/student/dashboard'
+      : (dashboardByRole[result.user?.role] || '/student/dashboard')
+    navigate(result.redirectTo || targetDashboard, { replace: true })
   }
 
   function validateRegistrationStep(step) {
@@ -140,13 +145,13 @@ function AuthenticationPage({ page }) {
       return
     }
     await refreshPortalData()
-    showToast('Account created successfully.', 'success')
-    navigate('/login', { replace: true, state: { registered: true } })
+    showToast('Account created successfully. Welcome to UNIDOS!', 'success')
+    navigate('/student/dashboard', { replace: true })
   }
 
   const titles = {
     login: ['Welcome back', 'Sign in to continue to your WMSU organization workspace.'],
-    register: ['Create your student account', 'Register to join organizations and campus activities.'],
+    register: ['Create Account', 'Register to join organizations and campus activities.'],
     'forgot-password': ['Reset your password', 'Enter your WMSU email address to continue.'],
   }
   const [title, description] = titles[page]
@@ -181,7 +186,7 @@ function AuthenticationPage({ page }) {
       {page === 'login' && location.state?.registered && <p className="auth-success" role="status">Account created successfully. Sign in with your new account.</p>}
       {page === 'login' && (
         <form className="auth-form" noValidate onSubmit={handleLogin}>
-          <Input autoComplete="username" id="login-identifier" label="WMSU Email or Student/Employee ID" onChange={(event) => setIdentifier(event.target.value)} placeholder="name@wmsu.edu.ph or Student ID" type="text" value={identifier} />
+          <Input autoComplete="username" id="login-identifier" label="WMSU Email or Employee/Student ID" onChange={(event) => setIdentifier(event.target.value)} placeholder="name@wmsu.edu.ph or Employee/Student ID" type="text" value={identifier} />
           <div className="auth-password-field">
             <Input autoComplete="current-password" id="login-password" label="Password" onChange={(event) => setPassword(event.target.value)} type={showLoginPassword ? 'text' : 'password'} value={password} />
             <button aria-label={showLoginPassword ? 'Hide password' : 'Show password'} aria-pressed={showLoginPassword} className="auth-show-password" onClick={() => setShowLoginPassword((visible) => !visible)} type="button"><PasswordVisibilityIcon visible={showLoginPassword} /></button>
@@ -199,7 +204,7 @@ function AuthenticationPage({ page }) {
           <div aria-label={`Registration step ${registrationStep} of 2`} className="auth-registration-progress">
             <span aria-current={registrationStep === 1 ? 'step' : undefined} className={registrationStep === 1 ? 'is-current' : 'is-complete'}>
               <b aria-hidden="true">{registrationStep === 1 ? '1' : <Icon name="check" size={12} strokeWidth={3} />}</b>
-              <span>Student details</span>
+              <span>Input detail</span>
             </span>
             <i aria-hidden="true" className={registrationStep === 2 ? 'is-complete' : ''} />
             <span aria-current={registrationStep === 2 ? 'step' : undefined} className={registrationStep === 2 ? 'is-current' : ''}>
@@ -212,7 +217,8 @@ function AuthenticationPage({ page }) {
               <Input autoComplete="given-name" id="register-first-name" label="First Name" onChange={(event) => setForm((current) => ({ ...current, firstName: event.target.value }))} value={form.firstName} />
               <Input autoComplete="additional-name" id="register-middle-name" label="Middle Name (optional)" onChange={(event) => setForm((current) => ({ ...current, middleName: event.target.value }))} value={form.middleName} />
               <Input autoComplete="family-name" id="register-last-name" label="Last Name" onChange={(event) => setForm((current) => ({ ...current, lastName: event.target.value }))} value={form.lastName} />
-              <Input autoComplete="off" id="register-student-id" label="Student ID" onChange={(event) => setForm((current) => ({ ...current, studentId: event.target.value }))} value={form.studentId} />
+              <Input autoComplete="honorific-suffix" id="register-suffix" label="Suffix (optional)" onChange={(event) => setForm((current) => ({ ...current, suffix: event.target.value }))} placeholder="e.g., Jr., Sr., III" value={form.suffix} />
+              <Input autoComplete="off" fieldClassName="auth-field-full" id="register-student-id" label="Employee/Student ID" onChange={(event) => setForm((current) => ({ ...current, studentId: event.target.value }))} placeholder="e.g., 2024-00123" value={form.studentId} />
               <Input aria-describedby="register-email-hint" autoComplete="email" fieldClassName="auth-field-full" id="register-email" label="WMSU Email" onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} placeholder="name@wmsu.edu.ph" type="email" value={form.email} />
               <p className="auth-registration-hint" id="register-email-hint">Use your university email ending in @wmsu.edu.ph.</p>
             </>
@@ -279,7 +285,7 @@ function AuthenticationPage({ page }) {
         </form>
       )}
       <p className="auth-note">
-        {page === 'login' ? <>Need an account? <Link to="/register">Register here</Link></>
+        {page === 'login' ? <>Need an account? <Link to="/register">Create Account</Link></>
           : page === 'register' ? <>Already registered? <Link to="/login">Sign in</Link></>
             : <Link to="/login">Return to sign in</Link>}
       </p>

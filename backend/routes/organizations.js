@@ -21,8 +21,12 @@ const VALID_ORG_TYPES = [
   'RELIGIOUS',
   'CULTURAL',
   'SPORTS_RECREATION',
+  'SPORTS',
   'SOCIO_CIVIC',
   'SPECIAL_INTEREST',
+  'PUBLICATION',
+  'TECHNOLOGY',
+  'LEADERSHIP',
   'OTHER',
 ];
 
@@ -33,11 +37,12 @@ function normalizeOrgType(input) {
   if (!input) return 'OTHER';
   const upper = String(input).trim().toUpperCase().replace(/[\s/-]+/g, '_');
   if (VALID_ORG_TYPES.includes(upper)) return upper;
-  if (upper === 'SPORTS' || upper === 'RECREATION') return 'SPORTS_RECREATION';
+  if (upper === 'SPORTS_AND_RECREATION' || upper === 'SPORTS_&_RECREATION' || upper === 'RECREATION') return 'SPORTS_RECREATION';
+  if (upper === 'SPORTS') return 'SPORTS';
   if (upper === 'SOCIOCIVIC') return 'SOCIO_CIVIC';
   if (upper === 'COUNCIL') return 'STUDENT_COUNCIL';
-  if (upper === 'TECHNOLOGY') return 'SPECIAL_INTEREST';
-  if (upper === 'LEADERSHIP') return 'SPECIAL_INTEREST';
+  if (upper === 'TECH') return 'TECHNOLOGY';
+  if (upper === 'LEADERS') return 'LEADERSHIP';
   return 'OTHER';
 }
 
@@ -48,12 +53,25 @@ const ORG_SELECT_QUERY = `
          d.name AS department_name,
          d.acronym AS department_acronym,
          oa.adviser_id AS current_adviser_id,
+         oa.adviser_id AS adviser_id,
+         a.title AS adviser_title,
          au.id AS adviser_user_id,
-         CASE WHEN au.id IS NOT NULL THEN (au.last_name || ', ' || au.first_name) ELSE NULL END AS adviser_name,
+         CASE 
+           WHEN au.id IS NOT NULL THEN 
+             TRIM(
+               CONCAT_WS(' ', a.title, au.first_name, au.middle_name, au.last_name) || 
+               CASE 
+                 WHEN au.suffix IS NULL OR au.suffix = '' THEN ''
+                 WHEN au.suffix ILIKE 'Jr%' OR au.suffix ILIKE 'Sr%' THEN ' ' || au.suffix
+                 ELSE ', ' || au.suffix
+               END
+             )
+           ELSE NULL 
+         END AS adviser_name,
          au.email AS adviser_email,
          cu.email AS created_by_email,
-         CASE WHEN cu.id IS NOT NULL THEN (cu.last_name || ', ' || cu.first_name) ELSE NULL END AS created_by_name,
-         CASE WHEN apu.id IS NOT NULL THEN (apu.last_name || ', ' || apu.first_name) ELSE NULL END AS approved_by_name,
+         CASE WHEN cu.id IS NOT NULL THEN (cu.last_name || ', ' || cu.first_name || COALESCE(' ' || cu.suffix, '')) ELSE NULL END AS created_by_name,
+         CASE WHEN apu.id IS NOT NULL THEN (apu.last_name || ', ' || apu.first_name || COALESCE(' ' || apu.suffix, '')) ELSE NULL END AS approved_by_name,
          (SELECT COUNT(*)::int FROM organization_members om WHERE om.organization_id = o.id AND om.status = 'ACTIVE') AS active_members,
          (SELECT COUNT(*)::int FROM events ev WHERE ev.organization_id = o.id AND ev.status IN ('APPROVED', 'PUBLISHED')) AS upcoming_events_count
     FROM organizations o

@@ -133,8 +133,10 @@ const MEMBER_SELECT_QUERY = `
          s.program_id,
          s.year_level,
          u.first_name,
+         u.middle_name,
          u.last_name,
-         (u.last_name || ', ' || u.first_name) AS name,
+         u.suffix,
+         (u.last_name || ', ' || u.first_name || COALESCE(' ' || u.suffix, '')) AS name,
          u.email,
          p.name AS program_name,
          p.acronym AS program_acronym,
@@ -464,14 +466,16 @@ const APPLICATION_SELECT_QUERY = `
          s.student_number,
          s.year_level,
          u.first_name,
+         u.middle_name,
          u.last_name,
-         (u.last_name || ', ' || u.first_name) AS name,
+         u.suffix,
+         (u.last_name || ', ' || u.first_name || COALESCE(' ' || u.suffix, '')) AS name,
          u.email,
          p.name AS program_name,
          p.acronym AS program_acronym,
          d.name AS department_name,
          c.name AS college_name,
-         CASE WHEN ru.id IS NOT NULL THEN (ru.last_name || ', ' || ru.first_name) ELSE NULL END AS reviewer_name
+         CASE WHEN ru.id IS NOT NULL THEN (ru.last_name || ', ' || ru.first_name || COALESCE(' ' || ru.suffix, '')) ELSE NULL END AS reviewer_name
     FROM organization_applications oa
     JOIN organizations o ON o.id = oa.organization_id
     JOIN students s ON s.id = oa.applicant_id

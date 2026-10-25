@@ -314,7 +314,7 @@ export default function OfficerMembersPage() {
         </div>
       </Card>
 
-      <Modal onClose={() => setViewingMember(null)} open={Boolean(viewingMember)} title="Member Details">
+      <Modal onClose={() => setViewingMember(null)} open={Boolean(viewingMember)} size="md" title="Member Details">
         {viewingMember && (
           <div className="officer-member-details">
             <dl>
@@ -333,7 +333,7 @@ export default function OfficerMembersPage() {
         )}
       </Modal>
 
-      <Modal onClose={() => setEditingMember(null)} open={Boolean(editingMember)} title="Edit Member Position">
+      <Modal onClose={() => setEditingMember(null)} open={Boolean(editingMember)} size="md" title="Edit Member Position">
         <p>Change the organization position for {editingMember && formatDisplayName(editingMember)}.</p>
         <label className="officer-modal-field">
           <span>Organization position</span>
@@ -375,7 +375,7 @@ export default function OfficerMembersPage() {
         </div>
       </Modal>
 
-      <Modal onClose={() => setStatusTarget(null)} open={Boolean(statusTarget)} title="Manage Membership Status">
+      <Modal onClose={() => setStatusTarget(null)} open={Boolean(statusTarget)} size="sm" title="Manage Membership Status">
         <p>Confirm a membership status change for {statusTarget && formatDisplayName(statusTarget)}.</p>
         <label className="officer-modal-field">
           <span>Membership status</span>
@@ -389,7 +389,7 @@ export default function OfficerMembersPage() {
         </div>
       </Modal>
 
-      <Modal onClose={() => setPositionTarget(null)} open={Boolean(positionTarget)} title="Confirm Officer Assignment">
+      <Modal onClose={() => setPositionTarget(null)} open={Boolean(positionTarget)} size="md" title="Confirm Officer Assignment">
         <label className="officer-modal-field">
           <span>Active organization member</span>
           <select onChange={(event) => setAssignedMemberId(event.target.value)} value={assignedMemberId}>

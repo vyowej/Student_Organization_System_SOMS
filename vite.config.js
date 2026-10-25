@@ -5,6 +5,9 @@ import { defineConfig } from 'vite'
 // Proxies /api/* requests during local development to the Express backend on port 5000.
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    include: ['html5-qrcode', 'qrcode'],
+  },
   server: {
     proxy: {
       '/api': {
@@ -14,4 +17,3 @@ export default defineConfig({
     },
   },
 })
-

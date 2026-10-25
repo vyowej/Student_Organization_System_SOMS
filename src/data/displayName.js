@@ -6,13 +6,18 @@
  */
 export function formatDisplayName(person = {}) {
   person ??= {}
-  const lastName = person.lastName?.trim()
-  const firstName = person.firstName?.trim()
-  const middleName = person.middleName?.trim()
+  const lastName = person.lastName?.trim() || person.last_name?.trim()
+  const firstName = person.firstName?.trim() || person.first_name?.trim()
+  const middleName = person.middleName?.trim() || person.middle_name?.trim()
+  const suffix = person.suffix?.trim()
   if (lastName && firstName) {
-    return `${lastName}, ${firstName}${middleName ? ` ${middleName}` : ''}`
+    return `${lastName}, ${firstName}${middleName ? ` ${middleName}` : ''}${suffix ? ` ${suffix}` : ''}`
   }
-  return person.displayName?.trim() || person.name?.trim() || person.studentName?.trim() || ''
+  const fallback = person.displayName?.trim() || person.name?.trim() || person.studentName?.trim() || ''
+  if (fallback && suffix && !fallback.includes(suffix)) {
+    return `${fallback} ${suffix}`
+  }
+  return fallback
 }
 
 // Short, sentence-friendly name ("Juan") for greetings. formatDisplayName() returns

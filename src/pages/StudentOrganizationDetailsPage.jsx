@@ -573,6 +573,7 @@ export default function StudentOrganizationDetailsPage() {
       <Modal
         onClose={() => setApplicationOpen(false)}
         open={applicationOpen}
+        size="md"
         title={`Join ${organization.name}?`}
       >
         <div style={{ display: 'grid', gap: '14px', padding: '6px 0' }}>
@@ -629,6 +630,7 @@ export default function StudentOrganizationDetailsPage() {
       <Modal
         onClose={() => setSelectedDoc(null)}
         open={Boolean(selectedDoc)}
+        size="lg"
         title={selectedDoc ?? 'Document Preview'}
       >
         <div className="student-doc-preview-body">

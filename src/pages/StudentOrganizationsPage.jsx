@@ -10,10 +10,13 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import FilterSelect from '../components/ui/FilterSelect.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
+import SearchBar from '../components/ui/SearchBar.jsx'
 import { organizationCategories, studentOrganizations } from '../data/studentOrganizations.js'
 
 export default function StudentOrganizationsPage() {
-  const { adminOrganizations = [] } = useOutletContext()
+  const context = useOutletContext() || {}
+  const adminOrganizations = context.adminOrganizations || []
+  const adminSettings = context.adminSettings || null
 
   const [searchParams] = useSearchParams()
   const initialQuery = searchParams.get('q') ?? ''
@@ -35,10 +38,19 @@ export default function StudentOrganizationsPage() {
     return [...currentOrganizations.values()]
   }, [adminOrganizations])
 
+  const categoryOptions = useMemo(() => {
+    const fromSettings = (adminSettings?.organizationCategories || []).filter((c) => c !== 'All')
+    const fromDefaults = organizationCategories.filter((c) => c !== 'All')
+    const fromOrgs = visibleOrganizations.map((o) => o.category).filter(Boolean)
+    const combined = ['All', ...fromSettings, ...fromDefaults, ...fromOrgs]
+    return [...new Set(combined)]
+  }, [adminSettings?.organizationCategories, visibleOrganizations])
+
   const filteredOrganizations = useMemo(() => {
     const query = search.trim().toLowerCase()
     return visibleOrganizations.filter((organization) => {
-      const matchesCategory = category === 'All' || organization.category === category
+      const matchesCategory = category === 'All' ||
+        String(organization.category || '').trim().toLowerCase() === category.trim().toLowerCase()
       const searchableText = `${organization.name} ${organization.acronym} ${organization.category} ${organization.description} ${organization.adviser}`.toLowerCase()
       return matchesCategory && (!query || searchableText.includes(query))
     })
@@ -53,17 +65,13 @@ export default function StudentOrganizationsPage() {
       />
 
       <div className="directory-toolbar">
-        <label className="organization-search">
-          <span aria-hidden="true">⌕</span>
-          <input
-            aria-label="Search organizations"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search organizations..."
-            type="search"
-            value={search}
-          />
-        </label>
-        <FilterSelect label="Category" onChange={setCategory} options={organizationCategories} value={category} />
+        <SearchBar
+          label="Search organizations"
+          onChange={setSearch}
+          placeholder="Search organizations by name, acronym or category…"
+          value={search}
+        />
+        <FilterSelect label="Category" onChange={setCategory} options={categoryOptions} value={category} />
         {(category !== 'All' || search) && (
           <button className="directory-toolbar-reset" onClick={() => { setCategory('All'); setSearch('') }} type="button">Clear</button>
         )}

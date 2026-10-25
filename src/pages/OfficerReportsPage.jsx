@@ -338,7 +338,7 @@ export default function OfficerReportsPage() {
       </Card>
 
       {/* Modal: Submit Accomplishment Report */}
-      <Modal onClose={() => { resetReportForm(); setAddModalOpen(false) }} open={addModalOpen} title="Submit Accomplishment Report">
+      <Modal onClose={() => { resetReportForm(); setAddModalOpen(false) }} open={addModalOpen} size="xl" title="Submit Accomplishment Report">
         <form className="officer-org-form officer-accomplishment-form" onSubmit={handleSubmitReport}>
           {orgEvents.length > 0 && (
             <label>
@@ -487,6 +487,7 @@ export default function OfficerReportsPage() {
         <Modal
           onClose={() => setSelectedReportForView(null)}
           open={Boolean(selectedReportForView)}
+          size="xl"
           title={`Accomplishment Report: ${selectedReportForView.eventTitle}`}
         >
           <div className="officer-accomplishment-view" style={{ display: 'grid', gap: '14px' }}>

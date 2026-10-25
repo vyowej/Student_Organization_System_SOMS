@@ -31,6 +31,13 @@ function formatDisplayTime(isoValue) {
   })
 }
 
+function formatDisplayDateTime(isoValue) {
+  if (!isoValue) return ''
+  const parsed = new Date(isoValue)
+  if (Number.isNaN(parsed.getTime())) return String(isoValue)
+  return `${formatDisplayDate(isoValue)}, ${formatDisplayTime(isoValue)}`
+}
+
 function formatOrgCategoryLabel(orgType) {
   if (!orgType) return 'Academic'
   const map = {
@@ -42,9 +49,10 @@ function formatOrgCategoryLabel(orgType) {
     SOCIO_CIVIC: 'Socio-Civic',
     RELIGIOUS: 'Religious',
     SPORTS: 'Sports',
-    SPORTS_RECREATION: 'Sports',
+    SPORTS_RECREATION: 'Sports & Recreation',
     CULTURAL: 'Cultural',
     SPECIAL_INTEREST: 'Special Interest',
+    PUBLICATION: 'Publication',
     FRATERNITY_SORORITY: 'Fraternity / Sorority',
     OTHER: 'Other',
   }
@@ -115,7 +123,8 @@ function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allD
       firstName: m.first_name,
       middleName: m.middle_name || '',
       lastName: m.last_name,
-      name: `${m.last_name}, ${m.first_name}`,
+      suffix: m.suffix || '',
+      name: `${m.last_name}, ${m.first_name}${m.suffix ? ` ${m.suffix}` : ''}`,
       position: formatPositionLabel(m.position, m.custom_title),
       rawPosition: m.position,
       status: m.status || 'ACTIVE',
@@ -129,9 +138,11 @@ function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allD
     .filter((d) => String(d.organization_id) === String(orgId) && d.status === 'APPROVED')
     .map((d) => d.title)
 
-  const adviserName = row.adviser_name || (row.adviser_first_name
-    ? `${row.adviser_last_name}, ${row.adviser_first_name}`
-    : 'Unassigned')
+  const adviserName = row.adviser_name || (row.adviser_last_name && row.adviser_first_name
+    ? `${row.adviser_last_name}, ${row.adviser_first_name}${row.adviser_suffix ? ` ${row.adviser_suffix}` : ''}`
+    : row.adviser_first_name
+      ? row.adviser_first_name
+      : 'Unassigned')
 
   const activeCount = Number(row.member_count ?? orgMembers.length ?? 0)
 
@@ -153,9 +164,9 @@ function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allD
     mission: row.mission || 'Not provided.',
     vision: row.vision || 'Not provided.',
     logo: row.logo || '',
-    adviserId: row.adviser_id || null,
+    adviserId: row.current_adviser_id || row.adviser_id || null,
     adviser: adviserName,
-    adviserStatus: row.adviser_id ? 'ACTIVE' : 'UNASSIGNED',
+    adviserStatus: (row.current_adviser_id || row.adviser_id || (adviserName && adviserName !== 'Unassigned')) ? 'ACTIVE' : 'UNASSIGNED',
     status: row.status || 'ACTIVE',
     accreditationStatus: row.accreditation_status || row.status || 'PENDING',
     memberCount: activeCount,
@@ -231,7 +242,8 @@ function normalizeMember(row) {
     firstName: row.first_name || '',
     middleName: row.middle_name || '',
     lastName: row.last_name || '',
-    name: `${row.last_name || ''}, ${row.first_name || ''}`.replace(/^,\s*/, ''),
+    suffix: row.suffix || '',
+    name: `${row.last_name || ''}, ${row.first_name || ''}${row.suffix ? ` ${row.suffix}` : ''}`.replace(/^,\s*/, ''),
     email: row.email || '',
     program: row.program_name || row.program_code || row.program_acronym || '',
     yearLevel: row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : '',
@@ -266,7 +278,8 @@ function normalizeApplication(row) {
     firstName: row.first_name || '',
     middleName: row.middle_name || '',
     lastName: row.last_name || '',
-    name: `${row.last_name || ''}, ${row.first_name || ''}`.replace(/^,\s*/, ''),
+    suffix: row.suffix || '',
+    name: `${row.last_name || ''}, ${row.first_name || ''}${row.suffix ? ` ${row.suffix}` : ''}`.replace(/^,\s*/, ''),
     email: row.email || '',
     program: row.program_name || row.program_code || row.program_acronym || '',
     yearLevel: row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : '',
@@ -299,6 +312,7 @@ function normalizeRegistration(row) {
     studentId: row.student_number || String(row.student_id),
     firstName: row.first_name || '',
     lastName: row.last_name || '',
+    suffix: row.suffix || '',
     status: row.status || 'REGISTERED',
     registrationDate: formatDisplayDate(row.registered_at),
     registeredAt: row.registered_at,
@@ -359,7 +373,9 @@ function normalizeDocument(row) {
 
 function normalizeUser(row) {
   const resolvedId = row.user_id ?? row.id
-  const fullName = `${row.last_name || ''}, ${row.first_name || ''}`.replace(/^,\s*/, '')
+  const suffix = row.suffix ? ` ${row.suffix}` : ''
+  const middle = (row.middle_name || row.middleName) ? ` ${row.middle_name || row.middleName}` : ''
+  const fullName = `${row.last_name || ''}, ${row.first_name || ''}${middle}${suffix}`.replace(/^,\s*/, '')
   return {
     id: resolvedId,
     userId: row.student_number || row.employee_number || String(resolvedId),
@@ -372,7 +388,9 @@ function normalizeUser(row) {
     firstName: row.first_name || row.firstName || '',
     middleName: row.middle_name || row.middleName || '',
     lastName: row.last_name || row.lastName || '',
+    suffix: row.suffix || '',
     name: row.name || fullName,
+    displayName: row.displayName || fullName,
     email: row.email || '',
     role: formatRoleLabel(row.role),
     rawRole: row.role || 'STUDENT',
@@ -580,18 +598,32 @@ function isAdminNotificationAllowedByPreferences(n, prefs) {
 function normalizeAuditLog(row) {
   const logId = row.log_id ?? row.id
   const entityType = row.entity_type ?? row.entity ?? 'SYSTEM'
+  const actorName = row.actor_name
+    || (row.first_name ? `${row.last_name}, ${row.first_name}${row.suffix ? ` ${row.suffix}` : ''}` : '')
+    || row.metadata?.actor_name
+    || (row.user_id ? `User #${row.user_id}` : 'System')
+  const metadata = row.metadata || row.details || {}
+  const description = metadata.description
+    || metadata.notes
+    || metadata.reason
+    || `${String(row.action || '').replaceAll('_', ' ')} on ${entityType}${row.entity_id ? ` #${row.entity_id}` : ''}`
   return {
     id: logId,
     logId,
     userId: row.user_id,
-    actor: row.first_name ? `${row.last_name}, ${row.first_name}` : 'System',
-    role: row.role || 'SYSTEM',
+    actor: actorName,
+    actorEmail: row.email || metadata.email || '',
+    role: row.role || metadata.role || (row.user_id ? 'User' : 'System'),
     action: row.action,
     entityType,
     entityId: row.entity_id || '—',
-    description: `${row.action} on ${entityType}${row.entity_id ? ` #${row.entity_id}` : ''}`,
-    ipAddress: row.ip_address || '',
-    timestamp: formatDisplayDate(row.created_at),
+    description,
+    metadata,
+    details: metadata,
+    ipAddress: row.ip_address || metadata.ip_address || '127.0.0.1',
+    timestamp: formatDisplayDateTime(row.created_at),
+    date: formatDisplayDate(row.created_at),
+    time: formatDisplayTime(row.created_at),
     createdAt: row.created_at,
   }
 }
@@ -1133,7 +1165,7 @@ export function PortalDataProvider({ children }) {
 
   const checkInStudent = useCallback(async (eventId, registrationCodeOrStudentId) => {
     const code = String(registrationCodeOrStudentId || '').trim()
-    if (!code) return { ok: false, message: 'Enter a student registration code or student ID.' }
+    if (!code) return { ok: false, message: 'Enter a student registration code or Employee/Student ID.' }
 
     const matchedReg = studentRegistrations.find(
       (r) =>
@@ -1165,6 +1197,89 @@ export function PortalDataProvider({ children }) {
       data: payload,
     }
   }, [studentRegistrations, currentUser?.userId, refreshPortalData])
+
+  const getEventAttendanceCode = useCallback(async (eventId) => {
+    if (!eventId) return null
+    try {
+      const res = await fetch(`/api/attendance/event/${eventId}/code`)
+      if (!res.ok) return null
+      return await res.json()
+    } catch {
+      return null
+    }
+  }, [])
+
+  const generateEventAttendanceCode = useCallback(async (eventId, action = 'generate', active) => {
+    if (!eventId) return null
+    try {
+      const res = await fetch(`/api/attendance/event/${eventId}/code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, active }),
+      })
+      if (!res.ok) return null
+      return await res.json()
+    } catch {
+      return null
+    }
+  }, [])
+
+  const attendWithEventCode = useCallback(async ({ eventId, code }) => {
+    const cleanCode = String(code || '').trim()
+    if (!eventId || !cleanCode) {
+      return { ok: false, message: 'Please provide both an event and the attendance code.' }
+    }
+    try {
+      const res = await fetch('/api/attendance/verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: eventId,
+          code: cleanCode,
+          student_id: currentUser?.studentRecordId || currentUser?.studentId,
+          student_number: currentUser?.studentId,
+          user_id: currentUser?.userId,
+        }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        return { ok: false, message: payload.error || 'Failed to verify attendance code.' }
+      }
+      await refreshPortalData()
+      return {
+        ok: true,
+        alreadyCheckedIn: Boolean(payload.alreadyCheckedIn),
+        message: payload.message || 'Attendance recorded successfully!',
+        data: payload,
+      }
+    } catch (err) {
+      return { ok: false, message: err.message || 'Network error while recording attendance.' }
+    }
+  }, [currentUser, refreshPortalData])
+
+  const toggleStudentAttendance = useCallback(async ({ eventId, studentId, status }) => {
+    if (!eventId || !studentId) return { ok: false, message: 'Missing event or student ID.' }
+    try {
+      const res = await fetch('/api/attendance/manual-toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: eventId,
+          student_id: studentId,
+          status,
+          recorded_by: currentUser?.userId || null,
+        }),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        return { ok: false, message: payload.error || 'Unable to update attendance.' }
+      }
+      await refreshPortalData()
+      return { ok: true, message: payload.message || 'Attendance updated.', data: payload }
+    } catch (err) {
+      return { ok: false, message: err.message || 'Network error.' }
+    }
+  }, [currentUser?.userId, refreshPortalData])
 
   const saveOfficerEvent = useCallback(async (eventPayload, statusOverride) => {
     const orgId = eventPayload.organizationId || currentUser?.organizationId || adminOrganizations[0]?.id
@@ -1677,6 +1792,7 @@ export function PortalDataProvider({ children }) {
         first_name: updates.firstName,
         middle_name: updates.middleName,
         last_name: updates.lastName,
+        suffix: updates.suffix,
         email: updates.email,
         role: roleMap[updates.role] || updates.rawRole || updates.role,
         status: updates.status,
@@ -1810,9 +1926,50 @@ export function PortalDataProvider({ children }) {
     return true
   }, [])
 
+  const refreshAuditLogs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/audit-logs')
+      if (res.ok) {
+        const logs = await res.json()
+        setRawAuditLogs(logs)
+        return logs
+      }
+    } catch (err) {
+      console.warn('Failed to refresh audit logs', err)
+    }
+    return []
+  }, [])
+
+  const recordAuditLog = useCallback(async ({ action, entity, entityType, entityId, metadata, details, ipAddress }) => {
+    try {
+      const res = await fetch('/api/audit-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUser?.dbUserId || currentUser?.id || null,
+          action,
+          entity: entity || entityType || 'SYSTEM',
+          entity_id: entityId || null,
+          metadata: metadata || details || {},
+          ip_address: ipAddress || '127.0.0.1',
+        }),
+      })
+      if (res.ok) {
+        const newLog = await res.json()
+        setRawAuditLogs((prev) => [newLog, ...prev])
+        return true
+      }
+    } catch (err) {
+      console.warn('Failed to record audit log', err)
+    }
+    return false
+  }, [currentUser])
+
   const value = useMemo(() => ({
     loading,
     refreshPortalData,
+    refreshAuditLogs,
+    recordAuditLog,
     captureUndo,
     appendAudit: captureUndo,
     adminOrganizations,
@@ -1867,6 +2024,10 @@ export function PortalDataProvider({ children }) {
     cancelRegistration: cancelEventRegistration,
     checkInStudent,
     addRegisteredStudent: checkInStudent,
+    getEventAttendanceCode,
+    generateEventAttendanceCode,
+    attendWithEventCode,
+    toggleStudentAttendance,
     saveOfficerEvent,
     reviewAdviserRequest,
     reviewAccomplishmentReport,
@@ -1943,6 +2104,10 @@ export function PortalDataProvider({ children }) {
     registerForEvent,
     cancelEventRegistration,
     checkInStudent,
+    getEventAttendanceCode,
+    generateEventAttendanceCode,
+    attendWithEventCode,
+    toggleStudentAttendance,
     saveOfficerEvent,
     reviewAdviserRequest,
     reviewAccomplishmentReport,
@@ -1973,6 +2138,8 @@ export function PortalDataProvider({ children }) {
     markNotificationRead,
     markAllNotificationsRead,
     saveAdminSettings,
+    refreshAuditLogs,
+    recordAuditLog,
   ])
 
   return <PortalDataContext.Provider value={value}>{children}</PortalDataContext.Provider>

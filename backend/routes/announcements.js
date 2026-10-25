@@ -21,7 +21,8 @@ router.get('/', async (req, res) => {
              o.acronym AS organization_acronym,
              o.logo    AS organization_logo,
              u.first_name AS author_first_name,
-             u.last_name  AS author_last_name
+             u.last_name  AS author_last_name,
+             u.suffix     AS author_suffix
         FROM announcements a
         JOIN organizations o ON o.id = a.organization_id
    LEFT JOIN users u         ON u.id = a.created_by
@@ -57,7 +58,8 @@ router.get('/:id', async (req, res) => {
               o.name    AS organization_name,
               o.acronym AS organization_acronym,
               u.first_name AS author_first_name,
-              u.last_name  AS author_last_name
+              u.last_name  AS author_last_name,
+              u.suffix     AS author_suffix
          FROM announcements a
          JOIN organizations o ON o.id = a.organization_id
     LEFT JOIN users u         ON u.id = a.created_by
@@ -210,7 +212,8 @@ router.post('/', async (req, res) => {
               o.acronym AS organization_acronym,
               o.logo    AS organization_logo,
               u.first_name AS author_first_name,
-              u.last_name  AS author_last_name
+              u.last_name  AS author_last_name,
+              u.suffix     AS author_suffix
          FROM announcements a
          JOIN organizations o ON o.id = a.organization_id
     LEFT JOIN users u         ON u.id = a.created_by

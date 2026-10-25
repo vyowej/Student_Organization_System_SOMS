@@ -17,9 +17,27 @@
   margin-bottom: 4px;
 }
 
-.directory-toolbar .organization-search {
+.directory-toolbar .organization-search,
+.directory-toolbar .search-bar {
   flex: 1 1 280px;
   max-width: none;
+  width: auto;
+}
+
+.directory-toolbar .search-bar-field {
+  width: 100%;
+}
+
+.adviser-report-toolbar {
+  align-items: flex-end;
+}
+
+.adviser-report-toolbar .search-bar {
+  width: 100%;
+}
+
+.adviser-report-toolbar .search-bar-field {
+  width: 100%;
 }
 
 .directory-toolbar-reset {

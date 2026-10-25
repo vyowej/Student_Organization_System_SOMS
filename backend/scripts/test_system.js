@@ -47,6 +47,7 @@ async function runSystemChecks() {
     'attendance',
     'notifications',
     'audit_logs',
+    'system_settings',
   ];
   for (const table of requiredTables) {
     if (!tableNames.includes(table)) {

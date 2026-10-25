@@ -182,7 +182,7 @@ export default function OfficerMembershipRequestsPage() {
         {requestList(visibleRequests)}
       </Card>
 
-      <Modal onClose={() => setSelectedRequest(null)} open={Boolean(selectedRequest)} title="Membership Application">
+      <Modal onClose={() => setSelectedRequest(null)} open={Boolean(selectedRequest)} size="md" title="Membership Application">
         {selectedRequest && (
           <div className="officer-request-detail">
             <dl>
@@ -211,7 +211,7 @@ export default function OfficerMembershipRequestsPage() {
         </div>
       </Modal>
 
-      <Modal onClose={() => { setApproveTarget(null); setApprovePosition('MEMBER'); setApproveCustomTitle('') }} open={Boolean(approveTarget)} title="Approve Membership?">
+      <Modal onClose={() => { setApproveTarget(null); setApprovePosition('MEMBER'); setApproveCustomTitle('') }} open={Boolean(approveTarget)} size="md" title="Approve Membership?">
         <p>{approveTarget && nameOf(approveTarget)} will become an active member of {approveTarget?.organizationName || organization.name}.</p>
         <div style={{ marginTop: '14px', marginBottom: '16px', display: 'grid', gap: '8px' }}>
           <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
@@ -271,7 +271,7 @@ export default function OfficerMembershipRequestsPage() {
         </div>
       </Modal>
 
-      <Modal onClose={() => { setRejectTarget(null); setRejectionReason('') }} open={Boolean(rejectTarget)} title="Reject Membership Application?">
+      <Modal onClose={() => { setRejectTarget(null); setRejectionReason('') }} open={Boolean(rejectTarget)} size="sm" title="Reject Membership Application?">
         <p>Reject {rejectTarget && nameOf(rejectTarget)}&apos;s application to {rejectTarget?.organizationName || organization.name}?</p>
         <label className="officer-modal-field">
           <span>Optional reason</span>

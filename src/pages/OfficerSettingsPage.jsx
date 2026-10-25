@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
@@ -8,8 +8,8 @@ import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
+import { organizationCategories as allCategories } from '../data/studentOrganizations.js'
 
-const organizationCategories = ['Academic', 'Technology', 'Leadership', 'Socio-Civic', 'Cultural', 'Sports', 'Other']
 const preferenceOptions = [
   ['membershipRequests', 'Membership Requests'],
   ['eventUpdates', 'Event Updates'],
@@ -49,6 +49,12 @@ export default function OfficerSettingsPage() {
   } = useOutletContext()
   const { showToast } = useToast()
   const organization = adminOrganizations.find((item) => String(item.id) === String(currentUser?.organizationId)) || adminOrganizations[0]
+
+  const organizationCategories = useMemo(() => {
+    const fromSettings = (adminSettings?.organizationCategories || []).filter((c) => c !== 'All')
+    const fromDefaults = allCategories.filter((c) => c !== 'All')
+    return [...new Set([...fromSettings, ...fromDefaults])]
+  }, [adminSettings?.organizationCategories])
   const [organizationForm, setOrganizationForm] = useState(null)
   const [contactForm, setContactForm] = useState(null)
   const [logoOpen, setLogoOpen] = useState(false)
@@ -379,7 +385,7 @@ export default function OfficerSettingsPage() {
         <div className="officer-settings-danger-row"><div><strong>Request Organization Deactivation</strong><span>This submits a request for review. Your organization will not be deactivated immediately.</span></div><Button onClick={() => { setRequestType('DEACTIVATION'); setRequestReason(''); setRequestError('') }} variant="danger">Request Deactivation</Button></div>
       </SettingsSection>
 
-      <Modal onClose={() => { setLogoOpen(false); setPendingLogo(''); setLogoError('') }} open={logoOpen} title="Upload Organization Logo">
+      <Modal onClose={() => { setLogoOpen(false); setPendingLogo(''); setLogoError('') }} open={logoOpen} size="md" title="Upload Organization Logo">
         <div className="officer-settings-logo-upload">
           <div className="officer-settings-logo-frame"><OrganizationLogo acronym={organization.acronym} image={pendingLogo || organization.logo} /></div>
           <label className="officer-settings-file-label">Choose image<input accept="image/*" onChange={chooseLogo} type="file" /></label>
@@ -389,7 +395,7 @@ export default function OfficerSettingsPage() {
         <div className="officer-settings-actions"><Button onClick={() => { setLogoOpen(false); setPendingLogo(''); setLogoError('') }} variant="secondary">Cancel</Button><Button disabled={!pendingLogo} onClick={commitLogo}>Save Logo</Button></div>
       </Modal>
 
-      <Modal onClose={() => { setRequestType(''); setRequestReason(''); setRequestError('') }} open={Boolean(requestType)} title={requestType === 'ADVISER_CHANGE' ? 'Request Adviser Change' : 'Request Organization Deactivation'}>
+      <Modal onClose={() => { setRequestType(''); setRequestReason(''); setRequestError('') }} open={Boolean(requestType)} size="md" title={requestType === 'ADVISER_CHANGE' ? 'Request Adviser Change' : 'Request Organization Deactivation'}>
         <form className="officer-settings-request-form" onSubmit={submitRequest}>
           <p>{requestType === 'ADVISER_CHANGE'
             ? 'Changing the assigned faculty adviser requires Student Affairs/Admin approval (`adviser_change_requests` table).'

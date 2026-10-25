@@ -633,14 +633,21 @@ h3 {
 
 .public-brand-copy strong,
 .brand-copy strong {
-  color: var(--color-dark);
+  color: var(--color-primary);
   font-family: Manrope, sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
 }
 
 .public-links a:not(.button),
 .brand-copy span,
 .public-brand-copy span {
   color: var(--color-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .public-menu-toggle,
@@ -997,24 +1004,32 @@ textarea::placeholder {
   flex-direction: column;
   max-height: calc(100dvh - 40px);
   margin: auto;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  padding: 0;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 20px;
-  background: var(--color-card);
+  background: #ffffff;
   box-shadow: 0 24px 70px rgba(40, 7, 18, .25);
 }
 
 .modal-header {
-  border-top: 5px solid var(--color-dark);
-  border-bottom-color: var(--border);
-  background: #fffaf7;
+  border-top: none;
+  border-bottom: 1px solid #f0e6e8;
+  background: #ffffff;
+  padding: 18px 24px 16px;
+  margin: 0;
 }
 
 .modal-header h2 {
   color: var(--color-dark);
   font-family: Manrope, sans-serif;
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.modal-content {
+  padding: 20px 24px 24px;
 }
 
 .toast {
@@ -1125,9 +1140,10 @@ div.dt-container .dt-paging .dt-paging-button {
 }
 
 div.dt-container .dt-paging .dt-paging-button.current {
-  border-color: var(--color-dark);
-  color: #fff;
-  background: var(--color-dark);
+  border-color: var(--crimson, #8f1538) !important;
+  color: #ffffff !important;
+  background: var(--crimson, #8f1538) !important;
+  box-shadow: 0 4px 12px rgba(143, 21, 56, 0.28) !important;
 }
 
 div.dt-container .dt-length select {
@@ -1141,12 +1157,39 @@ div.dt-container .dt-length select {
   gap: 12px;
 }
 
-.search-bar input,
 .filter-bar input,
 .toolbar input,
 .page-toolbar input {
   min-height: 44px;
   border-radius: var(--radius-pill);
+}
+
+/* Search bar components: container (.search-bar-field) owns border/radius/background, inner input is seamless */
+.search-bar-field input,
+.search-bar-field input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+.organization-search input,
+.adviser-report-search input,
+.officer-announcements-search input,
+.officer-member-search input {
+  min-height: unset !important;
+  height: 40px !important;
+  padding: 0 10px !important;
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+.search-bar-field input:focus,
+.organization-search input:focus,
+.adviser-report-search input:focus,
+.officer-announcements-search input:focus,
+.officer-member-search input:focus {
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .avatar,
@@ -1185,10 +1228,60 @@ div.dt-container .dt-length select {
 
 .community-section h2,
 .community-section p,
-.community-section a,
 .landing-cta h2,
 .landing-cta > p {
   color: #fff;
+}
+
+.community-section .community-feed-link,
+.community-copy .community-feed-link,
+.community-section .text-link,
+.community-copy .text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #e8bd7f !important;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: color 200ms ease, gap 200ms ease, transform 200ms ease;
+}
+
+.community-section .community-feed-link svg,
+.community-section .community-feed-link .app-icon,
+.community-copy .community-feed-link svg,
+.community-copy .community-feed-link .app-icon,
+.community-section .text-link svg,
+.community-section .text-link .app-icon,
+.community-copy .text-link svg,
+.community-copy .text-link .app-icon {
+  transition: transform 200ms ease, stroke 200ms ease;
+  stroke: currentColor;
+}
+
+.community-section .community-feed-link:hover,
+.community-section .community-feed-link:focus-visible,
+.community-copy .community-feed-link:hover,
+.community-copy .community-feed-link:focus-visible,
+.community-section .text-link:hover,
+.community-section .text-link:focus-visible,
+.community-copy .text-link:hover,
+.community-copy .text-link:focus-visible {
+  color: #ffffff !important;
+  gap: 12px;
+  transform: translateX(4px);
+}
+
+.community-section .community-feed-link:hover svg,
+.community-section .community-feed-link:hover .app-icon,
+.community-copy .community-feed-link:hover svg,
+.community-copy .community-feed-link:hover .app-icon,
+.community-section .text-link:hover svg,
+.community-section .text-link:hover .app-icon,
+.community-copy .text-link:hover svg,
+.community-copy .text-link:hover .app-icon {
+  transform: translateX(3px);
+  stroke: #ffffff !important;
 }
 
 .landing-cta h2 em,
@@ -1199,9 +1292,16 @@ div.dt-container .dt-length select {
 
 .landing-cta .button-primary,
 .landing-cta .cta-actions .button-primary {
-  border-color: var(--color-gold);
-  color: var(--color-dark);
-  background: #e8bd7f;
+  border-color: #ffffff !important;
+  color: var(--crimson, #8f1538) !important;
+  background: #ffffff !important;
+}
+
+.landing-cta .button-primary:hover,
+.landing-cta .cta-actions .button-primary:hover {
+  border-color: #fff0f3 !important;
+  color: #720f2c !important;
+  background: #fff0f3 !important;
 }
 
 .category-filter,
@@ -1639,7 +1739,7 @@ div.dt-container .dt-length select {
   border: 1px solid var(--border);
   border-radius: 24px;
   background: var(--color-card);
-  box-shadow: 0 18px 52px rgba(74, 11, 31, .12);
+  box-shadow: none;
 }
 
 .auth-feature-panel {
@@ -1922,7 +2022,7 @@ div.dt-container .dt-length select {
 }
 
 .fb-tab.is-active {
-  box-shadow: inset 0 -2px 0 var(--color-gold);
+  box-shadow: none;
 }
 
 .fb-cover {
@@ -2212,7 +2312,6 @@ body,
 .organization-grid,
 .event-grid,
 .leader-grid,
-.how-grid,
 .officer-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -2336,7 +2435,6 @@ body,
   .organization-grid,
   .event-grid,
   .leader-grid,
-  .how-grid,
   .officer-grid,
   .testimonial-grid,
   .testimonials-grid,
@@ -2417,7 +2515,7 @@ body,
   }
 
   .statistics-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .dashboard-stats,
@@ -2662,7 +2760,6 @@ body,
   .organization-grid,
   .event-grid,
   .leader-grid,
-  .how-grid,
   .officer-grid,
   .testimonial-grid,
   .testimonials-grid,
@@ -4747,4 +4844,47 @@ html {
     width: auto;
     animation: none;
   }
+}
+/* Auth card stability - remove hover effects and shadow backdrop on login & register */
+.auth-layout,
+.auth-layout:hover,
+.auth-card,
+.auth-card:hover,
+.auth-layout .card,
+.auth-layout .card:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.auth-card .button:hover,
+.auth-card .auth-submit:hover,
+.auth-card .button-primary:hover,
+.auth-card .button-secondary:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* ProfileCover and navigation pill tabs - remove bottom underline bar artifact */
+.fb-tabs {
+  padding: 12px 20px !important;
+  border-top: 1px solid rgba(220, 205, 210, 0.65) !important;
+}
+
+.fb-tab.is-active::after,
+.fb-tab::after {
+  display: none !important;
+  content: none !important;
+}
+
+.fb-tab.is-active {
+  background: var(--crimson, #8f1538) !important;
+  border-color: var(--crimson, #8f1538) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(143, 21, 56, 0.22) !important;
+}
+
+.fb-tab.is-active .fb-tab-count,
+.fb-tab.is-active:hover .fb-tab-count {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.25) !important;
 }

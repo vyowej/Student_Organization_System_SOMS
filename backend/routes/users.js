@@ -112,7 +112,7 @@ async function buildUserProfile(target) {
   const isNumeric = /^\d+$/.test(raw);
 
   const userRes = await db.query(
-    `SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.status, u.created_at, u.updated_at,
+    `SELECT u.id, u.email, u.first_name, u.middle_name, u.last_name, u.suffix, u.role, u.status, u.created_at, u.updated_at,
             s.id AS student_db_id, s.student_number, s.program_id, s.year_level,
             p.name AS program_name, p.acronym AS program_acronym,
             d.id AS department_id, d.name AS department_name, d.acronym AS department_acronym,
@@ -149,6 +149,7 @@ async function buildUserProfile(target) {
   let position = null;
   let customTitle = null;
   let allMemberships = [];
+  let hasActiveOrg = false;
 
   if (row.student_db_id) {
     const memberRes = await db.query(
@@ -198,14 +199,16 @@ async function buildUserProfile(target) {
     }
     organizationIds = memberRes.rows.map((m) => m.organization_id);
 
-    if (activeMemberships.length > 0) {
+    hasActiveOrg = activeMemberships.length > 0 || organizationRoles.length > 0;
+    if (hasActiveOrg) {
       if (!roles.includes('OFFICER')) roles.push('OFFICER');
       if (!roles.includes('STUDENT')) roles.unshift('STUDENT');
     } else {
-      const offIdx = roles.indexOf('OFFICER');
-      if (offIdx !== -1) roles.splice(offIdx, 1);
       if (!roles.includes('STUDENT') && row.role !== 'ADMIN' && row.role !== 'ADVISER') {
-        roles.push('STUDENT');
+        roles.unshift('STUDENT');
+      }
+      if (row.role === 'OFFICER' && !roles.includes('OFFICER')) {
+        roles.push('OFFICER');
       }
     }
   }
@@ -251,12 +254,19 @@ async function buildUserProfile(target) {
     userId: row.student_number || row.employee_number || String(row.id),
     email: row.email,
     first_name: row.first_name,
+    middle_name: row.middle_name || null,
     last_name: row.last_name,
+    suffix: row.suffix || null,
     firstName: row.first_name,
+    middleName: row.middle_name || null,
     lastName: row.last_name,
-    displayName: `${row.last_name}, ${row.first_name}`,
-    name: `${row.last_name}, ${row.first_name}`,
-    role: (roles.includes('OFFICER') && row.role !== 'ADMIN' && row.role !== 'ADVISER') ? 'OFFICER' : row.role,
+    displayName: `${row.last_name}, ${row.first_name}${row.middle_name ? ` ${row.middle_name}` : ''}${row.suffix ? ` ${row.suffix}` : ''}`,
+    name: `${row.last_name}, ${row.first_name}${row.middle_name ? ` ${row.middle_name}` : ''}${row.suffix ? ` ${row.suffix}` : ''}`,
+    role: (hasActiveOrg && (row.role === 'OFFICER' || roles.includes('OFFICER')) && row.role !== 'ADMIN' && row.role !== 'ADVISER')
+      ? 'OFFICER'
+      : (row.role === 'OFFICER' && !hasActiveOrg)
+        ? 'STUDENT'
+        : row.role,
     roles,
     status: row.status,
     student_id: row.student_db_id || null,
@@ -300,7 +310,7 @@ async function buildUserProfile(target) {
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT u.id, u.email, u.first_name, u.last_name,
+      `SELECT u.id, u.email, u.first_name, u.middle_name, u.last_name, u.suffix,
               CASE
                 WHEN u.role = 'ADMIN' THEN 'ADMIN'::user_role
                 WHEN u.role = 'ADVISER' THEN 'ADVISER'::user_role
@@ -355,11 +365,14 @@ router.get('/', async (req, res) => {
       userId: r.student_number || r.employee_number || String(r.id),
       email: r.email,
       first_name: r.first_name,
+      middle_name: r.middle_name || null,
       last_name: r.last_name,
+      suffix: r.suffix || null,
       firstName: r.first_name,
+      middleName: r.middle_name || null,
       lastName: r.last_name,
-      name: `${r.last_name}, ${r.first_name}`,
-      displayName: `${r.last_name}, ${r.first_name}`,
+      name: `${r.last_name}, ${r.first_name}${r.middle_name ? ` ${r.middle_name}` : ''}${r.suffix ? ` ${r.suffix}` : ''}`,
+      displayName: `${r.last_name}, ${r.first_name}${r.middle_name ? ` ${r.middle_name}` : ''}${r.suffix ? ` ${r.suffix}` : ''}`,
       role: r.role,
       status: r.status,
       studentDbId: r.student_db_id || null,
@@ -411,8 +424,11 @@ router.post('/register', async (req, res) => {
       role,
       first_name,
       firstName,
+      middle_name,
+      middleName,
       last_name,
       lastName,
+      suffix,
       status,
       student_number,
       studentId,
@@ -432,6 +448,8 @@ router.post('/register', async (req, res) => {
 
     const fName = (first_name || firstName || email.split('@')[0]).trim();
     const lName = (last_name || lastName || 'User').trim();
+    const mName = (middle_name || middleName || '').trim() || null;
+    const sfx = (suffix || '').trim() || null;
     const userRole = ['STUDENT', 'OFFICER', 'ADVISER', 'ADMIN'].includes(String(role || '').toUpperCase())
       ? String(role).toUpperCase()
       : 'STUDENT';
@@ -443,10 +461,10 @@ router.post('/register', async (req, res) => {
     const password_hash = await bcrypt.hash(password, saltRounds);
 
     const userRes = await db.query(
-      `INSERT INTO users (email, password_hash, first_name, last_name, role, status)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO users (email, password_hash, first_name, middle_name, last_name, suffix, role, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
-      [email.trim(), password_hash, fName, lName, userRole, userStatus]
+      [email.trim(), password_hash, fName, mName, lName, sfx, userRole, userStatus]
     );
 
     const createdUserId = userRes.rows[0].id;
@@ -559,8 +577,11 @@ router.put('/:id', async (req, res) => {
       email,
       first_name,
       firstName,
+      middle_name,
+      middleName,
       last_name,
       lastName,
+      suffix,
       role,
       status,
       student_number,
@@ -593,14 +614,18 @@ router.put('/:id', async (req, res) => {
       `UPDATE users
           SET email = $1,
               first_name = $2,
-              last_name = $3,
-              role = $4,
-              status = $5
-        WHERE id = $6`,
+              middle_name = $3,
+              last_name = $4,
+              suffix = $5,
+              role = $6,
+              status = $7
+        WHERE id = $8`,
       [
         (email || current.email).trim(),
         (first_name || firstName || current.first_name).trim(),
+        middle_name !== undefined ? (middle_name ? middle_name.trim() : null) : middleName !== undefined ? (middleName ? middleName.trim() : null) : current.middle_name,
         (last_name || lastName || current.last_name).trim(),
+        suffix !== undefined ? (suffix ? suffix.trim() : null) : current.suffix,
         validRole,
         validStatus,
         id,
@@ -689,5 +714,7 @@ router.put('/:id', async (req, res) => {
     res.status(500).json({ error: err.message || 'Server error' });
   }
 });
+
+router.buildUserProfile = buildUserProfile;
 
 module.exports = router;

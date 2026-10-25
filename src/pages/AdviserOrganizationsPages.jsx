@@ -115,7 +115,7 @@ function CalendarOfEvents({ events, organizationName }) {
           </button>)}
         </div> : <p className="adviser-calendar-empty">No events are scheduled for this date.</p>}
       </section>
-      <Modal onClose={() => setSelectedEvent(null)} open={Boolean(selectedEvent)} title="Event Details">
+      <Modal onClose={() => setSelectedEvent(null)} open={Boolean(selectedEvent)} size="md" title="Event Details">
         {selectedEvent && <div className="adviser-calendar-event-dialog">
           <div className="adviser-review-summary">
             <div><span className="adviser-muted-label">{organizationName}</span><h3>{selectedEvent.title}</h3></div>
@@ -328,7 +328,7 @@ export function AdviserOrganizationDetailsPage() {
       </div>
       <Link className="button button-secondary adviser-back-link" to="/adviser/organizations">Back to My Organizations</Link>
 
-      <Modal onClose={() => setPositionModalMember(null)} open={Boolean(positionModalMember)} title="Manage Organization Position">
+      <Modal onClose={() => setPositionModalMember(null)} open={Boolean(positionModalMember)} size="md" title="Manage Organization Position">
         {positionModalMember && (
           <div style={{ display: 'grid', gap: '16px', padding: '4px' }}>
             <div>

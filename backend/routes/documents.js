@@ -43,10 +43,12 @@ const DOCUMENT_SELECT_QUERY = `
          o.acronym AS organization_acronym,
          uploader.first_name AS uploader_first_name,
          uploader.last_name  AS uploader_last_name,
-         CASE WHEN uploader.id IS NOT NULL THEN (uploader.last_name || ', ' || uploader.first_name) ELSE NULL END AS uploader_name,
+         uploader.suffix     AS uploader_suffix,
+         CASE WHEN uploader.id IS NOT NULL THEN (uploader.last_name || ', ' || uploader.first_name || COALESCE(' ' || uploader.suffix, '')) ELSE NULL END AS uploader_name,
          reviewer.first_name AS reviewer_first_name,
          reviewer.last_name  AS reviewer_last_name,
-         CASE WHEN reviewer.id IS NOT NULL THEN (reviewer.last_name || ', ' || reviewer.first_name) ELSE NULL END AS reviewer_name,
+         reviewer.suffix     AS reviewer_suffix,
+         CASE WHEN reviewer.id IS NOT NULL THEN (reviewer.last_name || ', ' || reviewer.first_name || COALESCE(' ' || reviewer.suffix, '')) ELSE NULL END AS reviewer_name,
          reviewer.role AS reviewer_role
     FROM documents d
     JOIN organizations o     ON o.id = d.organization_id

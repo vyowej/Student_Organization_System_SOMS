@@ -20,11 +20,22 @@ router.get('/', async (req, res) => {
       SELECT a.id,
              a.user_id,
              a.employee_number,
+             a.title,
              a.college_id,
              u.email,
              u.first_name,
+             u.middle_name,
              u.last_name,
-             (u.last_name || ', ' || u.first_name) AS name,
+             u.suffix,
+             TRIM(
+               CONCAT_WS(' ', a.title, u.first_name, u.middle_name, u.last_name) || 
+               CASE 
+                 WHEN u.suffix IS NULL OR u.suffix = '' THEN ''
+                 WHEN u.suffix ILIKE 'Jr%' OR u.suffix ILIKE 'Sr%' THEN ' ' || u.suffix
+                 ELSE ', ' || u.suffix
+               END
+             ) AS name,
+             (u.last_name || ', ' || u.first_name || COALESCE(' ' || u.suffix, '')) AS roster_name,
              c.name AS college_name,
              c.acronym AS college_acronym,
              COALESCE(
@@ -62,8 +73,10 @@ router.get('/assignments', async (req, res) => {
              a.employee_number,
              u.id AS adviser_user_id,
              u.first_name,
+             u.middle_name,
              u.last_name,
-             (u.last_name || ', ' || u.first_name) AS adviser_name,
+             u.suffix,
+             (u.last_name || ', ' || u.first_name || COALESCE(' ' || u.suffix, '')) AS adviser_name,
              u.email,
              c.name AS college_name,
              assigner.first_name AS assigner_first_name,
@@ -96,8 +109,10 @@ router.get('/org/:organization_id', async (req, res) => {
               (oa.ended_at IS NULL) AS is_current,
               a.employee_number,
               u.first_name,
+              u.middle_name,
               u.last_name,
-              (u.last_name || ', ' || u.first_name) AS adviser_name,
+              u.suffix,
+              (u.last_name || ', ' || u.first_name || COALESCE(' ' || u.suffix, '')) AS adviser_name,
               u.email,
               c.name AS college_name,
               assigner.first_name AS assigner_first_name,
@@ -182,13 +197,16 @@ router.get('/requests', async (req, res) => {
              o.acronym AS organization_acronym,
              cu.first_name AS current_adviser_first_name,
              cu.last_name  AS current_adviser_last_name,
-             CASE WHEN cu.id IS NOT NULL THEN (cu.last_name || ', ' || cu.first_name) ELSE NULL END AS current_adviser_name,
+             cu.suffix     AS current_adviser_suffix,
+             CASE WHEN cu.id IS NOT NULL THEN (cu.last_name || ', ' || cu.first_name || COALESCE(' ' || cu.suffix, '')) ELSE NULL END AS current_adviser_name,
              pu.first_name AS proposed_adviser_first_name,
              pu.last_name  AS proposed_adviser_last_name,
-             CASE WHEN pu.id IS NOT NULL THEN (pu.last_name || ', ' || pu.first_name) ELSE NULL END AS proposed_adviser_name,
+             pu.suffix     AS proposed_adviser_suffix,
+             CASE WHEN pu.id IS NOT NULL THEN (pu.last_name || ', ' || pu.first_name || COALESCE(' ' || pu.suffix, '')) ELSE NULL END AS proposed_adviser_name,
              req_user.first_name AS requester_first_name,
              req_user.last_name  AS requester_last_name,
-             CASE WHEN req_user.id IS NOT NULL THEN (req_user.last_name || ', ' || req_user.first_name) ELSE NULL END AS requester_name,
+             req_user.suffix     AS requester_suffix,
+             CASE WHEN req_user.id IS NOT NULL THEN (req_user.last_name || ', ' || req_user.first_name || COALESCE(' ' || req_user.suffix, '')) ELSE NULL END AS requester_name,
              rev_user.first_name AS reviewer_first_name,
              rev_user.last_name  AS reviewer_last_name
         FROM adviser_change_requests acr

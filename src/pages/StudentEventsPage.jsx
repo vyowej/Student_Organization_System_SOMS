@@ -5,6 +5,7 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import FilterSelect from '../components/ui/FilterSelect.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
+import SearchBar from '../components/ui/SearchBar.jsx'
 import { eventCategories, getEventRegistrationState, isEventAlmostFull, officerEventToStudentEvent, studentEvents } from '../data/studentEvents.js'
 
 const eventStatusFilters = ['All', 'Upcoming', 'Registration Open', 'Almost Full']
@@ -77,16 +78,12 @@ export default function StudentEventsPage() {
       />
 
       <div className="directory-toolbar">
-        <label className="organization-search event-search">
-          <span aria-hidden="true">⌕</span>
-          <input
-            aria-label="Search events"
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search events..."
-            type="search"
-            value={search}
-          />
-        </label>
+        <SearchBar
+          label="Search events"
+          onChange={setSearch}
+          placeholder="Search events by title, organization or venue…"
+          value={search}
+        />
         <FilterSelect label="Category" onChange={setCategory} options={eventCategories} value={category} />
         <FilterSelect label="Status" onChange={setStatusFilter} options={eventStatusFilters} value={statusFilter} />
         {(category !== 'All' || statusFilter !== 'All' || search) && (

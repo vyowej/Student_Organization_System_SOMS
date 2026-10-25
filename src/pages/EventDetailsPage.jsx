@@ -160,6 +160,7 @@ export default function EventDetailsPage() {
       <Modal
         onClose={() => setRegistrationDialogOpen(false)}
         open={registrationDialogOpen}
+        size="sm"
         title={`Register for ${event.title}?`}
       >
         <p className="registration-dialog-copy">Confirm your registration for this event.</p>

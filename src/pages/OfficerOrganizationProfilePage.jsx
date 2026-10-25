@@ -9,9 +9,9 @@ import ProfileCover from '../components/layout/ProfileCover.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import Icon from '../components/ui/Icon.jsx'
 import { formatDisplayName } from '../data/displayName.js'
+import { organizationCategories } from '../data/studentOrganizations.js'
 
 const editableFields = ['name', 'acronym', 'category', 'mission', 'vision']
-const categories = ['Academic', 'Technology', 'Leadership', 'Socio-Civic', 'Cultural', 'Sports', 'Other']
 const documentTypes = ['Constitution & By-Laws', 'Accreditation Document', 'Officer Roster', 'Event Proposal', 'Safety Plan', 'Financial Statement', 'Accomplishment Report', 'Other']
 
 function statusTone(status = '') {
@@ -48,6 +48,7 @@ export default function OfficerOrganizationProfilePage() {
     currentUser,
     adminOrganizations = [],
     adminAuditLogs = [],
+    adminSettings = null,
     adviserDocuments = [],
     officerEvents = [],
     officerMembers = [],
@@ -58,6 +59,12 @@ export default function OfficerOrganizationProfilePage() {
   const { showToast } = useToast()
   const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
   const organization = adminOrganizations.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0]
+
+  const categories = useMemo(() => {
+    const fromSettings = (adminSettings?.organizationCategories || []).filter((c) => c !== 'All')
+    const fromDefaults = organizationCategories.filter((c) => c !== 'All')
+    return [...new Set([...fromSettings, ...fromDefaults])]
+  }, [adminSettings?.organizationCategories])
   const [activeTab, setActiveTab] = useState('posts')
   const [editOpen, setEditOpen] = useState(false)
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -348,7 +355,7 @@ export default function OfficerOrganizationProfilePage() {
         </div>
       </div>
 
-      <Modal onClose={() => setEditOpen(false)} open={editOpen} title="Edit Organization Profile">
+      <Modal onClose={() => setEditOpen(false)} open={editOpen} size="lg" title="Edit Organization Profile">
         {profileForm && <form className="officer-org-form" onSubmit={saveProfile}>
           <label>Organization Name<input onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))} required value={profileForm.name} /></label>
           <label>Acronym<input onChange={(event) => setProfileForm((current) => ({ ...current, acronym: event.target.value }))} required value={profileForm.acronym} /></label>
@@ -361,7 +368,7 @@ export default function OfficerOrganizationProfilePage() {
         </form>}
       </Modal>
 
-      <Modal onClose={() => setUploadOpen(false)} open={uploadOpen} title="Upload Organization Document">
+      <Modal onClose={() => setUploadOpen(false)} open={uploadOpen} size="md" title="Upload Organization Document">
         <form className="officer-org-form" onSubmit={uploadDocument}>
           <label>Document Name<input onChange={(event) => setDocumentForm((current) => ({ ...current, title: event.target.value }))} required value={documentForm.title} /></label>
           <label>Document Type<select onChange={(event) => setDocumentForm((current) => ({ ...current, type: event.target.value }))} value={documentForm.type}>{documentTypes.map((type) => <option key={type}>{type}</option>)}</select></label>

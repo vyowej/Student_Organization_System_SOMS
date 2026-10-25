@@ -6,11 +6,81 @@ import { EventCard, LeaderCard, OrganizationCard } from '../components/public/La
 import AnimatedStatistic from '../components/public/AnimatedStatistic.jsx'
 import Reveal from '../components/public/Reveal.jsx'
 import { usePortalData } from '../context/usePortalData.js'
-import { organizationCategories } from '../data/studentOrganizations.js'
+import { organizationCategories as defaultCategories } from '../data/studentOrganizations.js'
 
 const defaultNotifications = [
   { type: 'Organizations', icon: 'organization', title: 'Organizations Directory', message: 'Browse recognized student organizations on campus.', time: 'live' },
   { type: 'Events', icon: 'calendar', title: 'Campus Events', message: 'Check published events and register online.', time: 'live' },
+]
+
+const defaultLandingEvents = [
+  {
+    id: 'wmsu-orientation-2026',
+    title: 'University Student Orientation & Org Fair',
+    organizationName: 'Supreme Student Council',
+    category: 'Student Council',
+    date: 'November 15, 2026',
+    time: '8:00 AM – 5:00 PM',
+    location: 'WMSU Gymnasium',
+    status: 'PUBLISHED',
+    color: 'crimson',
+  },
+  {
+    id: 'wmsu-hackathon-2026',
+    title: 'WMSU Innovators Hackathon',
+    organizationName: 'Computer Society',
+    category: 'Technology',
+    date: 'November 22, 2026',
+    time: '9:00 AM – 6:00 PM',
+    location: 'College of Science and Mathematics',
+    status: 'PUBLISHED',
+    color: 'blue',
+  },
+  {
+    id: 'leadership-summit-2026',
+    title: 'Campus Leadership & Civic Summit',
+    organizationName: 'Youth Leadership Forum',
+    category: 'Leadership',
+    date: 'December 2, 2026',
+    time: '1:00 PM – 5:00 PM',
+    location: 'University Social Hall',
+    status: 'PUBLISHED',
+    color: 'gold',
+  },
+  {
+    id: 'cultural-fest-2026',
+    title: 'Grand Cultural & Arts Showcase',
+    organizationName: 'WMSU Cultural Ensemble',
+    category: 'Cultural',
+    date: 'December 10, 2026',
+    time: '4:00 PM – 8:30 PM',
+    location: 'Open Grounds & Amphitheater',
+    status: 'PUBLISHED',
+    color: 'emerald',
+  },
+]
+
+const defaultCommunityUpdates = [
+  {
+    label: 'Campus Life',
+    title: 'Student organizations across all colleges are welcoming new members for this semester.',
+    link: '/student/organizations',
+  },
+  {
+    label: 'Student Affairs',
+    title: 'Accreditation and revalidation for campus organizations are currently ongoing.',
+    link: '/student/organizations',
+  },
+  {
+    label: 'Get Involved',
+    title: 'Discover university-wide, college, and departmental organizations matching your passions.',
+    link: '/student/organizations',
+  },
+  {
+    label: 'Leadership',
+    title: 'Connect with fellow student leaders and participate in community-driven initiatives.',
+    link: '/student/organizations',
+  },
 ]
 
 function SectionTitle({ eyebrow, title, description, action, id }) {
@@ -131,15 +201,48 @@ function LandingPage() {
     officerMembers = [],
     officerAnnouncements = [],
     adminUsers = [],
+    adminSettings,
   } = usePortalData()
 
   const [activeCategory, setActiveCategory] = useState('All')
+  const [showAllOrgs, setShowAllOrgs] = useState(false)
   const [notificationIndex, setNotificationIndex] = useState(0)
+  const [apiCategories, setApiCategories] = useState([])
   const heroArtRef = useRef(null)
+
+  useEffect(() => {
+    let mounted = true
+    fetch('/api/settings/categories')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (mounted && data && Array.isArray(data.categories)) {
+          setApiCategories(data.categories)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const organizationCategories = useMemo(() => {
+    const fromApi = apiCategories.filter((c) => c !== 'All')
+    const fromSettings = (adminSettings?.organizationCategories || []).filter((c) => c !== 'All')
+    const preferred = fromApi.length > 0 ? fromApi : fromSettings
+    const sourceList = preferred.length > 0 ? preferred : defaultCategories.filter((c) => c !== 'All')
+    const fromOrgs = studentOrganizations.map((o) => o.category).filter(Boolean)
+    const combined = ['All', ...sourceList, ...fromOrgs]
+    return [...new Set(combined)]
+  }, [apiCategories, adminSettings?.organizationCategories, studentOrganizations])
 
   const publishedEvents = useMemo(
     () => officerEvents.filter((event) => ['PUBLISHED', 'APPROVED'].includes(event.status)),
     [officerEvents],
+  )
+
+  const displayEvents = useMemo(
+    () => (publishedEvents.length > 0 ? publishedEvents : defaultLandingEvents),
+    [publishedEvents],
   )
 
   const studentLeaders = useMemo(
@@ -156,15 +259,16 @@ function LandingPage() {
     [officerMembers],
   )
 
-  const communityUpdates = useMemo(
-    () =>
-      officerAnnouncements.slice(0, 4).map((ann) => ({
+  const communityUpdates = useMemo(() => {
+    if (officerAnnouncements.length > 0) {
+      return officerAnnouncements.slice(0, 4).map((ann) => ({
         label: ann.organizationName || 'Announcement',
         title: ann.title,
         link: '/student/notifications',
-      })),
-    [officerAnnouncements],
-  )
+      }))
+    }
+    return defaultCommunityUpdates
+  }, [officerAnnouncements])
 
   const campusLeaderboard = useMemo(
     () =>
@@ -214,7 +318,16 @@ function LandingPage() {
 
   const filteredOrganizations = activeCategory === 'All'
     ? studentOrganizations
-    : studentOrganizations.filter((organization) => organization.category === activeCategory)
+    : studentOrganizations.filter(
+      (organization) => String(organization.category || '').trim().toLowerCase() === activeCategory.trim().toLowerCase(),
+    )
+
+  const displayedOrganizations = useMemo(() => {
+    if (activeCategory === 'All' && !showAllOrgs && filteredOrganizations.length > 12) {
+      return filteredOrganizations.slice(0, 12)
+    }
+    return filteredOrganizations
+  }, [activeCategory, showAllOrgs, filteredOrganizations])
 
   const studentCount = adminUsers.filter((u) => u.dbRole === 'STUDENT' || u.role === 'Student').length
 
@@ -410,7 +523,6 @@ function LandingPage() {
         <AnimatedStatistic label="Students" suffix="" value={studentCount} />
         <AnimatedStatistic label="Events" suffix="" value={publishedEvents.length} />
         <AnimatedStatistic label="Memberships" suffix="" value={officerMembers.length} />
-        <AnimatedStatistic label="Campus connection" suffix="/7" value={24} />
       </Reveal>
 
       <Reveal as="section" aria-labelledby="organizations-title" className="landing-section organizations-section reveal-group" id="organizations">
@@ -427,18 +539,39 @@ function LandingPage() {
               aria-pressed={activeCategory === category}
               className={`category-filter${activeCategory === category ? ' selected' : ''}`}
               key={category}
-              onClick={() => setActiveCategory(category)}
+              onClick={() => { setActiveCategory(category); setShowAllOrgs(false); }}
               type="button"
             >
               {category}
             </button>
           ))}
         </div>
-        <div className="organization-grid" id="organization-results">
-          {filteredOrganizations.map((organization) => (
-            <OrganizationCard key={organization.id} organization={organization} />
-          ))}
-        </div>
+        {displayedOrganizations.length > 0 ? (
+          <div className="organization-grid" id="organization-results">
+            {displayedOrganizations.map((organization) => (
+              <OrganizationCard key={organization.id} organization={organization} />
+            ))}
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '48px 16px', color: '#76717a' }}>
+            <p style={{ fontSize: '16px', fontWeight: 600 }}>No organizations under &ldquo;{activeCategory}&rdquo; yet.</p>
+            <p style={{ fontSize: '14px', marginTop: '6px' }}>New student organizations under this category will appear here once registered.</p>
+          </div>
+        )}
+        {activeCategory === 'All' && !showAllOrgs && filteredOrganizations.length > 12 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '14px', marginTop: '32px' }}>
+            <button
+              className="button button-secondary"
+              onClick={() => setShowAllOrgs(true)}
+              type="button"
+            >
+              Show all {filteredOrganizations.length} organizations
+            </button>
+            <Link className="text-link" to="/student/organizations">
+              Explore organizations directory <Icon name="arrow-right" size={13} />
+            </Link>
+          </div>
+        )}
       </Reveal>
 
       <Reveal as="section" aria-labelledby="events-title" className="landing-section events-section reveal-group" id="events">
@@ -450,7 +583,7 @@ function LandingPage() {
           title="Upcoming events"
         />
         <div className="event-grid">
-          {publishedEvents.map((event) => <EventCard event={event} key={event.id} />)}
+          {displayEvents.map((event) => <EventCard event={event} key={event.id} />)}
         </div>
       </Reveal>
 
@@ -459,7 +592,7 @@ function LandingPage() {
           <span className="landing-eyebrow">Around WMSU</span>
           <h2 id="community-title">The community is always moving.</h2>
           <p>Keep up with what student organizations are sharing and discover a new way to get involved.</p>
-          <Link className="text-link" to="/student/notifications">Visit your community feed <Icon name="arrow-right" size={13} /></Link>
+          <Link className="text-link community-feed-link" to="/student/notifications">Visit your community feed <Icon name="arrow-right" size={13} /></Link>
         </div>
         <div className="community-updates">
           {communityUpdates.map((update, index) => (
@@ -482,19 +615,25 @@ function LandingPage() {
         <div className="how-grid">
           <article className="how-step">
             <span aria-label="Step 1" className="step-number">01</span>
-            <span aria-hidden="true" className="step-icon">⌕</span>
+            <span aria-hidden="true" className="step-icon">
+              <Icon name="search" size={20} />
+            </span>
             <h3>Discover</h3>
             <p>Find organizations and campus activities that match your interests.</p>
           </article>
           <article className="how-step">
             <span aria-label="Step 2" className="step-number">02</span>
-            <span aria-hidden="true" className="step-icon">＋</span>
+            <span aria-hidden="true" className="step-icon">
+              <Icon name="plus" size={20} />
+            </span>
             <h3>Join</h3>
             <p>Apply to organizations and become part of your campus community.</p>
           </article>
           <article className="how-step">
             <span aria-label="Step 3" className="step-number">03</span>
-            <span aria-hidden="true" className="step-icon">✦</span>
+            <span aria-hidden="true" className="step-icon">
+              <Icon name="star" size={20} />
+            </span>
             <h3>Participate</h3>
             <p>Attend events, connect with students, and make an impact.</p>
           </article>
@@ -538,7 +677,7 @@ function LandingPage() {
           <div className="footer-school">
             <Link aria-label="UNIDOS home" className="public-brand footer-brand" to="/">
               <WmsuLogo className="brand-seal" />
-              <span className="public-brand-copy"><strong>UNIDOS</strong><span>Student Organization Management System</span></span>
+              <span className="public-brand-copy"><strong>UNIDOS</strong><span>STUDENT ORGANIZATION MANAGEMENT SYSTEM</span></span>
             </Link>
             <p className="footer-university">Western Mindanao State University</p>
             <p>Connecting WMSU students with organizations, activities, and campus communities.</p>

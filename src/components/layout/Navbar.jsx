@@ -226,11 +226,24 @@ export default function Navbar({
       : role === 'Organization Adviser'
         ? 'UNIDOS Adviser Portal'
         : 'UNIDOS Admin'
+  const hasOfficerWorkspace = Boolean(
+    currentUser?.organizationWorkspaceId ||
+    currentUser?.organizationId ||
+    currentUser?.activeMemberships?.length ||
+    currentUser?.organizationRoles?.length
+  )
   const canReturnToStudentPortal = role === 'Organization Officer'
     && currentUser?.roles?.includes('STUDENT')
+  const canSwitchToOfficerPortal = role === 'Student'
+    && currentUser?.roles?.includes('OFFICER')
+    && hasOfficerWorkspace
 
   function returnToStudentPortal() {
     if (setActiveRole('STUDENT')) navigate('/student/dashboard', { replace: true })
+  }
+
+  function switchToOfficerPortal() {
+    if (setActiveRole('OFFICER')) navigate('/officer/dashboard', { replace: true })
   }
 
   function closeLogoutDialog() {
@@ -271,6 +284,11 @@ export default function Navbar({
             Student portal
           </button>
         )}
+        {canSwitchToOfficerPortal && (
+          <button className="portal-switcher" onClick={switchToOfficerPortal} type="button">
+            Officer portal
+          </button>
+        )}
         <NotificationPopover
           notificationCount={notificationCount}
           notificationLink={notificationLink}
@@ -284,7 +302,7 @@ export default function Navbar({
         </Link>
         <Button className="topbar-logout" onClick={() => setLogoutOpen(true)} variant="secondary">Logout</Button>
       </div>
-      <Modal onClose={closeLogoutDialog} open={logoutOpen} title="Log out of UNIDOS?">
+      <Modal onClose={closeLogoutDialog} open={logoutOpen} size="sm" title="Log out of UNIDOS?">
         <div className="logout-dialog-content">
           <span aria-hidden="true" className="logout-dialog-icon">
             <svg fill="none" viewBox="0 0 24 24"><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10M14 16l4-4-4-4m4 4H9" /></svg>

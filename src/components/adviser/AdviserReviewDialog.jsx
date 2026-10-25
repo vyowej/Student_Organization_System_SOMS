@@ -124,7 +124,7 @@ export default function AdviserReviewDialog({
 
   return (
     <>
-      <Modal onClose={close} open={Boolean(item)} title={report ? 'Accomplishment Report' : 'Submission Review'}>
+      <Modal onClose={close} open={Boolean(item)} size={report ? 'xl' : 'lg'} title={report ? 'Accomplishment Report' : 'Submission Review'}>
         {item && (
           <div className={`adviser-review-dialog${report ? ' adviser-review-dialog--report' : ''}`}>
           <div className="adviser-review-summary">

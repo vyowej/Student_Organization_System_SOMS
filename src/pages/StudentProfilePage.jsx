@@ -11,6 +11,7 @@ export default function StudentProfilePage() {
       ['First Name', currentUser.firstName],
       ['Middle Name', currentUser.middleName || '—'],
       ['Last Name', currentUser.lastName],
+      ['Suffix', currentUser.suffix || '—'],
       ['Email Address', currentUser.email],
     ],
     academic: [

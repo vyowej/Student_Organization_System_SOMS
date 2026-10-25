@@ -42,8 +42,8 @@ const EVENT_SELECT_QUERY = `
          o.org_type AS organization_type,
          o.scope AS organization_scope,
          o.college_id AS organization_college_id,
-         CASE WHEN cu.id IS NOT NULL THEN (cu.last_name || ', ' || cu.first_name) ELSE NULL END AS created_by_name,
-         CASE WHEN au.id IS NOT NULL THEN (au.last_name || ', ' || au.first_name) ELSE NULL END AS approved_by_name,
+         CASE WHEN cu.id IS NOT NULL THEN (cu.last_name || ', ' || cu.first_name || COALESCE(' ' || cu.suffix, '')) ELSE NULL END AS created_by_name,
+         CASE WHEN au.id IS NOT NULL THEN (au.last_name || ', ' || au.first_name || COALESCE(' ' || au.suffix, '')) ELSE NULL END AS approved_by_name,
          au.role AS approved_by_role,
          (SELECT COUNT(*)::int FROM event_registrations er WHERE er.event_id = e.id AND er.status != 'CANCELLED') AS registered_count,
          (SELECT COUNT(*)::int FROM attendance att WHERE att.event_id = e.id) AS attended_count

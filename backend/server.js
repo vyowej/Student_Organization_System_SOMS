@@ -42,6 +42,7 @@ app.use('/api/announcements', require('./routes/announcements'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/advisers', require('./routes/advisers'));
 app.use('/api/audit-logs', require('./routes/auditLogs'));
+app.use('/api/settings', require('./routes/settings'));
 
 // Root status endpoint
 app.get('/', (req, res) => {

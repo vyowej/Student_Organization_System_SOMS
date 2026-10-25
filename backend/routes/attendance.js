@@ -7,6 +7,68 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const fs = require('fs');
+const path = require('path');
+
+// ============================================================
+// ATTENDANCE SESSION CODE MANAGER (IN-MEMORY + FILE BACKED)
+// Allows random generated attendance codes per event without
+// creating new database tables.
+// ============================================================
+const CODES_FILE = path.join(__dirname, '../attendance_codes.json');
+
+function loadAttendanceCodes() {
+  try {
+    if (fs.existsSync(CODES_FILE)) {
+      const data = JSON.parse(fs.readFileSync(CODES_FILE, 'utf8'));
+      return new Map(Object.entries(data));
+    }
+  } catch (err) {
+    console.error('[ATTENDANCE] Error reading attendance_codes.json:', err.message);
+  }
+  return new Map();
+}
+
+function saveAttendanceCodes(map) {
+  try {
+    const obj = Object.fromEntries(map);
+    fs.writeFileSync(CODES_FILE, JSON.stringify(obj, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[ATTENDANCE] Error saving attendance_codes.json:', err.message);
+  }
+}
+
+const attendanceCodes = loadAttendanceCodes();
+
+function generateRandomCode(prefix = 'WMSU') {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let rand = '';
+  for (let i = 0; i < 4; i++) {
+    rand += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${prefix}-${rand}`;
+}
+
+function getOrCreateEventCode(eventId) {
+  const key = String(eventId);
+  if (attendanceCodes.has(key)) {
+    return attendanceCodes.get(key);
+  }
+  const newRecord = {
+    event_id: Number(eventId),
+    code: generateRandomCode(),
+    active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  attendanceCodes.set(key, newRecord);
+  saveAttendanceCodes(attendanceCodes);
+  return newRecord;
+}
+
+function normalizeCode(str) {
+  return String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
 
 async function resolveStudentDbId(identifier) {
   if (!identifier) return null;
@@ -17,11 +79,24 @@ async function resolveStudentDbId(identifier) {
     );
     if (byId.rows.length > 0) return byId.rows[0].id;
   }
+  const trimmed = String(identifier).trim();
   const byNumber = await db.query(
     'SELECT id FROM students WHERE lower(student_number) = lower($1) LIMIT 1',
-    [String(identifier).trim()]
+    [trimmed]
   );
   if (byNumber.rows.length > 0) return byNumber.rows[0].id;
+
+  // Support registration format (e.g. REG-1, UNIDOS-1)
+  const matchReg = trimmed.match(/^(?:REG|UNIDOS)[-_]?(\d+)$/i);
+  if (matchReg) {
+    const regId = Number(matchReg[1]);
+    const byReg = await db.query(
+      'SELECT student_id FROM event_registrations WHERE id = $1 LIMIT 1',
+      [regId]
+    );
+    if (byReg.rows.length > 0) return byReg.rows[0].student_id;
+  }
+
   return null;
 }
 
@@ -42,8 +117,10 @@ const REGISTRATION_SELECT_QUERY = `
          s.student_number,
          s.year_level,
          u.first_name,
+         u.middle_name,
          u.last_name,
-         (u.last_name || ', ' || u.first_name) AS student_name,
+         u.suffix,
+         (u.last_name || ', ' || u.first_name || COALESCE(' ' || u.suffix, '')) AS student_name,
          u.email,
          p.name AS program_name,
          p.acronym AS program_acronym,
@@ -323,8 +400,10 @@ router.get('/event/:event_id', async (req, res) => {
               s.user_id,
               s.student_number,
               u.first_name,
+              u.middle_name,
               u.last_name,
-              (u.last_name || ', ' || u.first_name) AS student_name,
+              u.suffix,
+              (u.last_name || ', ' || u.first_name || COALESCE(' ' || u.suffix, '')) AS student_name,
               u.email,
               p.acronym AS program_acronym,
               recorder.first_name AS recorder_first_name,
@@ -402,6 +481,203 @@ router.post('/check-in', async (req, res) => {
       attendance: result.rows[0],
       registration: checkedInReg,
     });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+// GET /api/attendance/event/:event_id/code — Retrieve active attendance code for an event
+router.get('/event/:event_id/code', async (req, res) => {
+  try {
+    const session = getOrCreateEventCode(req.params.event_id);
+    res.json(session);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/attendance/event/:event_id/code — Regenerate random code or toggle session
+router.post('/event/:event_id/code', async (req, res) => {
+  try {
+    const { event_id } = req.params;
+    const { action, active } = req.body;
+    const current = getOrCreateEventCode(event_id);
+
+    if (action === 'generate' || action === 'regenerate') {
+      current.code = generateRandomCode();
+      current.updated_at = new Date().toISOString();
+    }
+    if (typeof active === 'boolean') {
+      current.active = active;
+      current.updated_at = new Date().toISOString();
+    }
+
+    attendanceCodes.set(String(event_id), current);
+    saveAttendanceCodes(attendanceCodes);
+
+    res.json(current);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/attendance/verify-code — Student attends with random generated code
+router.post('/verify-code', async (req, res) => {
+  try {
+    const { event_id, code, student_id, student_number, user_id } = req.body;
+    const eventIdNum = Number(event_id);
+    if (!event_id || !Number.isFinite(eventIdNum)) {
+      return res.status(400).json({ error: 'Valid event_id is required' });
+    }
+    if (!code || !String(code).trim()) {
+      return res.status(400).json({ error: 'Please enter the attendance code for this event.' });
+    }
+
+    const session = getOrCreateEventCode(eventIdNum);
+    if (!session || !session.active) {
+      return res.status(400).json({ error: 'Attendance session for this event is currently closed by the organizer.' });
+    }
+
+    const inputNorm = normalizeCode(code);
+    const sessionNorm = normalizeCode(session.code);
+    const sessionShort = sessionNorm.replace(/^WMSU/, '');
+
+    const isMatch = inputNorm === sessionNorm || 
+                    inputNorm === sessionShort || 
+                    sessionNorm.endsWith(inputNorm);
+
+    if (!isMatch) {
+      return res.status(400).json({ error: `Invalid attendance code "${code}". Please check the code announced by the organizer.` });
+    }
+
+    const resolvedStudentId = await resolveStudentDbId(student_id || student_number || user_id);
+    if (!resolvedStudentId) {
+      return res.status(400).json({ error: 'Student record could not be found. Please ensure you are logged in.' });
+    }
+
+    // Verify event exists
+    const eventRes = await db.query('SELECT id, title, status FROM events WHERE id = $1', [eventIdNum]);
+    if (eventRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    const event = eventRes.rows[0];
+
+    // Check if student already checked in
+    const existingAtt = await db.query(
+      'SELECT id, checked_in_at, method FROM attendance WHERE event_id = $1 AND student_id = $2',
+      [eventIdNum, resolvedStudentId]
+    );
+
+    if (existingAtt.rows.length > 0) {
+      return res.status(200).json({
+        ok: true,
+        alreadyCheckedIn: true,
+        message: `You are already checked in for "${event.title}"!`,
+        attendance: existingAtt.rows[0],
+      });
+    }
+
+    // Insert attendance with method 'SELF_CHECKIN'
+    const attResult = await db.query(
+      `INSERT INTO attendance (event_id, student_id, method, checked_in_at)
+       VALUES ($1, $2, 'SELF_CHECKIN', now())
+       ON CONFLICT (event_id, student_id)
+       DO UPDATE SET checked_in_at = now(), method = 'SELF_CHECKIN'
+       RETURNING *`,
+      [eventIdNum, resolvedStudentId]
+    );
+
+    // Update or insert event_registrations with status 'ATTENDED'
+    const regRes = await db.query(
+      `INSERT INTO event_registrations (event_id, student_id, status)
+       VALUES ($1, $2, 'ATTENDED')
+       ON CONFLICT (event_id, student_id)
+       DO UPDATE SET status = 'ATTENDED'
+       RETURNING id`,
+      [eventIdNum, resolvedStudentId]
+    );
+
+    const fullReg = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [regRes.rows[0].id]);
+    const checkedInReg = fullReg.rows[0];
+
+    // Send notification
+    try {
+      if (checkedInReg?.user_id) {
+        await db.query(
+          `INSERT INTO notifications (user_id, type, title, message, created_at)
+           VALUES ($1, 'ATTENDANCE', $2, $3, now())`,
+          [
+            checkedInReg.user_id,
+            `Attendance Verified: ${event.title}`,
+            `Your attendance for "${event.title}" was recorded successfully using code ${session.code}.`
+          ]
+        );
+      }
+    } catch (notifErr) {
+      console.error('[ATTENDANCE NOTIF ERROR]', notifErr);
+    }
+
+    // Audit log
+    await db.query(
+      `INSERT INTO audit_logs (user_id, action, entity, entity_id, metadata, created_at)
+       VALUES ($1, 'ATTENDANCE_SELF_CHECKIN', 'attendance', $2, $3::jsonb, now())`,
+      [
+        checkedInReg?.user_id || null,
+        String(attResult.rows[0].id),
+        JSON.stringify({ event_id: eventIdNum, code: session.code, method: 'SELF_CHECKIN' })
+      ]
+    ).catch(() => null);
+
+    res.status(200).json({
+      ok: true,
+      message: `Attendance confirmed! You are now marked PRESENT for "${event.title}".`,
+      attendance: attResult.rows[0],
+      registration: checkedInReg,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+// POST /api/attendance/manual-toggle — Officer quick-toggle attendance directly from roster
+router.post('/manual-toggle', async (req, res) => {
+  try {
+    const { event_id, student_id, status, recorded_by } = req.body;
+    const eventIdNum = Number(event_id);
+    const resolvedStudentId = await resolveStudentDbId(student_id);
+    if (!event_id || !Number.isFinite(eventIdNum) || !resolvedStudentId) {
+      return res.status(400).json({ error: 'Valid event_id and student_id are required' });
+    }
+
+    if (status === 'ATTENDED') {
+      const attRes = await db.query(
+        `INSERT INTO attendance (event_id, student_id, method, recorded_by, checked_in_at)
+         VALUES ($1, $2, 'MANUAL', $3, now())
+         ON CONFLICT (event_id, student_id)
+         DO UPDATE SET checked_in_at = now(), method = 'MANUAL', recorded_by = $3
+         RETURNING *`,
+        [eventIdNum, resolvedStudentId, recorded_by || null]
+      );
+      await db.query(
+        `UPDATE event_registrations SET status = 'ATTENDED' WHERE event_id = $1 AND student_id = $2`,
+        [eventIdNum, resolvedStudentId]
+      );
+      return res.json({ ok: true, status: 'ATTENDED', message: 'Marked as Attended', attendance: attRes.rows[0] });
+    } else {
+      await db.query(
+        `DELETE FROM attendance WHERE event_id = $1 AND student_id = $2`,
+        [eventIdNum, resolvedStudentId]
+      );
+      await db.query(
+        `UPDATE event_registrations SET status = 'REGISTERED' WHERE event_id = $1 AND student_id = $2`,
+        [eventIdNum, resolvedStudentId]
+      );
+      return res.json({ ok: true, status: 'REGISTERED', message: 'Status reset to Pending' });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error' });

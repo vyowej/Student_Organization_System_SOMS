@@ -6,6 +6,7 @@ import Button from '../components/ui/Button.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
+import SearchBar from '../components/ui/SearchBar.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import { useAuth } from '../context/useAuth.js'
 import { formatDisplayName } from '../data/displayName.js'
@@ -119,11 +120,12 @@ export default function AdviserReportsPage() {
           <span className="adviser-reports-count">{visibleReports.length} {visibleReports.length === 1 ? 'report' : 'reports'}</span>
         </div>
         <div className="adviser-report-toolbar">
-          <label className="adviser-report-search">
-            <Icon name="search" />
-            <span className="visually-hidden">Search reports</span>
-            <input onChange={(event) => setSearch(event.target.value)} placeholder="Search Reports" type="search" value={search} />
-          </label>
+          <SearchBar
+            label="Search reports"
+            onChange={setSearch}
+            placeholder="Search reports by event title, date or status…"
+            value={search}
+          />
           <label className="adviser-report-filter">
             <span>Organization</span>
             <select onChange={(event) => setOrganizationFilter(event.target.value)} value={organizationFilter}>

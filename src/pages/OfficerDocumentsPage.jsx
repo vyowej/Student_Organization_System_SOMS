@@ -210,7 +210,7 @@ export default function OfficerDocumentsPage() {
         )}
       </Card>
 
-      <Modal onClose={() => setUploadOpen(false)} open={uploadOpen} title="Upload Organization Document">
+      <Modal onClose={() => setUploadOpen(false)} open={uploadOpen} size="md" title="Upload Organization Document">
         <form className="officer-org-form" onSubmit={uploadDocument}>
           <label>Document Name<input onChange={(event) => setDocumentForm((current) => ({ ...current, title: event.target.value }))} required value={documentForm.title} /></label>
           <label>Document Type<select onChange={(event) => setDocumentForm((current) => ({ ...current, type: event.target.value }))} value={documentForm.type}>{documentTypes.map((type) => <option key={type}>{type}</option>)}</select></label>

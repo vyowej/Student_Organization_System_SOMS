@@ -282,7 +282,7 @@ export default function OfficerDashboardPage() {
         </div>
       </div>
 
-      <Modal onClose={() => setSelectedRequest(null)} open={Boolean(selectedRequest)} title="Membership Application">
+      <Modal onClose={() => setSelectedRequest(null)} open={Boolean(selectedRequest)} size="md" title="Membership Application">
         {selectedRequest && (
           <div className="officer-request-detail">
             <p><strong>{formatDisplayName(selectedRequest)}</strong></p>
@@ -296,7 +296,7 @@ export default function OfficerDashboardPage() {
         <div className="officer-modal-actions"><Button onClick={() => setSelectedRequest(null)} variant="secondary">Close</Button></div>
       </Modal>
 
-      <Modal onClose={() => setRequestToApprove(null)} open={Boolean(requestToApprove)} title="Approve Membership?">
+      <Modal onClose={() => setRequestToApprove(null)} open={Boolean(requestToApprove)} size="sm" title="Approve Membership?">
         <p>{requestToApprove && formatDisplayName(requestToApprove)} will become an active member of {organization?.name ?? 'this organization'}.</p>
         <div className="officer-modal-actions">
           <Button onClick={() => setRequestToApprove(null)} variant="secondary">Cancel</Button>
@@ -304,7 +304,7 @@ export default function OfficerDashboardPage() {
         </div>
       </Modal>
 
-      <Modal onClose={() => { setRequestToReject(null); setRejectionReason('') }} open={Boolean(requestToReject)} title="Reject Membership Application?">
+      <Modal onClose={() => { setRequestToReject(null); setRejectionReason('') }} open={Boolean(requestToReject)} size="sm" title="Reject Membership Application?">
         <p>Reject {requestToReject && formatDisplayName(requestToReject)}&apos;s application to {organization?.name ?? 'this organization'}?</p>
         <label className="officer-modal-field">
           <span>Optional reason</span>

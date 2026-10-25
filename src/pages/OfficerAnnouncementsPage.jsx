@@ -279,7 +279,7 @@ export default function OfficerAnnouncementsPage() {
         title="Publish announcement"
       />
 
-      <Modal onClose={() => setEditorOpen(false)} open={editorOpen && !publishConfirmOpen} title={editingAnnouncement ? 'Edit Announcement' : 'Create Announcement'}>
+      <Modal onClose={() => setEditorOpen(false)} open={editorOpen && !publishConfirmOpen} size="lg" title={editingAnnouncement ? 'Edit Announcement' : 'Create Announcement'}>
         <form className="officer-announcement-form" onSubmit={(event) => { event.preventDefault(); save('PUBLISHED') }}>
           <label>Title<input autoFocus onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} required value={form.title} /></label>
           <label>Description / Content<textarea onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))} required rows="7" value={form.content} /></label>
@@ -292,7 +292,7 @@ export default function OfficerAnnouncementsPage() {
         </form>
       </Modal>
 
-      <Modal onClose={() => setViewingAnnouncement(null)} open={Boolean(viewingAnnouncement)} title="Announcement Details">
+      <Modal onClose={() => setViewingAnnouncement(null)} open={Boolean(viewingAnnouncement)} size="md" title="Announcement Details">
         {viewingAnnouncement && <article className="officer-announcement-detail">
           <Badge tone={toneForStatus(viewingAnnouncement.status)}>{viewingAnnouncement.status}</Badge>
           <h2>{viewingAnnouncement.title}</h2>
@@ -301,7 +301,7 @@ export default function OfficerAnnouncementsPage() {
         </article>}
       </Modal>
 
-      <Modal onClose={() => setConfirmAction(null)} open={Boolean(confirmAction)} title={confirmAction?.action === 'archive' ? 'Archive Announcement' : 'Delete Announcement'}>
+      <Modal onClose={() => setConfirmAction(null)} open={Boolean(confirmAction)} size="sm" title={confirmAction?.action === 'archive' ? 'Archive Announcement' : 'Delete Announcement'}>
         {confirmAction && <>
           <p>{confirmAction.action === 'archive'
             ? `Archive "${confirmAction.announcement.title}"? It will no longer appear as an active student announcement.`

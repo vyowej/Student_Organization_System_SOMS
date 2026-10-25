@@ -7,6 +7,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import WmsuLogo from '../ui/WmsuLogo.jsx'
+import { useAuth } from '../../context/useAuth.js'
+import { dashboardByRole } from '../../data/mockAuthUsers.js'
 
 const publicLinks = [
   { label: 'Home', to: '/' },
@@ -27,10 +29,21 @@ function getStableDocumentTop(element) {
 export default function PublicLayout() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { currentUser } = useAuth()
   const [openMenuLocation, setOpenMenuLocation] = useState(null)
   const [isScrolled, setIsScrolled] = useState(false)
   const [activeSection, setActiveSection] = useState('')
   const navbarRef = useRef(null)
+
+  const hasOfficerWorkspace = Boolean(
+    currentUser?.organizationWorkspaceId ||
+    currentUser?.organizationId ||
+    currentUser?.activeMemberships?.length ||
+    currentUser?.organizationRoles?.length
+  )
+  const userDashboard = currentUser?.role === 'OFFICER' && !hasOfficerWorkspace
+    ? '/student/dashboard'
+    : (dashboardByRole[currentUser?.role] || '/student/dashboard')
   const pendingAnchorRef = useRef('')
   const locationKey = `${location.pathname}${location.hash}`
   const menuOpen = openMenuLocation === locationKey
@@ -177,7 +190,7 @@ export default function PublicLayout() {
           <WmsuLogo className="brand-seal" />
           <span className="public-brand-copy">
             <strong>UNIDOS</strong>
-            <span>WMSU Student Organization Management System</span>
+            <span>STUDENT ORGANIZATION MANAGEMENT SYSTEM</span>
           </span>
         </Link>
         <button
@@ -210,8 +223,20 @@ export default function PublicLayout() {
               </Link>
             )
           })}
-          <Link className="public-sign-in" onClick={() => setOpenMenuLocation(null)} to="/login">Sign in</Link>
-          <Link className="button button-primary public-get-started" onClick={() => setOpenMenuLocation(null)} to="/register">Get Started</Link>
+          {currentUser ? (
+            <Link
+              className="button button-primary public-get-started"
+              onClick={() => setOpenMenuLocation(null)}
+              to={userDashboard}
+            >
+              Go to Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link className="public-sign-in" onClick={() => setOpenMenuLocation(null)} to="/login">Sign in</Link>
+              <Link className="button button-primary public-get-started" onClick={() => setOpenMenuLocation(null)} to="/register">Get Started</Link>
+            </>
+          )}
         </nav>
       </header>
       <main className="public-main">

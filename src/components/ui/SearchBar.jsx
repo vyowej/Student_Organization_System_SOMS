@@ -12,11 +12,12 @@ export default function SearchBar({
   label = 'Search',
   sticky = false,
   resultText = '',
+  className = '',
   children = null,
 }) {
   const id = useId()
   return (
-    <div className={`search-bar ${sticky ? 'search-bar-sticky' : ''}`.trim()} role="search">
+    <div className={`search-bar ${sticky ? 'search-bar-sticky' : ''} ${className}`.trim()} role="search">
       <label className="search-bar-field" htmlFor={id}>
         <Icon className="search-bar-icon" name="search" size={18} />
         <span className="visually-hidden">{label}</span>
@@ -29,7 +30,9 @@ export default function SearchBar({
           value={value}
         />
         {value && (
-          <button aria-label="Clear search" className="search-bar-clear" onClick={() => onChange('')} type="button">×</button>
+          <button aria-label="Clear search" className="search-bar-clear" onClick={() => onChange('')} type="button">
+            <Icon name="close" size={12} strokeWidth={2.4} />
+          </button>
         )}
       </label>
       {children}

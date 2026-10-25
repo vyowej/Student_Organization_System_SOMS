@@ -217,7 +217,9 @@ router.get('/students', async (req, res) => {
              s.year_level,
              u.email,
              u.first_name,
+             u.middle_name,
              u.last_name,
+             u.suffix,
              u.role,
              u.status AS user_status,
              p.name   AS program_name,
@@ -321,7 +323,9 @@ router.get('/advisers', async (req, res) => {
              a.college_id,
              u.email,
              u.first_name,
+             u.middle_name,
              u.last_name,
+             u.suffix,
              c.name AS college_name,
              c.acronym AS college_acronym
         FROM advisers a

@@ -36,7 +36,7 @@ function unlockBodyScroll() {
   }
 }
 
-export default function Modal({ open, title, onClose, children }) {
+export default function Modal({ open, title, onClose, children, size = 'md', className = '' }) {
   const titleId = useId()
   const dialogRef = useRef(null)
   const onCloseRef = useRef(onClose)
@@ -104,7 +104,7 @@ export default function Modal({ open, title, onClose, children }) {
       <section
         aria-labelledby={titleId}
         aria-modal="true"
-        className="modal"
+        className={`modal modal--${size} ${className}`.trim()}
         ref={dialogRef}
         role="dialog"
         tabIndex={-1}

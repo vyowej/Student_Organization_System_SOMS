@@ -12,7 +12,20 @@ export const adminDefaultSettings = {
   allowOrganizationApplications: true,
   requireAdviserApproval: true,
   maintenanceMode: false,
-  organizationCategories: ['Academic', 'Technology', 'Leadership', 'Socio-Civic', 'Cultural', 'Sports', 'Other'],
+  organizationCategories: [
+    'Academic',
+    'Technology',
+    'Leadership',
+    'Student Council',
+    'Socio-Civic',
+    'Cultural',
+    'Sports & Recreation',
+    'Sports',
+    'Religious',
+    'Special Interest',
+    'Publication',
+    'Other',
+  ],
   notifications: {
     organizationApplications: true,
     eventApprovals: true,
@@ -46,4 +59,17 @@ export const adminRoleOptions = ['STUDENT', 'OFFICER', 'ADVISER', 'ADMIN']
 export const adminStatusOptions = ['ACTIVE', 'INACTIVE', 'SUSPENDED']
 export const adminAccreditationOptions = ['PENDING', 'ACCREDITED', 'RENEWAL_REQUIRED', 'SUSPENDED', 'REVOKED']
 export const adminScopeOptions = ['UNIVERSITY', 'COLLEGE', 'DEPARTMENT']
-export const adminCategoryOptions = ['ACADEMIC', 'NON_ACADEMIC', 'SOCIO_CIVIC', 'RELIGIOUS', 'SPORTS', 'CULTURAL', 'FRATERNITY_SORORITY', 'OTHER']
+export const adminCategoryOptions = [
+  'ACADEMIC',
+  'TECHNOLOGY',
+  'LEADERSHIP',
+  'STUDENT_COUNCIL',
+  'SOCIO_CIVIC',
+  'CULTURAL',
+  'SPORTS_RECREATION',
+  'SPORTS',
+  'RELIGIOUS',
+  'SPECIAL_INTEREST',
+  'PUBLICATION',
+  'OTHER',
+]

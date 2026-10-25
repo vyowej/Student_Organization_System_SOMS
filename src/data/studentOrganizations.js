@@ -10,29 +10,37 @@ export const organizationCategories = [
   'Sports',
   'Religious',
   'Special Interest',
+  'Publication',
   'Other',
 ]
 
 export const orgTypeEnumToLabel = {
   STUDENT_COUNCIL: 'Student Council',
   ACADEMIC: 'Academic',
+  TECHNOLOGY: 'Technology',
+  LEADERSHIP: 'Leadership',
   RELIGIOUS: 'Religious',
   CULTURAL: 'Cultural',
   SPORTS_RECREATION: 'Sports & Recreation',
+  SPORTS: 'Sports',
   SOCIO_CIVIC: 'Socio-Civic',
   SPECIAL_INTEREST: 'Special Interest',
+  PUBLICATION: 'Publication',
   OTHER: 'Other',
 }
 
 export const orgLabelToTypeEnum = {
   'Student Council': 'STUDENT_COUNCIL',
   Academic: 'ACADEMIC',
+  Technology: 'TECHNOLOGY',
+  Leadership: 'LEADERSHIP',
   Religious: 'RELIGIOUS',
   Cultural: 'CULTURAL',
   'Sports & Recreation': 'SPORTS_RECREATION',
-  Sports: 'SPORTS_RECREATION',
+  Sports: 'SPORTS',
   'Socio-Civic': 'SOCIO_CIVIC',
   'Special Interest': 'SPECIAL_INTEREST',
+  Publication: 'PUBLICATION',
   Other: 'OTHER',
 }
 

@@ -20,6 +20,7 @@ import { undoAction, useToast } from '../components/ui/useToast.js'
 import { adminDefaultSettings, adminPrograms, adminYears } from '../data/adminPortal.js'
 import { studentEvents } from '../data/studentEvents.js'
 import { formatDisplayName } from '../data/displayName.js'
+import AuditLogTracker from '../components/admin/AuditLogTracker.jsx'
 
 const decisionOptions = ['APPROVED', 'RETURNED', 'REJECTED']
 const roleOptions = ['Student', 'Organization Officer', 'Faculty Adviser', 'Student Affairs Admin']
@@ -140,7 +141,7 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
         title="Confirm decision"
         tone={decision === 'REJECTED' ? 'danger' : 'primary'}
       />
-      <Modal onClose={onClose} open={!confirming} title={item.title ?? item.name ?? 'Record details'}>
+      <Modal onClose={onClose} open={!confirming} size="lg" title={item.title ?? item.name ?? 'Record details'}>
         <dl className="admin-detail-list">
           {fields.map(([key, value]) => <div key={key}><dt>{key.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`)}</dt><dd>{String(value)}</dd></div>)}
           {Object.entries(item).filter(([key, value]) => Array.isArray(value) && !['documents', 'proposedOfficers'].includes(key)).map(([key, values]) => <div key={key}><dt>{key}</dt><dd>{values.length ? values.join(', ') : 'None recorded'}</dd></div>)}
@@ -174,7 +175,7 @@ function OrganizationEditModal({ organization, onClose, onSave, categories = [] 
   if (!organization) return null
   const categoryOptions = (Array.isArray(categories) && categories.length > 0)
     ? categories
-    : (adminDefaultSettings.organizationCategories || ['Academic', 'Technology', 'Leadership', 'Socio-Civic', 'Cultural', 'Sports', 'Other'])
+    : adminDefaultSettings.organizationCategories
   const values = form ?? {
     name: organization.name,
     acronym: organization.acronym,
@@ -183,7 +184,7 @@ function OrganizationEditModal({ organization, onClose, onSave, categories = [] 
   }
   const editCategories = [...new Set([...categoryOptions, values.category].filter(Boolean))]
   return (
-    <Modal onClose={onClose} open title={`Edit ${organization.name}`}>
+    <Modal onClose={onClose} open size="md" title={`Edit ${organization.name}`}>
       <div className="admin-settings-form">
         {Object.entries(values).map(([key, value]) => {
           if (key === 'category') {
@@ -227,7 +228,7 @@ function OrganizationCreateModal({
 }) {
   const categoryOptions = (Array.isArray(categories) && categories.length > 0)
     ? categories
-    : (adminDefaultSettings.organizationCategories || ['Academic', 'Technology', 'Leadership', 'Socio-Civic', 'Cultural', 'Sports', 'Other'])
+    : adminDefaultSettings.organizationCategories
 
   const [name, setName] = useState('')
   const [acronym, setAcronym] = useState('')
@@ -319,7 +320,7 @@ function OrganizationCreateModal({
   }
 
   return (
-    <Modal onClose={onClose} open={open} title="Add New Organization">
+    <Modal onClose={onClose} open={open} size="md" title="Add New Organization">
       <form onSubmit={handleSubmit} className="admin-settings-form" style={{ marginTop: '12px' }}>
         {error && (
           <div
@@ -1330,7 +1331,6 @@ export default function AdminPortalPage() {
   const [userChange, setUserChange] = useState(null)
   const [publishTarget, setPublishTarget] = useState(null)
   const [saveSettingsOpen, setSaveSettingsOpen] = useState(false)
-  const [actionFilter, setActionFilter] = useState('All')
   const [categoryDateRange, setCategoryDateRange] = useState({ start: '', end: '' })
   const [eventsDateRange, setEventsDateRange] = useState({ start: '', end: '' })
   const [attendanceDateRange, setAttendanceDateRange] = useState({ start: '', end: '' })
@@ -1346,14 +1346,46 @@ export default function AdminPortalPage() {
   }))
   const [newCategory, setNewCategory] = useState('')
 
+  const handleAddCategory = async () => {
+    const category = newCategory.trim()
+    if (!category) return
+    const currentCats = settings.organizationCategories ?? data.adminSettings?.organizationCategories ?? adminDefaultSettings.organizationCategories
+    if (currentCats.some((c) => c.toLowerCase() === category.toLowerCase())) {
+      showToast(`Category "${category}" already exists.`, 'info')
+      return
+    }
+    const updatedCategories = [...currentCats, category]
+    const updatedSettings = { ...settings, organizationCategories: updatedCategories }
+    setSettings(updatedSettings)
+    setNewCategory('')
+    const ok = await data.saveAdminSettings(updatedSettings)
+    if (ok) {
+      showToast(`Category "${category}" added and saved.`, 'success')
+    } else {
+      showToast(`Category "${category}" added.`, 'info')
+    }
+  }
+
+  const handleRemoveCategory = async (catToRemove) => {
+    const currentCats = settings.organizationCategories ?? data.adminSettings?.organizationCategories ?? adminDefaultSettings.organizationCategories
+    const updatedCategories = currentCats.filter((item) => item !== catToRemove)
+    const updatedSettings = { ...settings, organizationCategories: updatedCategories }
+    setSettings(updatedSettings)
+    const ok = await data.saveAdminSettings(updatedSettings)
+    if (ok) {
+      showToast(`Category "${catToRemove}" removed and saved.`, 'info')
+    }
+  }
+
   useEffect(() => {
     if (data.adminSettings) {
-      setSettings(() => ({
+      setSettings((current) => ({
+        ...current,
         ...data.adminSettings,
-        organizationCategories: data.adminSettings.organizationCategories ?? adminDefaultSettings.organizationCategories,
+        organizationCategories: data.adminSettings.organizationCategories ?? current.organizationCategories ?? adminDefaultSettings.organizationCategories,
         notifications: {
           ...adminDefaultSettings.notifications,
-          ...(data.adminSettings.notifications || {}),
+          ...(data.adminSettings.notifications || current.notifications || {}),
         },
       }))
     }
@@ -1420,7 +1452,7 @@ export default function AdminPortalPage() {
           </>}
         </FilterBar>
         <Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[
-          { key: 'name', label: 'Name', render: (value, row) => isStudents ? formatDisplayName(row) : value }, { key: 'userId', label: 'ID' }, { key: 'email', label: 'Email' },
+          { key: 'name', label: 'Name', render: (value, row) => formatDisplayName(row) || value }, { key: 'userId', label: 'ID' }, { key: 'email', label: 'Email' },
           ...(isStudents ? [
             { key: 'program', label: 'Program' }, { key: 'yearLevel', label: 'Year' },
             {
@@ -1490,8 +1522,22 @@ export default function AdminPortalPage() {
           { key: 'lastActivity', label: 'Last Activity' },
         ]} rows={rows} /> : <EmptyState title="No matching records" />}</Card>
         <RecordModal item={selected} onClose={() => setSelected(null)} />
-        <Modal onClose={() => setUserChange(null)} open={Boolean(userChange)} title="Confirm account change">
-          {userChange && <><p>Apply this access change for <strong>{formatDisplayName(userChange.user)}</strong>?</p><p>{Object.entries(userChange.changes).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p><Button onClick={async () => { const undo = data.captureUndo(); const result = await data.updateAdminUser(userChange.user.id, userChange.changes); showToast(result?.ok ? 'User account updated.' : (result?.reason || 'Unable to update user.'), result?.ok ? 'success' : 'error', result?.ok ? undoAction(undo) : {}); if (result?.ok) setUserChange(null) }}>Confirm change</Button></>}
+        <Modal onClose={() => setUserChange(null)} open={Boolean(userChange)} size="sm" title="Confirm account change">
+          {userChange && (
+            <>
+              <p>Apply this access change for <strong>{formatDisplayName(userChange.user)}</strong>?</p>
+              <p>{Object.entries(userChange.changes).map(([key, value]) => `${key}: ${value}`).join(' · ')}</p>
+              <div className="modal-actions">
+                <Button onClick={() => setUserChange(null)} variant="secondary">Cancel</Button>
+                <Button onClick={async () => {
+                  const undo = data.captureUndo();
+                  const result = await data.updateAdminUser(userChange.user.id, userChange.changes);
+                  showToast(result?.ok ? 'User account updated.' : (result?.reason || 'Unable to update user.'), result?.ok ? 'success' : 'error', result?.ok ? undoAction(undo) : {});
+                  if (result?.ok) setUserChange(null);
+                }}>Confirm change</Button>
+              </div>
+            </>
+          )}
         </Modal>
       </div>
     )
@@ -1515,15 +1561,22 @@ export default function AdminPortalPage() {
           { key: 'accreditationStatus', label: 'Accreditation' },
           { key: 'actions', label: 'Actions', render: (_, item) => <div className="admin-row-actions"><Button onClick={() => setSelected(item)} variant="secondary">View</Button><Button onClick={() => setOrganizationEdit(item)} variant="secondary">Edit</Button><Button onClick={() => { setTarget(item); setReason('') }} variant={item.status === 'SUSPENDED' ? 'secondary' : 'danger'}>{item.status === 'SUSPENDED' ? 'Reactivate' : 'Suspend'}</Button></div> },
         ]} rows={data.adminOrganizations.filter((item) => matches(item, ['name', 'acronym', 'category', 'adviser', 'status']))} /> : <EmptyState title="No organizations found" />}</Card>
-        <Modal onClose={() => setTarget(null)} open={Boolean(target)} title={target?.status === 'SUSPENDED' ? 'Reactivate organization' : 'Suspend organization'}>
-          {target && <p>Change <strong>{target.name}</strong> status?{target.status !== 'SUSPENDED' && <label className="admin-modal-label">Reason for suspension<textarea onChange={(event) => setReason(event.target.value)} value={reason} /></label>}</p>}
-          <Button onClick={async () => {
-            const next = target?.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED'
-            const undo = data.captureUndo()
-            const ok = target && (await data.updateAdminOrganizationStatus(target.id, next, reason))
-            if (ok) { showToast(`Organization ${next.toLowerCase()}.`, 'success', undoAction(undo)); setTarget(null) }
-            else showToast('A suspension reason is required.', 'error')
-          }}>Confirm</Button>
+        <Modal onClose={() => setTarget(null)} open={Boolean(target)} size="sm" title={target?.status === 'SUSPENDED' ? 'Reactivate organization' : 'Suspend organization'}>
+          {target && (
+            <>
+              <p>Change <strong>{target.name}</strong> status?{target.status !== 'SUSPENDED' && <label className="admin-modal-label">Reason for suspension<textarea onChange={(event) => setReason(event.target.value)} value={reason} /></label>}</p>
+              <div className="modal-actions">
+                <Button onClick={() => setTarget(null)} variant="secondary">Cancel</Button>
+                <Button onClick={async () => {
+                  const next = target?.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED'
+                  const undo = data.captureUndo()
+                  const ok = target && (await data.updateAdminOrganizationStatus(target.id, next, reason))
+                  if (ok) { showToast(`Organization ${next.toLowerCase()}.`, 'success', undoAction(undo)); setTarget(null) }
+                  else showToast('A suspension reason is required.', 'error')
+                }}>Confirm</Button>
+              </div>
+            </>
+          )}
         </Modal>
         <OrganizationEditModal
           key={organizationEdit?.id ?? 'closed'}
@@ -1867,13 +1920,7 @@ export default function AdminPortalPage() {
   }
 
   if (pathname.endsWith('/audit-logs')) {
-    const query = search.trim().toLowerCase()
-    const rows = data.adminAuditLogs.filter((item) => (
-      (statusFilter === 'All' || item.entityType === statusFilter)
-      && (actionFilter === 'All' || item.action === actionFilter)
-      && (!query || ['actor', 'action', 'entityType', 'entityId', 'description', 'timestamp'].some((key) => String(item[key] ?? '').toLowerCase().includes(query)))
-    ))
-    return <><PageHeader description="Search the recorded history of significant system and approval actions." eyebrow="UNIDOS ADMINISTRATION" title="Audit Logs" /><FilterBar search={search} setSearch={setSearch}><select aria-label="Filter audit entity" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}><option>All</option>{[...new Set(data.adminAuditLogs.map((log) => log.entityType))].map((type) => <option key={type}>{type}</option>)}</select><select aria-label="Filter audit action" onChange={(event) => setActionFilter(event.target.value)} value={actionFilter}><option>All</option>{[...new Set(data.adminAuditLogs.map((log) => log.action))].map((action) => <option key={action}>{action}</option>)}</select></FilterBar><Card className="admin-section-card">{rows.length ? <Table useDataTable columns={[{ key: 'timestamp', label: 'Date / time' }, { key: 'actor', label: 'Actor' }, { key: 'action', label: 'Action' }, { key: 'entityType', label: 'Entity' }, { key: 'entityId', label: 'Record ID' }, { key: 'description', label: 'Details' }]} rows={rows} /> : <EmptyState title="No audit entries found" />}</Card></>
+    return <AuditLogTracker logs={data.adminAuditLogs} onRefresh={data.refreshAuditLogs} />
   }
 
   if (pathname.endsWith('/settings')) {
@@ -1890,10 +1937,7 @@ export default function AdminPortalPage() {
             <div className="admin-category-row" key={category}>
               <span>{category}</span>
               <Button
-                onClick={() => setSettings((current) => ({
-                  ...current,
-                  organizationCategories: (current.organizationCategories ?? adminDefaultSettings.organizationCategories).filter((item) => item !== category),
-                }))}
+                onClick={() => handleRemoveCategory(category)}
                 variant="danger"
               >
                 Remove
@@ -1904,21 +1948,17 @@ export default function AdminPortalPage() {
             <input
               aria-label="New organization category"
               onChange={(event) => setNewCategory(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  handleAddCategory()
+                }
+              }}
               placeholder="Add a category"
               value={newCategory}
             />
             <Button
-              onClick={() => {
-                const category = newCategory.trim()
-                if (!category) return
-                setSettings((current) => ({
-                  ...current,
-                  organizationCategories: [
-                    ...new Set([...(current.organizationCategories ?? adminDefaultSettings.organizationCategories), category]),
-                  ],
-                }))
-                setNewCategory('')
-              }}
+              onClick={handleAddCategory}
             >
               Add category
             </Button>
@@ -1951,7 +1991,7 @@ export default function AdminPortalPage() {
           onCancel={() => setSaveSettingsOpen(false)}
           onConfirm={async () => {
             const undo = data.captureUndo()
-            data.saveAdminSettings(settings)
+            await data.saveAdminSettings(settings)
             setSaveSettingsOpen(false)
             showToast('System settings saved.', 'success', undoAction(undo))
           }}
