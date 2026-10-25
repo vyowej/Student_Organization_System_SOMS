@@ -2,16 +2,6 @@
 
 Welcome to the **Student Organization Management System (SOMS)**, Western Mindanao State University's unified portal for managing student organizations, accreditation, member rosters, event proposals, compliance documents, and attendance tracking.
 
----
-
-## ⚡ Quick Start (Easy 3-Step Setup)
-
-### Prerequisites
-- **Node.js** (v18.0.0 or higher)
-- **PostgreSQL** (v14.0 or higher) running locally on port `5432`
-
----
-
 ### Step 1: Install All Dependencies
 Clone the repository and install all frontend and backend dependencies in one command from the project root:
 
