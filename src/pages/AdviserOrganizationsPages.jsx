@@ -7,6 +7,7 @@ import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import { formatDisplayName } from '../data/displayName.js'
+import { useToast } from '../components/ui/useToast.js'
 
 function adviserInitials(name = '') {
   const words = name.replace(/^(dr|prof|engr|mr|ms|mrs|atty)\.?\s+/i, '').split(/\s+/).filter(Boolean)
@@ -185,7 +186,19 @@ export function AdviserOrganizationsPage() {
 
 export function AdviserOrganizationDetailsPage() {
   const { id } = useParams()
-  const { adminOrganizations = [], adviserActivity = [], adviserDocuments = [], officerEvents = [], officerMembers = [] } = useOutletContext()
+  const {
+    adminOrganizations = [],
+    adviserActivity = [],
+    adviserDocuments = [],
+    assignOfficerPosition,
+    officerEvents = [],
+    officerMembers = [],
+  } = useOutletContext()
+  const { showToast } = useToast()
+  const [positionModalMember, setPositionModalMember] = useState(null)
+  const [selectedPosition, setSelectedPosition] = useState('MEMBER')
+  const [customTitle, setCustomTitle] = useState('')
+  const [savingPosition, setSavingPosition] = useState(false)
   const organization = adminOrganizations.find((item) => String(item.id) === String(id))
 
   if (!organization) {
@@ -202,6 +215,15 @@ export function AdviserOrganizationDetailsPage() {
   const generalMembers = members.filter((member) => member.position === 'General Member')
   const events = officerEvents.filter((event) => String(event.organizationId) === String(id))
   const documents = adviserDocuments.filter((document) => String(document.organizationId) === String(id))
+
+  const existingPresident = members.find(
+    (m) =>
+      (m.rawPosition === 'PRESIDENT' || m.position === 'President') &&
+      (!positionModalMember ||
+        (String(m.id) !== String(positionModalMember.id) &&
+         String(m.membershipId) !== String(positionModalMember.membershipId) &&
+         String(m.studentId) !== String(positionModalMember.studentId)))
+  )
 
   return (
     <div className="adviser-page">
@@ -231,11 +253,57 @@ export function AdviserOrganizationDetailsPage() {
       <div className="adviser-detail-grid">
         <Card className="adviser-panel adviser-detail-wide">
           <h2>Officers</h2>
-          {officers.length ? <div className="adviser-people-list">{officers.map((member) => <div key={member.id}><strong>{formatDisplayName(member)}</strong><Badge tone="crimson">{member.position}</Badge></div>)}</div> : <p>No active officers are recorded.</p>}
+          {officers.length ? (
+            <div className="adviser-people-list">
+              {officers.map((member) => (
+                <div key={member.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f0edf0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <strong>{formatDisplayName(member)}</strong>
+                    <Badge tone="crimson">{member.position}</Badge>
+                  </div>
+                  <button
+                    className="button button-secondary"
+                    onClick={() => {
+                      setPositionModalMember(member)
+                      setSelectedPosition(member.rawPosition || 'PRESIDENT')
+                      setCustomTitle(member.customTitle || '')
+                    }}
+                    style={{ padding: '4px 10px', fontSize: '12px' }}
+                    type="button"
+                  >
+                    Change Position
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : <p>No active officers are recorded.</p>}
         </Card>
         <Card className="adviser-panel adviser-detail-wide">
           <h2>General Members</h2>
-          {generalMembers.length ? <div className="adviser-people-list">{generalMembers.map((member) => <div key={member.id}><strong>{formatDisplayName(member)}</strong><span>{member.studentId} · {member.program}</span></div>)}</div> : <p>No active general members are recorded.</p>}
+          {generalMembers.length ? (
+            <div className="adviser-people-list">
+              {generalMembers.map((member) => (
+                <div key={member.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f0edf0' }}>
+                  <div>
+                    <strong>{formatDisplayName(member)}</strong>
+                    <span style={{ display: 'block', fontSize: '13px', color: '#6d6570' }}>{member.studentId} · {member.program}</span>
+                  </div>
+                  <button
+                    className="button button-secondary"
+                    onClick={() => {
+                      setPositionModalMember(member)
+                      setSelectedPosition('MEMBER')
+                      setCustomTitle('')
+                    }}
+                    style={{ padding: '4px 10px', fontSize: '12px' }}
+                    type="button"
+                  >
+                    Change Position
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : <p>No active general members are recorded.</p>}
           <small>{generalMembers.length} visible members of {members.length} active members</small>
         </Card>
         <Card className="adviser-panel">
@@ -259,6 +327,95 @@ export function AdviserOrganizationDetailsPage() {
         </Card>
       </div>
       <Link className="button button-secondary adviser-back-link" to="/adviser/organizations">Back to My Organizations</Link>
+
+      <Modal onClose={() => setPositionModalMember(null)} open={Boolean(positionModalMember)} title="Manage Organization Position">
+        {positionModalMember && (
+          <div style={{ display: 'grid', gap: '16px', padding: '4px' }}>
+            <div>
+              <p style={{ margin: '0 0 4px', fontSize: '13px', color: '#6d6570' }}>Student</p>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>{formatDisplayName(positionModalMember)}</h3>
+              <span style={{ fontSize: '13px', color: '#6d6570' }}>{positionModalMember.studentId} · Current: <b>{positionModalMember.position}</b></span>
+            </div>
+            <label style={{ display: 'grid', gap: '6px', fontSize: '14px', fontWeight: 600 }}>
+              Position for this organization
+              <select
+                value={selectedPosition}
+                onChange={(e) => setSelectedPosition(e.target.value)}
+                style={{ minHeight: '38px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #d9d2d7' }}
+              >
+                <option value="MEMBER">General Member</option>
+                <option value="PRESIDENT">
+                  President {existingPresident ? `(Currently: ${formatDisplayName(existingPresident)})` : ''}
+                </option>
+                <option value="VICE_PRESIDENT">Vice President</option>
+                <option value="SECRETARY">Secretary</option>
+                <option value="TREASURER">Treasurer</option>
+                <option value="AUDITOR">Auditor</option>
+                <option value="PRO">Public Information Officer (PIO)</option>
+                <option value="OTHER_OFFICER">Other Officer Position</option>
+              </select>
+            </label>
+            {selectedPosition === 'PRESIDENT' && existingPresident && (
+              <div
+                style={{
+                  background: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  color: '#92400e',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                }}
+              >
+                <strong>Notice: President position reassignment</strong>
+                <p style={{ margin: '4px 0 0' }}>
+                  Assigning this member as President will automatically reassign current President (<b>{formatDisplayName(existingPresident)}</b>) to General Member.
+                </p>
+              </div>
+            )}
+            {selectedPosition === 'OTHER_OFFICER' && (
+              <label style={{ display: 'grid', gap: '6px', fontSize: '14px', fontWeight: 600 }}>
+                Custom Officer Title *
+                <input
+                  type="text"
+                  placeholder="e.g. Committee Head"
+                  value={customTitle}
+                  onChange={(e) => setCustomTitle(e.target.value)}
+                  style={{ minHeight: '38px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #d9d2d7' }}
+                />
+              </label>
+            )}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button
+                className="button button-secondary"
+                disabled={savingPosition}
+                onClick={() => setPositionModalMember(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="button button-primary"
+                disabled={savingPosition}
+                onClick={async () => {
+                  setSavingPosition(true)
+                  const targetMemId = positionModalMember.membershipId || positionModalMember.id
+                  const res = await assignOfficerPosition(targetMemId, selectedPosition, customTitle)
+                  setSavingPosition(false)
+                  if (res?.ok !== false) {
+                    showToast('Position updated successfully.', 'success')
+                    setPositionModalMember(null)
+                  } else {
+                    showToast(res?.reason || 'Failed to update position.', 'error')
+                  }
+                }}
+                type="button"
+              >
+                {savingPosition ? 'Saving...' : 'Save Position'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

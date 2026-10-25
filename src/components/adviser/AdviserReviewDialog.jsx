@@ -34,11 +34,15 @@ export default function AdviserReviewDialog({
   const [error, setError] = useState('')
   const [approvalConfirmationOpen, setApprovalConfirmationOpen] = useState(false)
   const [approvalProcessing, setApprovalProcessing] = useState(false)
+  const [assignedPosition, setAssignedPosition] = useState('MEMBER')
+  const [customTitle, setCustomTitle] = useState('')
 
   function close() {
     setDecision('')
     setComment('')
     setError('')
+    setAssignedPosition('MEMBER')
+    setCustomTitle('')
     setApprovalConfirmationOpen(false)
     setApprovalProcessing(false)
     onClose()
@@ -59,12 +63,31 @@ export default function AdviserReviewDialog({
       }
     }
     setApprovalProcessing(true)
-    const saved = await onDecision(decision, comment)
+    const saved = await onDecision(decision, comment, assignedPosition, customTitle)
     if (saved) close()
     else setApprovalProcessing(false)
   }
 
   function confirmationCopy() {
+    if (item?.type === 'MEMBERSHIP_APPLICATION') {
+      if (decision === 'APPROVED') {
+        const roleLabel = assignedPosition === 'OTHER_OFFICER' ? (customTitle || 'Officer') : assignedPosition.replace('_', ' ')
+        return {
+          title: 'Confirm Membership Approval',
+          message: `Approve ${item.name || item.submittedBy || 'this student'}'s membership into ${item.organizationName}? They will be enrolled with the position of ${roleLabel}.`,
+          label: 'Yes, Approve Member',
+          icon: '?',
+        }
+      }
+      if (decision === 'REJECTED') {
+        return {
+          title: 'Confirm Application Rejection',
+          message: `Reject ${item.name || item.submittedBy || 'this student'}'s application to ${item.organizationName}?`,
+          label: 'Yes, Reject',
+          icon: '!',
+        }
+      }
+    }
     if (decision === 'APPROVED') {
       return {
         title: approvalConfirmationTitle,
@@ -129,7 +152,7 @@ export default function AdviserReviewDialog({
                 <h4>Attendance Summary</h4>
                 <div className="adviser-report-attendance-grid">
                   {[
-                    ['Registered', turnout?.registered],
+                    ['Registered', turnout?.registered ?? item.registeredCount ?? item.registered],
                     ['Actual attendees', turnout?.attendees ?? item.actualAttendees ?? item.attendance],
                     ['No-shows', turnout?.noShows ?? item.noShows],
                     ['Turnout rate', turnout?.rate ?? item.turnoutRate],
@@ -164,6 +187,56 @@ export default function AdviserReviewDialog({
                   <strong><Icon name="check-circle" size={16} style={{ display: 'inline-block', verticalAlign: '-2px', marginRight: '4px' }} /> Verified</strong>
                   <p>Verified by <b>{item.verifiedBy ?? verifiedBy ?? 'Assigned adviser'}</b></p>
                   <p>Verified on <b>{item.decisionDate ?? 'Date not recorded'}</b></p>
+                </section>
+              )}
+            </>
+          ) : item.type === 'MEMBERSHIP_APPLICATION' ? (
+            <>
+              <dl className="adviser-review-facts">
+                <div><dt>Applicant</dt><dd>{item.name ?? item.submittedBy ?? 'Student'}</dd></div>
+                <div><dt>Student ID</dt><dd>{item.studentId ?? 'Not recorded'}</dd></div>
+                <div><dt>Program</dt><dd>{item.program ?? 'Not recorded'}</dd></div>
+                {item.yearLevel && <div><dt>Year Level</dt><dd>{item.yearLevel}</dd></div>}
+                <div><dt>Organization</dt><dd>{item.organizationName ?? 'Campus Organization'}</dd></div>
+                <div><dt>Date Applied</dt><dd>{item.submittedDate ?? item.applicationDate ?? 'Not recorded'}</dd></div>
+                {item.decisionDate && <div><dt>Decision Date</dt><dd>{item.decisionDate}</dd></div>}
+              </dl>
+              <section>
+                <h4>Application message / notes</h4>
+                <p>{item.reason || item.message || 'No additional message was provided with this application.'}</p>
+              </section>
+              {item.status === 'PENDING' && (
+                <section style={{ marginTop: '16px', padding: '14px', borderRadius: '10px', background: '#faf8f9', border: '1px solid #ebdbe2' }}>
+                  <h4 style={{ margin: '0 0 10px', fontSize: '14px', color: '#74102d' }}>Assign Organization Position</h4>
+                  <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#49434a' }}>
+                    Select Position for Applicant *
+                    <select
+                      value={assignedPosition}
+                      onChange={(e) => setAssignedPosition(e.target.value)}
+                      style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid #d9d2d7', background: 'white' }}
+                    >
+                      <option value="MEMBER">General Member</option>
+                      <option value="PRESIDENT">President</option>
+                      <option value="VICE_PRESIDENT">Vice President</option>
+                      <option value="SECRETARY">Secretary</option>
+                      <option value="TREASURER">Treasurer</option>
+                      <option value="AUDITOR">Auditor</option>
+                      <option value="PRO">Public Information Officer (PIO)</option>
+                      <option value="OTHER_OFFICER">Other Officer Position</option>
+                    </select>
+                  </label>
+                  {assignedPosition === 'OTHER_OFFICER' && (
+                    <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#49434a', marginTop: '10px' }}>
+                      Custom Officer Title *
+                      <input
+                        type="text"
+                        placeholder="e.g. Committee Head"
+                        value={customTitle}
+                        onChange={(e) => setCustomTitle(e.target.value)}
+                        style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid #d9d2d7', background: 'white' }}
+                      />
+                    </label>
+                  )}
                 </section>
               )}
             </>
@@ -202,6 +275,11 @@ export default function AdviserReviewDialog({
                   <>
                     <Button onClick={() => requestDecision('RETURNED')} variant="secondary">Return for Revision</Button>
                     <Button onClick={() => requestDecision('VERIFIED')} variant="primary">Verify Report</Button>
+                  </>
+                ) : item.type === 'MEMBERSHIP_APPLICATION' ? (
+                  <>
+                    <Button onClick={() => requestDecision('REJECTED')} variant="danger">Reject Application</Button>
+                    <Button onClick={() => requestDecision('APPROVED')} variant="primary">Approve & Assign Position</Button>
                   </>
                 ) : (
                   <>

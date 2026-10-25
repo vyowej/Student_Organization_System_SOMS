@@ -15,16 +15,10 @@ if (!fs.existsSync(envPath) && fs.existsSync(envExamplePath)) {
 }
 require('dotenv').config({ path: envPath });
 
-// Primary database folder and SQL schema path (../database/student_org_db.sql),
-// with fallback to local backend/schema copies if the main database folder is moved.
+// Primary database folder and SQL schema path (../database/student_org_db.sql)
 const DATABASE_DIR = path.resolve(__dirname, '../database');
 const PRIMARY_SCHEMA_PATH = path.resolve(DATABASE_DIR, 'student_org_db.sql');
-
-const SCHEMA_PATH = fs.existsSync(PRIMARY_SCHEMA_PATH)
-  ? PRIMARY_SCHEMA_PATH
-  : fs.existsSync(path.resolve(__dirname, 'schema/schema_student_db.sql'))
-  ? path.resolve(__dirname, 'schema/schema_student_db.sql')
-  : path.resolve(__dirname, 'schema/schema.sql');
+const SCHEMA_PATH = PRIMARY_SCHEMA_PATH;
 
 // Configure PostgreSQL connection pool using environment variables from backend/.env
 const pool = new Pool({

@@ -29,6 +29,8 @@ export default function OfficerMembershipRequestsPage() {
   const [search, setSearch] = useState('')
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [approveTarget, setApproveTarget] = useState(null)
+  const [approvePosition, setApprovePosition] = useState('MEMBER')
+  const [approveCustomTitle, setApproveCustomTitle] = useState('')
   const [rejectTarget, setRejectTarget] = useState(null)
   const [rejectionReason, setRejectionReason] = useState('')
 
@@ -38,6 +40,12 @@ export default function OfficerMembershipRequestsPage() {
   )
   const pending = orgRequests.filter((request) => request.status === 'PENDING')
   const nameOf = formatDisplayName
+
+  const existingPresident = useMemo(() => {
+    return (organization?.officers || []).find(
+      (o) => (o.rawPosition === 'PRESIDENT' || o.position === 'President') && o.status === 'ACTIVE'
+    )
+  }, [organization?.officers])
 
   const visibleRequests = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -52,11 +60,21 @@ export default function OfficerMembershipRequestsPage() {
 
   async function approve() {
     if (!approveTarget) return
-    const undo = captureUndo()
-    if (await approveOfficerMembershipRequest(approveTarget.id)) {
-      showToast(`${nameOf(approveTarget)} is now an active member.`, 'success', undoAction(undo))
+    const isPresident = approvePosition === 'PRESIDENT'
+    if (isPresident && existingPresident) {
+      showToast(`Error: ${organization.name} already has an active President (${existingPresident.name}). Only one President is allowed.`, 'error')
+      return
     }
-    setApproveTarget(null)
+    const undo = captureUndo()
+    const result = await approveOfficerMembershipRequest(approveTarget.id, approvePosition, approveCustomTitle)
+    if (result && result.ok !== false) {
+      showToast(`${nameOf(approveTarget)} is now an active member.`, 'success', undoAction(undo))
+      setApproveTarget(null)
+      setApprovePosition('MEMBER')
+      setApproveCustomTitle('')
+    } else {
+      showToast(result?.error || 'Unable to approve membership application.', 'error')
+    }
   }
 
   async function reject() {
@@ -193,12 +211,63 @@ export default function OfficerMembershipRequestsPage() {
         </div>
       </Modal>
 
-      <Modal onClose={() => setApproveTarget(null)} open={Boolean(approveTarget)} title="Approve Membership?">
+      <Modal onClose={() => { setApproveTarget(null); setApprovePosition('MEMBER'); setApproveCustomTitle('') }} open={Boolean(approveTarget)} title="Approve Membership?">
         <p>{approveTarget && nameOf(approveTarget)} will become an active member of {approveTarget?.organizationName || organization.name}.</p>
-        <p className="officer-permission-note">Their position will be set to General Member and the decision will appear in request history.</p>
+        <div style={{ marginTop: '14px', marginBottom: '16px', display: 'grid', gap: '8px' }}>
+          <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+            Assign Organization Position *
+            <select
+              className="input"
+              value={approvePosition}
+              onChange={(e) => setApprovePosition(e.target.value)}
+              style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px' }}
+            >
+              <option value="MEMBER">General Member</option>
+              <option value="PRESIDENT" disabled={Boolean(existingPresident)}>
+                President {existingPresident ? `(Occupied: ${existingPresident.name})` : ''}
+              </option>
+              <option value="VICE_PRESIDENT">Vice President</option>
+              <option value="SECRETARY">Secretary</option>
+              <option value="TREASURER">Treasurer</option>
+              <option value="AUDITOR">Auditor</option>
+              <option value="PRO">Public Relations Officer (PRO)</option>
+              <option value="OTHER_OFFICER">Other Officer Position</option>
+            </select>
+          </label>
+          {approvePosition === 'PRESIDENT' && existingPresident && (
+            <div
+              style={{
+                background: '#fef2f2',
+                border: '1px solid #f87171',
+                color: '#991b1b',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                fontSize: '13px',
+              }}
+            >
+              <strong>Error: President position already occupied</strong>
+              <p style={{ margin: '4px 0 0' }}>
+                {organization.name} already has an active President (<b>{existingPresident.name}</b>). You cannot assign another President.
+              </p>
+            </div>
+          )}
+          {approvePosition === 'OTHER_OFFICER' && (
+            <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+              Custom Officer Title *
+              <input
+                className="input"
+                type="text"
+                placeholder="e.g. Committee Head"
+                value={approveCustomTitle}
+                onChange={(e) => setApproveCustomTitle(e.target.value)}
+                style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px' }}
+              />
+            </label>
+          )}
+        </div>
         <div className="officer-modal-actions">
-          <Button onClick={() => setApproveTarget(null)} variant="secondary">Cancel</Button>
-          <Button onClick={approve} variant="primary">Approve</Button>
+          <Button onClick={() => { setApproveTarget(null); setApprovePosition('MEMBER'); setApproveCustomTitle('') }} variant="secondary">Cancel</Button>
+          <Button disabled={approvePosition === 'PRESIDENT' && Boolean(existingPresident)} onClick={approve} variant="primary">Approve Member</Button>
         </div>
       </Modal>
 

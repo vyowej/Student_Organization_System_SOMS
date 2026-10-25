@@ -150,7 +150,38 @@ router.post('/register', async (req, res) => {
     );
 
     const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [insertRes.rows[0].id]);
-    res.status(201).json(fullRow.rows[0]);
+    const registration = fullRow.rows[0];
+
+    // Dispatch registration confirmation notification to the student
+    try {
+      const studentUser = await db.query('SELECT user_id FROM students WHERE id = $1', [resolvedStudentId]);
+      if (studentUser.rows.length > 0) {
+        await db.query(
+          `INSERT INTO notifications (user_id, type, title, message, created_at)
+           VALUES ($1, 'EVENT_REGISTRATION', $2, $3, now())`,
+          [
+            studentUser.rows[0].user_id,
+            `Registered: ${registration.event_title || 'Campus Event'}`,
+            `You have successfully registered for "${registration.event_title}". Access your Event Pass for attendance check-in.`
+          ]
+        );
+
+        // Record audit trail
+        await db.query(
+          `INSERT INTO audit_logs (user_id, action, entity, entity_id, metadata, created_at)
+           VALUES ($1, 'REGISTER_EVENT', 'event_registrations', $2, $3::jsonb, now())`,
+          [
+            studentUser.rows[0].user_id,
+            String(registration.id),
+            JSON.stringify({ event_id, student_id: resolvedStudentId, event_title: registration.event_title })
+          ]
+        ).catch(() => null);
+      }
+    } catch (notifErr) {
+      console.error('[ATTENDANCE NOTIF ERROR]', notifErr);
+    }
+
+    res.status(201).json(registration);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error' });
@@ -174,7 +205,26 @@ router.put('/registrations/:id/cancel', async (req, res) => {
     }
 
     const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [id]);
-    res.json({ message: 'Registration cancelled', registration: fullRow.rows[0] });
+    const cancelledReg = fullRow.rows[0];
+
+    // Dispatch cancellation notification to student
+    try {
+      if (cancelledReg?.user_id) {
+        await db.query(
+          `INSERT INTO notifications (user_id, type, title, message, created_at)
+           VALUES ($1, 'EVENT_REGISTRATION', $2, $3, now())`,
+          [
+            cancelledReg.user_id,
+            `Registration Cancelled: ${cancelledReg.event_title || 'Campus Event'}`,
+            `Your registration for "${cancelledReg.event_title}" has been cancelled.`
+          ]
+        );
+      }
+    } catch (notifErr) {
+      console.error('[CANCEL NOTIF ERROR]', notifErr);
+    }
+
+    res.json({ message: 'Registration cancelled', registration: cancelledReg });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -328,11 +378,29 @@ router.post('/check-in', async (req, res) => {
     );
 
     const fullReg = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [regRes.rows[0].id]);
+    const checkedInReg = fullReg.rows[0];
+
+    // Dispatch attendance verification notification to student
+    try {
+      if (checkedInReg?.user_id) {
+        await db.query(
+          `INSERT INTO notifications (user_id, type, title, message, created_at)
+           VALUES ($1, 'ATTENDANCE', $2, $3, now())`,
+          [
+            checkedInReg.user_id,
+            `Attendance Verified: ${checkedInReg.event_title || 'Campus Event'}`,
+            `Your attendance check-in for "${checkedInReg.event_title}" was successfully recorded.`
+          ]
+        );
+      }
+    } catch (notifErr) {
+      console.error('[ATTENDANCE VERIFY NOTIF ERROR]', notifErr);
+    }
 
     res.status(201).json({
       message: 'Attendance recorded successfully',
       attendance: result.rows[0],
-      registration: fullReg.rows[0],
+      registration: checkedInReg,
     });
   } catch (err) {
     console.error(err);

@@ -46,15 +46,9 @@ function NotificationPopover({
   const triggerRef = useRef(null)
   const dialogRef = useRef(null)
   const wasOpen = useRef(false)
-  const isApproval = role === 'Organization Adviser' || role === 'Student Affairs Admin'
-  const title = role === 'Organization Adviser'
-    ? 'Approvals'
-    : role === 'Student Affairs Admin'
-      ? 'Approval Center'
-      : 'Notifications'
+  const title = 'Notifications'
   const filteredItems = notifications.filter((item) => {
     if (filter === 'Unread') return !item.read
-    if (filter === 'Pending') return !item.read
     return true
   })
 
@@ -111,7 +105,7 @@ function NotificationPopover({
     return (
       <article className={`notification-popover-item${item.read ? '' : ' is-unread'}`} key={`${item.source}-${item.id}`}>
         <button className="notification-item-open" onClick={() => openItem(item)} type="button">
-          <span className="notification-avatar"><Icon name={item.icon || (isApproval ? 'check' : 'bell')} size={17} /></span>
+          <span className="notification-avatar"><Icon name={item.icon || 'bell'} size={17} /></span>
           <span className="notification-item-copy">
             <strong>{item.title}</strong>
             <span>{item.text}</span>
@@ -119,7 +113,11 @@ function NotificationPopover({
           </span>
           {!item.read && <i aria-label="Unread" className="notification-unread-dot" />}
         </button>
-        {isApproval && <button className="notification-review" onClick={() => openItem(item)} type="button">Review</button>}
+        {item.canReview ? (
+          <button className="notification-review" onClick={() => openItem(item)} type="button">Review</button>
+        ) : (
+          <button className="notification-review" onClick={() => openItem(item)} type="button">View</button>
+        )}
       </article>
     )
   }
@@ -157,8 +155,8 @@ function NotificationPopover({
                 {moreOpen && <button className="notification-mark-all" onClick={() => { onMarkAllNotificationsRead(); setMoreOpen(false) }} type="button">Mark all as read</button>}
               </div>
             </header>
-            <div aria-label={`${title} filter`} className="notification-tabs" role="group">
-              {(isApproval ? ['Pending', 'All'] : ['All', 'Unread']).map((tab) => (
+            <div aria-label="Notifications filter" className="notification-tabs" role="group">
+              {['All', 'Unread'].map((tab) => (
                 <button aria-pressed={filter === tab} className={filter === tab ? 'is-selected' : ''} key={tab} onClick={() => setFilter(tab)} type="button">{tab}</button>
               ))}
             </div>
@@ -190,7 +188,13 @@ function NotificationPopover({
               </div>
             )}
             <Link className="notification-popover-footer" onClick={() => setOpenAtPath(null)} to={notificationLink}>
-              {role === 'Organization Adviser' ? 'See all approvals' : role === 'Student Affairs Admin' ? 'Open Approval Center' : 'See all notifications'}
+              {role === 'Student'
+                ? 'See all notifications'
+                : role === 'Organization Adviser'
+                  ? 'Open Approval Center'
+                  : role === 'Student Affairs Admin'
+                    ? 'Open Approval Center'
+                    : 'View announcements'}
             </Link>
           </section>
         </>
@@ -267,20 +271,14 @@ export default function Navbar({
             Student portal
           </button>
         )}
-        {['Student', 'Organization Adviser', 'Student Affairs Admin'].includes(role) ? (
-          <NotificationPopover
-            notificationCount={notificationCount}
-            notificationLink={notificationLink}
-            notifications={notifications}
-            onMarkAllNotificationsRead={onMarkAllNotificationsRead}
-            onMarkNotificationRead={onMarkNotificationRead}
-            role={role}
-          />
-        ) : (
-          <Link aria-label="Open announcements" className="icon-button notification-button" to={notificationLink}>
-            <Icon className="topbar-icon" name="bell" size={20} />
-          </Link>
-        )}
+        <NotificationPopover
+          notificationCount={notificationCount}
+          notificationLink={notificationLink}
+          notifications={notifications}
+          onMarkAllNotificationsRead={onMarkAllNotificationsRead}
+          onMarkNotificationRead={onMarkNotificationRead}
+          role={role}
+        />
         <Link aria-label="Open profile or settings" className="icon-button profile-link" to={profileLink} title="Profile">
           <Icon className="topbar-icon" name="user" size={20} />
         </Link>

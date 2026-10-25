@@ -14,15 +14,55 @@ const badgeTone = { PENDING: 'warning', SUBMITTED: 'warning', UNDER_REVIEW: 'war
 const approvedStatuses = ['APPROVED', 'PUBLISHED', 'ONGOING', 'COMPLETED', 'ARCHIVED', 'VERIFIED']
 
 export default function AdviserApprovalsPage() {
-  const { adviserDocuments = [], adviserReports = [], captureUndo, officerEvents = [], reviewAccomplishmentReport, reviewAdviserRequest } = useOutletContext()
+  const {
+    adminOrganizations = [],
+    adviserDocuments = [],
+    adviserReports = [],
+    approveOfficerMembershipRequest,
+    captureUndo,
+    currentUser,
+    officerEvents = [],
+    officerMembershipRequests = [],
+    rejectOfficerMembershipRequest,
+    reviewAccomplishmentReport,
+    reviewAdviserRequest,
+  } = useOutletContext()
   const { showToast } = useToast()
   const [filter, setFilter] = useState('Pending')
   const [selected, setSelected] = useState(null)
   const [search, setSearch] = useState('')
-  const events = officerEvents.map((event) => ({ ...event, type: 'EVENT', title: event.title, submittedDate: event.submittedDate || event.date }))
-  const documents = adviserDocuments.map((document) => ({ ...document, type: document.type || 'DOCUMENT' }))
-  const reports = adviserReports.map((report) => ({ ...report, type: 'ACCOMPLISHMENT_REPORT', title: report.eventTitle, submittedDate: report.submittedDate }))
-  const items = [...events, ...documents, ...reports].filter((item) => (
+
+  const assignedOrgs = adminOrganizations.filter((org) => {
+    if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
+    if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id))) return true
+    return false
+  })
+  const baseOrgs = assignedOrgs.length > 0 ? assignedOrgs : adminOrganizations
+  const assignedOrgIds = new Set(baseOrgs.map((org) => String(org.id)))
+
+  const events = officerEvents
+    .filter((event) => !event.organizationId || assignedOrgIds.has(String(event.organizationId)))
+    .map((event) => ({ ...event, type: 'EVENT', title: event.title, submittedDate: event.submittedDate || event.date }))
+
+  const documents = adviserDocuments
+    .filter((document) => !document.organizationId || assignedOrgIds.has(String(document.organizationId)))
+    .map((document) => ({ ...document, type: document.type || 'DOCUMENT' }))
+
+  const reports = adviserReports
+    .filter((report) => !report.organizationId || assignedOrgIds.has(String(report.organizationId)))
+    .map((report) => ({ ...report, type: 'ACCOMPLISHMENT_REPORT', title: report.eventTitle, submittedDate: report.submittedDate }))
+
+  const applications = officerMembershipRequests
+    .filter((app) => !app.organizationId || assignedOrgIds.has(String(app.organizationId)))
+    .map((app) => ({
+      ...app,
+      type: 'MEMBERSHIP_APPLICATION',
+      title: `${app.name || 'Student'} — Membership Application`,
+      submittedBy: app.name || 'Student Applicant',
+      submittedDate: app.applicationDate || 'Recently',
+    }))
+
+  const items = [...events, ...documents, ...reports, ...applications].filter((item) => (
     item.type === 'EVENT' ? item.status !== 'DRAFT'
       : item.type === 'ACCOMPLISHMENT_REPORT' ? item.status !== 'DRAFT'
         : true
@@ -36,17 +76,29 @@ export default function AdviserApprovalsPage() {
     return item.status === filter.toUpperCase()
   }
 
-  async function decide(decision, comment) {
+  async function decide(decision, comment, position = 'MEMBER', customTitle = null) {
     if (!selected) return false
     const undo = captureUndo()
-    const success = selected.type === 'ACCOMPLISHMENT_REPORT'
-      ? await reviewAccomplishmentReport(selected.id, decision === 'VERIFIED' ? 'VERIFIED' : decision, comment)
-      : await reviewAdviserRequest(selected.type === 'EVENT' ? 'EVENT' : 'DOCUMENT', selected.id, decision, comment)
+    let success = false
+    if (selected.type === 'MEMBERSHIP_APPLICATION') {
+      if (decision === 'APPROVED') {
+        success = await approveOfficerMembershipRequest(selected.id, position, customTitle)
+      } else {
+        success = await rejectOfficerMembershipRequest(selected.id, comment)
+      }
+    } else if (selected.type === 'ACCOMPLISHMENT_REPORT') {
+      success = await reviewAccomplishmentReport(selected.id, decision === 'VERIFIED' ? 'VERIFIED' : decision, comment)
+    } else {
+      success = await reviewAdviserRequest(selected.type === 'EVENT' ? 'EVENT' : 'DOCUMENT', selected.id, decision, comment)
+    }
+
     if (success) {
-      const message = decision === 'APPROVED' ? 'Request approved successfully.'
-        : decision === 'VERIFIED' ? `${selected.title} report was verified.`
-          : decision === 'REJECTED' ? `${selected.title} was rejected.`
-            : `${selected.title} was returned for revision.`
+      const message = selected.type === 'MEMBERSHIP_APPLICATION'
+        ? (decision === 'APPROVED' ? `${selected.name || 'Student'} membership approved.` : 'Membership application rejected.')
+        : decision === 'APPROVED' ? 'Request approved successfully.'
+          : decision === 'VERIFIED' ? `${selected.title} report was verified.`
+            : decision === 'REJECTED' ? `${selected.title} was rejected.`
+              : `${selected.title} was returned for revision.`
       showToast(message, 'success', undoAction(undo))
     } else {
       showToast('The decision could not be saved. Refresh the page and try again.', 'error')
@@ -56,7 +108,7 @@ export default function AdviserApprovalsPage() {
 
   const visibleItems = items
     .filter(matchesFilter)
-    .filter((item) => matchesQuery(search, item.title, item.type, item.organizationName, item.submittedDate))
+    .filter((item) => matchesQuery(search, item.title, item.type, item.organizationName, item.submittedDate, item.name, item.studentId))
 
   return (
     <div className="adviser-page">

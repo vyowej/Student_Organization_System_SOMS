@@ -40,8 +40,8 @@ export default function StudentMyOrganizationsPage() {
       ?? studentOrganizations.find((item) => String(item.id) === String(organizationId))
   }
 
-  function openOrganizationWorkspace() {
-    if (switchRole('OFFICER')) {
+  function openOrganizationWorkspace(organizationId) {
+    if (switchRole('OFFICER', organizationId)) {
       navigate('/officer/dashboard')
     }
   }
@@ -75,7 +75,20 @@ export default function StudentMyOrganizationsPage() {
                   const status = statusContent[membership.status]
                   const officerPositions = officerAssignments
                     .filter((assignment) => String(assignment.organizationId) === String(organization.id))
-                    .flatMap((assignment) => assignment.positions ?? [])
+                    .flatMap((assignment) => assignment.positions ?? (assignment.position ? [assignment.position] : []))
+                    .filter((pos) => pos && !['MEMBER', 'General Member', 'Member'].includes(pos))
+
+                  const isUserOfficer = Boolean(
+                    currentUser?.roles?.includes('OFFICER') || currentUser?.role === 'OFFICER'
+                  )
+
+                  const rawPos = membership.position || membership.role
+                  const displayPosition = officerPositions.length > 0
+                    ? [...new Set(officerPositions)].join(', ')
+                    : (!rawPos || ['MEMBER', 'Member'].includes(rawPos)
+                        ? 'General Member'
+                        : rawPos)
+
                   return (
                     <article className="membership-card" key={membership.organizationId}>
                       <div aria-hidden="true" className={`organization-directory-avatar organization-avatar-${organization.color || 'crimson'}`}>
@@ -83,7 +96,7 @@ export default function StudentMyOrganizationsPage() {
                       </div>
                       <div className="membership-card-copy">
                         <h3>{organization.name}</h3>
-                        <p>{membership.role || membership.position}</p>
+                        <p>{displayPosition}</p>
                         <span>{membership.status === 'ACTIVE' ? 'Joined' : 'Applied'} {membership.approvedDate ?? membership.applicationDate}</span>
                       </div>
                       <Badge tone={status.tone}>{status.label}</Badge>
@@ -91,17 +104,16 @@ export default function StudentMyOrganizationsPage() {
                         <Link className="button button-secondary membership-view-button" to={`/student/organizations/${organization.id}`}>
                           View Organization
                         </Link>
-                        {membership.status === 'ACTIVE'
-                          && officerPositions.length > 0 && (
-                            <button
-                              className="button button-primary membership-workspace-button"
-                              onClick={() => openOrganizationWorkspace(organization.id)}
-                              type="button"
-                            >
-                              Open organization workspace
-                              <span>{[...new Set(officerPositions)].join(', ')}</span>
-                            </button>
-                          )}
+                        {membership.status === 'ACTIVE' && isUserOfficer && (
+                          <button
+                            className="button button-primary membership-workspace-button"
+                            onClick={() => openOrganizationWorkspace(organization.id)}
+                            type="button"
+                          >
+                            Open organization workspace
+                            <span>{[...new Set(officerPositions)].join(', ') || 'Officer'}</span>
+                          </button>
+                        )}
                       </div>
                     </article>
                   )

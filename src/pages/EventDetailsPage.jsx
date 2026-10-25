@@ -7,8 +7,7 @@ import Modal from '../components/ui/Modal.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
-import { getEventRegistrationState, isEventAlmostFull, studentEvents } from '../data/studentEvents.js'
-import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
+import { getEventRegistrationState, isEventAlmostFull, officerEventToStudentEvent, studentEvents } from '../data/studentEvents.js'
 
 const stateTone = {
   REGISTERED: 'success',

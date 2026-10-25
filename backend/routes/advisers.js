@@ -7,6 +7,11 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const {
+  notifyUser,
+  notifyAdmins,
+  recordAuditLog,
+} = require('../notificationsHelper');
 
 // GET /api/advisers — List all faculty advisers with user, college, and active organization assignments
 router.get('/', async (req, res) => {
@@ -137,6 +142,29 @@ router.post('/assign', async (req, res) => {
       [organization_id, adviser_id, assigned_by || null]
     );
 
+    // Look up adviser user_id and organization name
+    const infoRes = await db.query(
+      `SELECT a.user_id, o.name AS organization_name
+         FROM advisers a, organizations o
+        WHERE a.id = $1 AND o.id = $2`,
+      [adviser_id, organization_id]
+    );
+    if (infoRes.rows.length > 0) {
+      const { user_id, organization_name } = infoRes.rows[0];
+      await notifyUser(user_id, {
+        type: 'ADVISER',
+        title: `Assigned as Faculty Adviser: ${organization_name}`,
+        message: `You have been officially assigned as faculty adviser for "${organization_name}".`,
+      });
+      await recordAuditLog({
+        userId: assigned_by || null,
+        action: 'ASSIGN_ADVISER',
+        entity: 'organization_advisers',
+        entityId: result.rows[0].id,
+        metadata: { organization_id, adviser_id },
+      });
+    }
+
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -225,6 +253,56 @@ router.post('/requests', async (req, res) => {
       [organization_id, currentAdviserId, proposed_adviser_id, requested_by || null, reason.trim()]
     );
 
+    const orgInfo = await db.query('SELECT name FROM organizations WHERE id = $1', [organization_id]);
+    const orgName = orgInfo.rows[0]?.name || 'Organization';
+
+    // 1. Look up proposed adviser's user_id and notify them
+    const proposedAdv = await db.query('SELECT user_id FROM advisers WHERE id = $1', [proposed_adviser_id]);
+    if (proposedAdv.rows.length > 0 && proposedAdv.rows[0].user_id) {
+      await notifyUser(proposedAdv.rows[0].user_id, {
+        type: 'APPROVAL',
+        title: `Faculty Adviser Nomination: ${orgName}`,
+        message: `You have been nominated as faculty adviser for "${orgName}". Reason: "${reason.trim()}". Pending administration review.`,
+      });
+    }
+
+    // 2. Look up current adviser's user_id if present and notify them
+    if (currentAdviserId) {
+      const currentAdv = await db.query('SELECT user_id FROM advisers WHERE id = $1', [currentAdviserId]);
+      if (currentAdv.rows.length > 0 && currentAdv.rows[0].user_id) {
+        await notifyUser(currentAdv.rows[0].user_id, {
+          type: 'ADVISER_CHANGE',
+          title: `Adviser Change Requested: ${orgName}`,
+          message: `An adviser change request was submitted for "${orgName}".`,
+        });
+      }
+    }
+
+    // 3. Confirm submission to the requesting officer
+    if (requested_by) {
+      await notifyUser(requested_by, {
+        type: 'CONFIRMATION',
+        title: `Adviser Request Submitted: ${orgName}`,
+        message: `Your request to assign a new faculty adviser for "${orgName}" has been submitted for administrative review.`,
+      });
+    }
+
+    // 4. Notify admins for review
+    await notifyAdmins({
+      type: 'APPROVAL',
+      title: `Adviser Change Request: ${orgName}`,
+      message: `A request to change faculty adviser for "${orgName}" has been submitted for review.`,
+    });
+
+    // 5. Record in audit logs
+    await recordAuditLog({
+      userId: requested_by || null,
+      action: 'REQUEST_ADVISER_CHANGE',
+      entity: 'adviser_change_requests',
+      entityId: result.rows[0].id,
+      metadata: { organization_id, proposed_adviser_id, current_adviser_id: currentAdviserId, reason: reason.trim() },
+    });
+
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -278,6 +356,40 @@ router.put('/requests/:id/review', async (req, res) => {
         [changeRequest.organization_id, changeRequest.proposed_adviser_id, reviewed_by || null]
       );
     }
+
+    // Look up organization name and users to notify
+    const orgRes = await db.query('SELECT name FROM organizations WHERE id = $1', [changeRequest.organization_id]);
+    const orgName = orgRes.rows[0]?.name || 'Organization';
+
+    // 1. Notify the requesting officer of the review outcome
+    if (changeRequest.requested_by) {
+      await notifyUser(changeRequest.requested_by, {
+        type: 'ADVISER_CHANGE',
+        title: `Adviser Change Request ${normalizedStatus}: ${orgName}`,
+        message: `Your request to change faculty adviser for "${orgName}" has been ${normalizedStatus.toLowerCase()}.${review_remarks ? ` Remarks: ${review_remarks}` : ''}`,
+      });
+    }
+
+    // 2. Notify the proposed adviser
+    if (changeRequest.proposed_adviser_id) {
+      const paRes = await db.query('SELECT user_id FROM advisers WHERE id = $1', [changeRequest.proposed_adviser_id]);
+      if (paRes.rows.length > 0 && paRes.rows[0].user_id) {
+        await notifyUser(paRes.rows[0].user_id, {
+          type: 'ADVISER_CHANGE',
+          title: `Adviser Nomination ${normalizedStatus}: ${orgName}`,
+          message: `Your nomination as faculty adviser for "${orgName}" was ${normalizedStatus.toLowerCase()}.${review_remarks ? ` Remarks: ${review_remarks}` : ''}`,
+        });
+      }
+    }
+
+    // 3. Record in audit logs
+    await recordAuditLog({
+      userId: reviewed_by || null,
+      action: `REVIEW_ADVISER_CHANGE_${normalizedStatus}`,
+      entity: 'adviser_change_requests',
+      entityId: changeRequest.id,
+      metadata: { organization_id: changeRequest.organization_id, status: normalizedStatus, review_remarks },
+    });
 
     res.json({ message: `Request ${normalizedStatus.toLowerCase()} successfully`, request: changeRequest });
   } catch (err) {

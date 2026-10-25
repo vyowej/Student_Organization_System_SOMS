@@ -993,7 +993,13 @@ textarea::placeholder {
 }
 
 .modal {
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   border: 1px solid var(--border);
   border-radius: 20px;
   background: var(--color-card);
@@ -4101,6 +4107,9 @@ html {
     width: min(300px, 84vw);
     height: calc(100dvh - var(--topbar-height, 64px));
     max-height: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     transform: translateX(-105%);
   }
 
@@ -4237,6 +4246,9 @@ html {
     width: min(300px, 84vw);
     height: calc(100dvh - var(--topbar-height, 64px));
     flex: 0 0 min(300px, 84vw);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     transform: translateX(-105%);
   }
 

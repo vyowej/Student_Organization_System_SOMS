@@ -6,8 +6,7 @@ import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import Table from '../components/ui/Table.jsx'
-import { studentEvents } from '../data/studentEvents.js'
-import { findStudentEvent } from '../data/officerStudentEvent.js'
+import { findStudentEvent, studentEvents } from '../data/studentEvents.js'
 
 const attendanceTone = {
   ATTENDED: 'success',

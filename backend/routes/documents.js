@@ -7,6 +7,12 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const {
+  notifyUser,
+  notifyAdvisersForOrg,
+  notifyAdmins,
+  recordAuditLog,
+} = require('../notificationsHelper');
 
 const VALID_DOC_TYPES = ['CONSTITUTION', 'PROPOSAL', 'FINANCIAL', 'REPORT', 'CERTIFICATE'];
 const VALID_DOC_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'];
@@ -108,7 +114,25 @@ router.get('/org/:organization_id', async (req, res) => {
 // POST /api/documents — Upload/submit a new organization document (PENDING review by default)
 router.post('/', async (req, res) => {
   try {
-    const { organization_id, type, title, file_url, uploaded_by, review_remarks } = req.body;
+    const {
+      organization_id,
+      type,
+      title,
+      file_url,
+      uploaded_by,
+      review_remarks,
+      objectives,
+      activitiesConducted,
+      activities_conducted,
+      results,
+      problemsEncountered,
+      problems_encountered,
+      recommendations,
+      attendance,
+      eventDate,
+      event_date,
+      summary,
+    } = req.body;
 
     if (!organization_id || !title) {
       return res.status(400).json({
@@ -123,21 +147,86 @@ router.post('/', async (req, res) => {
     // Insert Google Drive API file/image upload logic here so uploaded
     // files or event photos are stored in Google Drive and their
     // shareable link is saved into `resolvedFileUrl`.
-    //
-    //
-    //
     // ============================================================
     const resolvedFileUrl = (file_url || `/files/${encodeURIComponent(title.trim())}`).trim();
+
+    let finalRemarks = review_remarks || null;
+    const hasAccomplishmentFields = objectives !== undefined ||
+      activitiesConducted !== undefined ||
+      activities_conducted !== undefined ||
+      results !== undefined ||
+      problemsEncountered !== undefined ||
+      problems_encountered !== undefined ||
+      recommendations !== undefined;
+
+    if (hasAccomplishmentFields) {
+      const metaObj = {
+        eventId: req.body.eventId || req.body.event_id || null,
+        venue: (req.body.venue || '').trim(),
+        time: (req.body.time || '').trim(),
+        registeredCount: req.body.registeredCount !== undefined && req.body.registeredCount !== null ? Number(req.body.registeredCount) : null,
+        attendance: attendance !== undefined && attendance !== null ? Number(attendance) : null,
+        eventDate: eventDate || event_date || null,
+        objectives: (objectives || '').trim(),
+        activitiesConducted: (activitiesConducted || activities_conducted || '').trim(),
+        results: (results || summary || '').trim(),
+        problemsEncountered: (problemsEncountered || problems_encountered || '').trim(),
+        recommendations: (recommendations || '').trim(),
+        summary: (summary || results || '').trim(),
+        adviserRemarks: '',
+      };
+      finalRemarks = JSON.stringify(metaObj);
+    }
 
     const insertRes = await db.query(
       `INSERT INTO documents (organization_id, type, title, file_url, uploaded_by, review_remarks, status)
        VALUES ($1, $2, $3, $4, $5, $6, 'PENDING')
        RETURNING id`,
-      [organization_id, docType, title.trim(), resolvedFileUrl, uploaded_by || null, review_remarks || null]
+      [organization_id, docType, title.trim(), resolvedFileUrl, uploaded_by || null, finalRemarks]
     );
 
     const fullDoc = await db.query(`${DOCUMENT_SELECT_QUERY} WHERE d.id = $1`, [insertRes.rows[0].id]);
-    res.status(201).json(fullDoc.rows[0]);
+    const docRow = fullDoc.rows[0];
+    const orgName = docRow.organization_name || docRow.organization_acronym || 'Student Organization';
+    const isAccomplishment = docType === 'REPORT' || title.toLowerCase().includes('accomplishment') || title.toLowerCase().includes('report');
+
+    // 1. Notify assigned faculty adviser(s) that an officer submitted a document or accomplishment report
+    await notifyAdvisersForOrg(organization_id, {
+      type: 'APPROVAL',
+      title: isAccomplishment ? `Accomplishment Report Submitted: ${title.trim()}` : `Document Submitted: ${title.trim()}`,
+      message: isAccomplishment
+        ? `An officer from ${orgName} submitted an Accomplishment Report "${title.trim()}" for your verification.`
+        : `An officer from ${orgName} submitted ${docType} "${title.trim()}" for your review and endorsement.`,
+    });
+
+    // 2. Dispatch submission confirmation to the submitting officer
+    if (uploaded_by) {
+      await notifyUser(uploaded_by, {
+        type: 'CONFIRMATION',
+        title: isAccomplishment ? `Report Submitted: ${title.trim()}` : `Submission Confirmed: ${title.trim()}`,
+        message: isAccomplishment
+          ? `Your Accomplishment Report "${title.trim()}" for ${orgName} was submitted successfully and is queued for faculty adviser verification.`
+          : `Your document "${title.trim()}" (${docType}) for ${orgName} was submitted successfully and is queued for faculty adviser review.`,
+      });
+    }
+
+    // 3. Notify administrators for institutional oversight
+    await notifyAdmins({
+      type: 'APPROVAL',
+      title: isAccomplishment ? `Accomplishment Report Submitted: ${title.trim()}` : `Document Submitted: ${title.trim()}`,
+      message: `A ${isAccomplishment ? 'compliance accomplishment report' : docType + ' document'} "${title.trim()}" for ${orgName} has been submitted for review.`,
+    });
+
+    // 4. Record submission in audit logs
+    await recordAuditLog({
+      userId: uploaded_by || null,
+      action: isAccomplishment ? 'SUBMIT_ACCOMPLISHMENT_REPORT' : 'SUBMIT_DOCUMENT',
+      entity: 'documents',
+      entityId: docRow.id,
+      metadata: { title: title.trim(), organization_id, doc_type: docType },
+    });
+
+    res.status(201).json(docRow);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error' });
@@ -152,6 +241,40 @@ router.put('/:id/review', async (req, res) => {
 
     const normalizedStatus = normalizeDocStatus(status);
 
+    // Extract clean human review remarks / adviser comment
+    let incomingComment = review_remarks !== undefined ? review_remarks : null;
+    while (typeof incomingComment === 'string' && incomingComment.trim().startsWith('{') && incomingComment.trim().endsWith('}')) {
+      try {
+        const parsedIncoming = JSON.parse(incomingComment.trim());
+        if (parsedIncoming && typeof parsedIncoming === 'object') {
+          incomingComment = parsedIncoming.adviserRemarks ?? parsedIncoming.remarks ?? parsedIncoming.comment ?? '';
+        } else {
+          break;
+        }
+      } catch {
+        break;
+      }
+    }
+
+    // If existing document has JSON accomplishment metadata in review_remarks, preserve it
+    let finalReviewRemarks = incomingComment;
+    const existingDoc = await db.query('SELECT review_remarks FROM documents WHERE id = $1', [id]);
+    if (existingDoc.rows.length > 0 && existingDoc.rows[0].review_remarks) {
+      const rawText = String(existingDoc.rows[0].review_remarks).trim();
+      if (rawText.startsWith('{') && rawText.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(rawText);
+          if (parsed && typeof parsed === 'object') {
+            parsed.adviserRemarks = incomingComment !== null && incomingComment !== undefined ? String(incomingComment).trim() : '';
+            parsed.status = normalizedStatus;
+            finalReviewRemarks = JSON.stringify(parsed);
+          }
+        } catch {
+          // keep as is
+        }
+      }
+    }
+
     const result = await db.query(
       `UPDATE documents
           SET status = $2,
@@ -160,7 +283,7 @@ router.put('/:id/review', async (req, res) => {
               reviewed_at = now()
         WHERE id = $1
         RETURNING id`,
-      [id, normalizedStatus, reviewed_by || null, review_remarks !== undefined ? review_remarks : null]
+      [id, normalizedStatus, reviewed_by || null, finalReviewRemarks]
     );
 
     if (result.rows.length === 0) {
@@ -168,7 +291,47 @@ router.put('/:id/review', async (req, res) => {
     }
 
     const fullDoc = await db.query(`${DOCUMENT_SELECT_QUERY} WHERE d.id = $1`, [id]);
-    res.json(fullDoc.rows[0]);
+    const docRow = fullDoc.rows[0];
+    const isAccomplishment = docRow.type === 'REPORT' || docRow.title.toLowerCase().includes('accomplishment') || docRow.title.toLowerCase().includes('report');
+
+    // Notify the uploading officer about the review outcome
+    if (docRow.uploaded_by) {
+      const outcomeText = normalizedStatus === 'APPROVED'
+        ? (isAccomplishment ? 'verified and approved' : 'approved')
+        : (isAccomplishment ? 'returned for revision' : 'rejected');
+      let humanRemarks = '';
+      if (typeof review_remarks === 'string') {
+        const trimmed = review_remarks.trim();
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            humanRemarks = parsed.adviserRemarks || '';
+          } catch {
+            humanRemarks = '';
+          }
+        } else {
+          humanRemarks = trimmed;
+        }
+      }
+      await notifyUser(docRow.uploaded_by, {
+        type: 'DOCUMENT_REVIEW',
+        title: isAccomplishment
+          ? `Accomplishment Report ${normalizedStatus === 'APPROVED' ? 'Verified' : 'Returned'}: ${docRow.title}`
+          : `Document ${normalizedStatus}: ${docRow.title}`,
+        message: `Your ${isAccomplishment ? 'Accomplishment Report' : 'document'} "${docRow.title}" was ${outcomeText} by ${docRow.reviewer_name || 'the faculty adviser'}.${humanRemarks ? ` Remarks: ${humanRemarks}` : ''}`,
+      });
+    }
+
+    // Record review in audit logs
+    await recordAuditLog({
+      userId: reviewed_by || null,
+      action: `REVIEW_DOCUMENT_${normalizedStatus}`,
+      entity: 'documents',
+      entityId: docRow.id,
+      metadata: { title: docRow.title, organization_id: docRow.organization_id, status: normalizedStatus, review_remarks },
+    });
+
+    res.json(docRow);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error' });

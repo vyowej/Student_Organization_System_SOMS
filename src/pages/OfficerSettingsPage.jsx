@@ -9,7 +9,7 @@ import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 
-const organizationCategories = ['Academic', 'Socio-Civic', 'Cultural', 'Sports']
+const organizationCategories = ['Academic', 'Technology', 'Leadership', 'Socio-Civic', 'Cultural', 'Sports', 'Other']
 const preferenceOptions = [
   ['membershipRequests', 'Membership Requests'],
   ['eventUpdates', 'Event Updates'],
@@ -40,6 +40,7 @@ export default function OfficerSettingsPage() {
     captureUndo,
     currentUser,
     adminSettings,
+    officerNotificationPreferences,
     updateOfficerOrganizationProfile,
     updateOfficerOrganizationContact,
     updateOfficerOrganizationLogo,
@@ -85,7 +86,7 @@ export default function OfficerSettingsPage() {
     contactNumber: organization.contactNumber ?? '',
     socialMedia: organization.socialMedia ?? '',
   }
-  const savedPreferences = organization.notificationPreferences ?? {
+  const savedPreferences = officerNotificationPreferences ?? organization.notificationPreferences ?? {
     membershipRequests: true,
     eventUpdates: true,
     documentUpdates: true,
@@ -147,10 +148,10 @@ export default function OfficerSettingsPage() {
     showToast('Organization contact information saved.', 'success', undoAction(undo))
   }
 
-  function savePreferences() {
+  async function savePreferences() {
     const values = preferences ?? savedPreferences
     const undo = captureUndo()
-    if (!saveOfficerNotificationPreferences(values)) {
+    if (!(await saveOfficerNotificationPreferences(values))) {
       showToast('Unable to save notification preferences.', 'error')
       return
     }
@@ -350,7 +351,7 @@ export default function OfficerSettingsPage() {
             return <label className="officer-settings-preference" key={key}><span>{label}</span><span className={`officer-settings-toggle${selected ? ' is-on' : ''}`}><span>{selected ? 'ON' : 'OFF'}</span><input aria-label={label} checked={selected} onChange={(event) => setPreferences((current) => ({ ...(current ?? savedPreferences), [key]: event.target.checked }))} type="checkbox" /></span></label>
           })}
         </div>
-        <div className="officer-settings-actions"><Button onClick={() => setPreferences({ ...savedPreferences })} variant="ghost">Reset</Button><Button onClick={() => (preferences ? setDiscardConfirm('preferences') : null)} variant="secondary">Cancel</Button><Button onClick={savePreferences}>Save Preferences</Button></div>
+        <div className="officer-settings-actions"><Button onClick={() => setPreferences({ membershipRequests: true, eventUpdates: true, documentUpdates: true, adviserApprovalUpdates: true, studentAnnouncements: true })} variant="ghost">Reset</Button><Button onClick={() => (preferences ? setDiscardConfirm('preferences') : null)} variant="secondary">Cancel</Button><Button onClick={savePreferences}>Save Preferences</Button></div>
       </SettingsSection>
 
       <SettingsSection title="Organization Access / Permissions" description="Access is assigned by the system and cannot be changed here.">

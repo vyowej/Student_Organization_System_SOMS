@@ -5,8 +5,7 @@ import EmptyState from '../components/ui/EmptyState.jsx'
 import FilterSelect from '../components/ui/FilterSelect.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { eventCategories, getEventRegistrationState, isEventAlmostFull, studentEvents } from '../data/studentEvents.js'
-import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
+import { eventCategories, getEventRegistrationState, isEventAlmostFull, officerEventToStudentEvent, studentEvents } from '../data/studentEvents.js'
 
 const eventStatusFilters = ['All', 'Upcoming', 'Registration Open', 'Almost Full']
 

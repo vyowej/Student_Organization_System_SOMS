@@ -4,13 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "postinstall": "npm --prefix backend install",
+    "start": "node scripts/dev.js",
     "dev": "vite",
+    "dev:all": "node scripts/dev.js",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "backend": "node backend/server.js",
-    "db:init": "node backend/init-db.js"
+    "db:init": "node backend/init-db.js",
+    "test:system": "node backend/scripts/test_system.js",
+    "postinstall": "npm --prefix backend install"
   },
   "dependencies": {
     "datatables.net-dt": "^3.1.3",

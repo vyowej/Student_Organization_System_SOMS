@@ -10,7 +10,7 @@ import { formatGreetingName, getTimeGreeting } from '../data/displayName.js'
 import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Icon from '../components/ui/Icon.jsx'
-import { officerEventToStudentEvent } from '../data/officerStudentEvent.js'
+import { officerEventToStudentEvent } from '../data/studentEvents.js'
 
 function SectionHeading({ id, title, to, linkLabel }) {
   return (
@@ -28,6 +28,7 @@ export default function StudentDashboardPage() {
     studentMemberships = [],
     officerEvents = [],
     studentRegistrations = [],
+    officerAnnouncements = [],
   } = useOutletContext()
 
   const myMemberships = useMemo(
@@ -75,6 +76,14 @@ export default function StudentDashboardPage() {
         .slice(0, 4)
         .map(officerEventToStudentEvent),
     [officerEvents],
+  )
+
+  const recentAnnouncements = useMemo(
+    () =>
+      (officerAnnouncements || [])
+        .filter((a) => a.status === 'PUBLISHED' || !a.status)
+        .slice(0, 4),
+    [officerAnnouncements],
   )
 
   return (
@@ -198,6 +207,43 @@ export default function StudentDashboardPage() {
             <EmptyState
               description="Published campus events will appear here."
               title="No upcoming events"
+            />
+          )}
+        </section>
+
+        <section aria-labelledby="recent-announcements-title" className="student-dashboard-panel">
+          <SectionHeading id="recent-announcements-title" linkLabel="Explore organizations" title="Latest Announcements" to="/student/organizations" />
+          {recentAnnouncements.length > 0 ? (
+            <div className="student-event-list">
+              {recentAnnouncements.map((announcement) => (
+                <Link
+                  aria-label={`View announcement from ${announcement.organizationName}`}
+                  className="student-event-card"
+                  key={announcement.id}
+                  to={`/student/organizations/${announcement.organizationId}`}
+                >
+                  <div aria-hidden="true" className="student-event-date" style={{ background: 'var(--color-crimson, #9e1b32)', color: '#fff' }}>
+                    <Icon name="bell" size={16} />
+                    <small style={{ fontSize: '10px' }}>UPDATE</small>
+                  </div>
+                  <div className="student-event-copy">
+                    <div className="student-event-title-line">
+                      <h3>{announcement.title}</h3>
+                      <Badge tone="crimson">{announcement.organizationName || 'Organization'}</Badge>
+                    </div>
+                    <p style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {announcement.content || announcement.description}
+                    </p>
+                    <span>{announcement.date || 'Recently'} <i aria-hidden="true">·</i> Posted by {announcement.postedBy}</span>
+                  </div>
+                  <span aria-hidden="true" className="student-event-arrow"><Icon name="arrow" /></span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              description="Announcements published by student organizations will appear here."
+              title="No announcements yet"
             />
           )}
         </section>

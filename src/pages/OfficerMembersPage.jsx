@@ -17,6 +17,27 @@ const statusTones = { ACTIVE: 'success', SUSPENDED: 'warning', INACTIVE: 'neutra
 const statusFilters = ['All', 'Active', 'Suspended', 'Inactive']
 const officerRoles = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor', 'PIO']
 
+function normalizeRole(role) {
+  if (!role) return ''
+  const str = String(role).trim().toUpperCase().replace(/[\s_.-]+/g, '')
+  if (str === 'PRESIDENT') return 'PRESIDENT'
+  if (str === 'VICEPRESIDENT' || str === 'VP') return 'VICEPRESIDENT'
+  if (str === 'SECRETARY') return 'SECRETARY'
+  if (str === 'TREASURER') return 'TREASURER'
+  if (str === 'AUDITOR') return 'AUDITOR'
+  if (str === 'PIO' || str === 'PRO' || str === 'PUBLICINFORMATIONOFFICER' || str === 'PUBLICRELATIONSOFFICER') return 'PIO'
+  return str
+}
+
+function isMatchingRole(member, role) {
+  if (!member) return false
+  const targetNorm = normalizeRole(role)
+  const posNorm = normalizeRole(member.position)
+  const rawPosNorm = normalizeRole(member.rawPosition)
+  const customNorm = normalizeRole(member.customTitle)
+  return targetNorm === posNorm || targetNorm === rawPosNorm || targetNorm === customNorm
+}
+
 function formatStatus(status) {
   return status.charAt(0) + status.slice(1).toLowerCase()
 }
@@ -94,6 +115,26 @@ export default function OfficerMembersPage() {
     setEditPosition(member.position)
   }
 
+  const existingPresidentForEdit = useMemo(() => {
+    if (!editingMember) return null
+    return orgMembers.find(
+      (m) =>
+        (m.rawPosition === 'PRESIDENT' || m.position === 'President') &&
+        m.status === 'ACTIVE' &&
+        String(m.id) !== String(editingMember.id)
+    )
+  }, [editingMember, orgMembers])
+
+  const existingPresidentForTarget = useMemo(() => {
+    if (!positionTarget || assignedPosition !== 'President') return null
+    return orgMembers.find(
+      (m) =>
+        (m.rawPosition === 'PRESIDENT' || m.position === 'President') &&
+        m.status === 'ACTIVE' &&
+        String(m.id) !== String(assignedMemberId)
+    )
+  }, [assignedMemberId, assignedPosition, orgMembers, positionTarget])
+
   async function confirmEdit() {
     if (!editingMember) return
     const undo = captureUndo()
@@ -128,10 +169,30 @@ export default function OfficerMembersPage() {
     }
   }
 
-  const officers = officerRoles.map((position) => ({
+  const sortedOrgMembers = useMemo(
+    () => [...orgMembers].sort((a, b) => Number(b.id || 0) - Number(a.id || 0)),
+    [orgMembers]
+  )
+
+  const standardOfficers = officerRoles.map((position) => ({
     position,
-    member: orgMembers.find((member) => member.status === 'ACTIVE' && member.position === position),
+    member: sortedOrgMembers.find((member) => member.status === 'ACTIVE' && isMatchingRole(member, position)),
   }))
+
+  const additionalOfficers = sortedOrgMembers
+    .filter((member) => member.status === 'ACTIVE')
+    .filter((member) => {
+      const raw = String(member.rawPosition || '').toUpperCase()
+      const pos = String(member.position || '').toUpperCase()
+      return raw !== 'MEMBER' && pos !== 'GENERAL MEMBER'
+    })
+    .filter((member) => !officerRoles.some((role) => isMatchingRole(member, role)))
+    .map((member) => ({
+      position: member.customTitle || member.position || 'Officer',
+      member,
+    }))
+
+  const officers = [...standardOfficers, ...additionalOfficers]
 
   function getMemberInitials(member) {
     return formatDisplayName(member).split(/[ ,]+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'M'
@@ -277,13 +338,40 @@ export default function OfficerMembersPage() {
         <label className="officer-modal-field">
           <span>Organization position</span>
           <select onChange={(event) => setEditPosition(event.target.value)} value={editPosition}>
-            {officerPositions.map((position) => <option key={position}>{position}</option>)}
+            {officerPositions.map((position) => (
+              <option key={position}>
+                {position}{position === 'President' && existingPresidentForEdit ? ` (Currently: ${formatDisplayName(existingPresidentForEdit)})` : ''}
+              </option>
+            ))}
           </select>
         </label>
+        {(editPosition === 'President' || String(editPosition).toUpperCase() === 'PRESIDENT') && existingPresidentForEdit && (
+          <div
+            style={{
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
+              color: '#92400e',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              marginTop: '8px',
+            }}
+          >
+            <strong>Notice: President position reassignment</strong>
+            <p style={{ margin: '4px 0 0' }}>
+              Assigning this member as President will automatically reassign current President (<b>{formatDisplayName(existingPresidentForEdit)}</b>) to General Member.
+            </p>
+          </div>
+        )}
         <p className="officer-permission-note">Positions held by another member will be reassigned to General Member.</p>
         <div className="officer-modal-actions">
           <Button onClick={() => setEditingMember(null)} variant="secondary">Cancel</Button>
-          <Button onClick={confirmEdit} variant="primary">Confirm Position Change</Button>
+          <Button
+            onClick={confirmEdit}
+            variant="primary"
+          >
+            Confirm Position Change
+          </Button>
         </div>
       </Modal>
 
@@ -311,10 +399,33 @@ export default function OfficerMembersPage() {
           </select>
         </label>
         <p>Assign {formatDisplayName(orgMembers.find((member) => String(member.id) === String(assignedMemberId)))} as {assignedPosition} for {organization.name}?</p>
+        {assignedPosition === 'President' && existingPresidentForTarget && (
+          <div
+            style={{
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
+              color: '#92400e',
+              padding: '10px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              marginTop: '8px',
+            }}
+          >
+            <strong>Notice: President position reassignment</strong>
+            <p style={{ margin: '4px 0 0' }}>
+              Assigning this member as President will automatically reassign current President (<b>{formatDisplayName(existingPresidentForTarget)}</b>) to General Member.
+            </p>
+          </div>
+        )}
         <p className="officer-permission-note">Only active members of your assigned organization can be officers.</p>
         <div className="officer-modal-actions">
           <Button onClick={() => setPositionTarget(null)} variant="secondary">Cancel</Button>
-          <Button onClick={confirmOfficerPosition} variant="primary">Confirm Assignment</Button>
+          <Button
+            onClick={confirmOfficerPosition}
+            variant="primary"
+          >
+            Confirm Assignment
+          </Button>
         </div>
       </Modal>
     </div>

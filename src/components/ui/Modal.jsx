@@ -12,6 +12,30 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
+let openModalCount = 0
+let previousBodyOverflow = ''
+let previousBodyPaddingRight = ''
+
+function lockBodyScroll() {
+  if (openModalCount === 0) {
+    const { body, documentElement } = document
+    previousBodyOverflow = body.style.overflow
+    previousBodyPaddingRight = body.style.paddingRight
+    const scrollbarWidth = window.innerWidth - documentElement.clientWidth
+    body.style.overflow = 'hidden'
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`
+  }
+  openModalCount += 1
+}
+
+function unlockBodyScroll() {
+  openModalCount = Math.max(0, openModalCount - 1)
+  if (openModalCount === 0) {
+    document.body.style.overflow = previousBodyOverflow
+    document.body.style.paddingRight = previousBodyPaddingRight
+  }
+}
+
 export default function Modal({ open, title, onClose, children }) {
   const titleId = useId()
   const dialogRef = useRef(null)
@@ -27,13 +51,8 @@ export default function Modal({ open, title, onClose, children }) {
     const dialog = dialogRef.current
     const previouslyFocused = document.activeElement
 
-    // Scroll lock (compensates for the scrollbar so the page doesn't jump).
-    const { body, documentElement } = document
-    const previousOverflow = body.style.overflow
-    const previousPaddingRight = body.style.paddingRight
-    const scrollbarWidth = window.innerWidth - documentElement.clientWidth
-    body.style.overflow = 'hidden'
-    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`
+    // Scroll lock with reference counting so nested/stacked dialogs never get stuck
+    lockBodyScroll()
 
     // Move focus into the dialog.
     const focusables = () => Array.from(dialog?.querySelectorAll(FOCUSABLE) ?? [])
@@ -68,8 +87,7 @@ export default function Modal({ open, title, onClose, children }) {
     document.addEventListener('keydown', handleKeyDown)
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
-      body.style.overflow = previousOverflow
-      body.style.paddingRight = previousPaddingRight
+      unlockBodyScroll()
       if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus()
     }
   }, [open])

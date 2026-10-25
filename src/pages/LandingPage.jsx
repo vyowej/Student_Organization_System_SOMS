@@ -6,7 +6,7 @@ import { EventCard, LeaderCard, OrganizationCard } from '../components/public/La
 import AnimatedStatistic from '../components/public/AnimatedStatistic.jsx'
 import Reveal from '../components/public/Reveal.jsx'
 import { usePortalData } from '../context/usePortalData.js'
-import { organizationCategories } from '../data/landingPage.js'
+import { organizationCategories } from '../data/studentOrganizations.js'
 
 const defaultNotifications = [
   { type: 'Organizations', icon: 'organization', title: 'Organizations Directory', message: 'Browse recognized student organizations on campus.', time: 'live' },

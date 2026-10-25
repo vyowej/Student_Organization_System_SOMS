@@ -74,6 +74,7 @@ export default function StudentOrganizationDetailsPage() {
 
   const [activeTab, setActiveTab] = useState('overview')
   const [applicationOpen, setApplicationOpen] = useState(false)
+  const [desiredRole, setDesiredRole] = useState('MEMBER')
   const [selectedDoc, setSelectedDoc] = useState(null)
 
   const managedOrganization = adminOrganizations.find((item) => String(item.id) === String(id))
@@ -118,9 +119,17 @@ export default function StudentOrganizationDetailsPage() {
   const canApply = status === 'NOT_MEMBER' || status === 'REJECTED' || status === 'INACTIVE'
   const activeMembersCount = organization.activeMembers ?? organization.memberCount ?? 0
 
+  const existingPresident = (organization.officers ?? []).find(
+    (o) => o.rawPosition === 'PRESIDENT' || o.position === 'President' || o.role === 'President'
+  )
+
   async function confirmApplication() {
+    if (desiredRole === 'PRESIDENT' && existingPresident) {
+      showToast(`Error: ${organization.name} already has an active President (${existingPresident.name}).`, 'error')
+      return
+    }
     const undo = captureUndo()
-    const result = await submitMembershipApplication(organization)
+    const result = await submitMembershipApplication(organization, { desiredRole })
     setApplicationOpen(false)
     if (result?.ok) {
       showToast('Membership application submitted successfully.', 'success', undoAction(undo))
@@ -570,13 +579,49 @@ export default function StudentOrganizationDetailsPage() {
           <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5 }}>
             Submit your membership application to <strong>{organization.name}</strong>?
           </p>
+          <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+            Desired Position / Role
+            <select
+              className="input"
+              value={desiredRole}
+              onChange={(e) => setDesiredRole(e.target.value)}
+              style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}
+            >
+              <option value="MEMBER">General Member</option>
+              <option value="PRESIDENT" disabled={Boolean(existingPresident)}>
+                President {existingPresident ? `(Occupied: ${existingPresident.name})` : ''}
+              </option>
+              <option value="VICE_PRESIDENT">Vice President</option>
+              <option value="SECRETARY">Secretary</option>
+              <option value="TREASURER">Treasurer</option>
+              <option value="AUDITOR">Auditor</option>
+              <option value="PRO">Public Relations Officer (PRO)</option>
+            </select>
+          </label>
+          {desiredRole === 'PRESIDENT' && existingPresident && (
+            <div
+              style={{
+                background: '#fef2f2',
+                border: '1px solid #f87171',
+                color: '#991b1b',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                fontSize: '13px',
+              }}
+            >
+              <strong>Error: President position occupied</strong>
+              <p style={{ margin: '4px 0 0' }}>
+                {organization.name} already has an active President (<b>{existingPresident.name}</b>). You cannot apply as President for this organization.
+              </p>
+            </div>
+          )}
           <div style={{ padding: '12px 14px', borderRadius: '8px', background: 'var(--canvas)', border: '1px solid var(--border)', fontSize: '13px' }}>
             <span style={{ color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Membership Terms:</span>
             Your student profile information will be shared with the organization officers and adviser for review.
           </div>
           <div className="organization-application-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
             <Button onClick={() => setApplicationOpen(false)} variant="secondary">Cancel</Button>
-            <Button onClick={confirmApplication}>Submit Application</Button>
+            <Button disabled={desiredRole === 'PRESIDENT' && Boolean(existingPresident)} onClick={confirmApplication}>Submit Application</Button>
           </div>
         </div>
       </Modal>

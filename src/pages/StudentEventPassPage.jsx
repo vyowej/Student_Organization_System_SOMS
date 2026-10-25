@@ -3,8 +3,7 @@ import Badge from '../components/ui/Badge.jsx'
 import Card from '../components/ui/Card.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { formatDisplayName } from '../data/displayName.js'
-import { studentEvents } from '../data/studentEvents.js'
-import { findStudentEvent } from '../data/officerStudentEvent.js'
+import { findStudentEvent, studentEvents } from '../data/studentEvents.js'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 
 export default function StudentEventPassPage() {
