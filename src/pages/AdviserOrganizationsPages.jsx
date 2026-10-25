@@ -140,10 +140,12 @@ export function AdviserOrganizationsPage() {
   const [search, setSearch] = useState('')
   const assignedOrgs = adminOrganizations.filter((org) => {
     if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
-    if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id))) return true
+    if (currentUser?.id && String(org.adviserUserId) === String(currentUser.id)) return true
+    if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
+    if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id) || String(a.organizationId) === String(org.id))) return true
     return false
   })
-  const baseOrgs = assignedOrgs.length > 0 ? assignedOrgs : adminOrganizations
+  const baseOrgs = assignedOrgs
   const assigned = baseOrgs.filter((item) => matchesQuery(search, item.name, item.acronym, item.category, item.adviser))
 
   return (

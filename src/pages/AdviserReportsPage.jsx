@@ -40,7 +40,7 @@ function getTurnout(report) {
 }
 
 export default function AdviserReportsPage() {
-  const { adviserReports = [], captureUndo, reviewAccomplishmentReport } = useOutletContext()
+  const { adminOrganizations = [], adviserReports = [], captureUndo, reviewAccomplishmentReport } = useOutletContext()
   const { currentUser } = useAuth()
   const { showToast } = useToast()
   const [selected, setSelected] = useState(null)
@@ -63,9 +63,20 @@ export default function AdviserReportsPage() {
     return summary
   }, { pending: 0, verified: 0, returned: 0, total: 0 }), [adviserReports])
 
+  const assignedOrgs = adminOrganizations.filter((org) => {
+    if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
+    if (currentUser?.id && String(org.adviserUserId) === String(currentUser.id)) return true
+    if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
+    if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id) || String(a.organizationId) === String(org.id))) return true
+    return false
+  })
+  const assignedOrgIds = new Set(assignedOrgs.map((org) => String(org.id)))
+
   const visibleReports = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase()
-    return adviserReports.filter((report) => {
+    return adviserReports
+      .filter((report) => assignedOrgIds.has(String(report.organizationId)))
+      .filter((report) => {
       const searchText = `${report.eventTitle} ${report.organizationName}`.toLocaleLowerCase()
       return (!normalizedSearch || searchText.includes(normalizedSearch))
         && (organizationFilter === 'ALL' || String(report.organizationId) === String(organizationFilter))

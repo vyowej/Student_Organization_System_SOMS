@@ -894,7 +894,7 @@ INSERT INTO _advisers VALUES
 -- Seed adviser user accounts
 INSERT INTO users (email, password_hash, first_name, middle_name, last_name, suffix, role, status)
 SELECT a.email,
-       '$2b$10$hu8FeUvMfCSAQb1aRCDpteW1GOHsaGZjX38s33vgzlhQBpcXt0eoe',
+       '$2b$10$YtC9QkW56A0.gsroDeUstueoAUsaEz/VqiXMMt3Zbg/J1BMEIp1ZO',
        a.first_name,
        a.middle_name,
        a.last_name,

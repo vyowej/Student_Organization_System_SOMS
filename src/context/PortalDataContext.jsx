@@ -165,6 +165,8 @@ function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allD
     vision: row.vision || 'Not provided.',
     logo: row.logo || '',
     adviserId: row.current_adviser_id || row.adviser_id || null,
+    adviserUserId: row.adviser_user_id || null,
+    adviserEmail: row.adviser_email || null,
     adviser: adviserName,
     adviserStatus: (row.current_adviser_id || row.adviser_id || (adviserName && adviserName !== 'Unassigned')) ? 'ACTIVE' : 'UNASSIGNED',
     status: row.status || 'ACTIVE',

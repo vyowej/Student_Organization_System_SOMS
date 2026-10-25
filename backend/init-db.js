@@ -32,6 +32,17 @@ async function ensureAdminAccount(client) {
 /**
  * Applies schema migrations if the database already existed prior to new feature additions.
  */
+
+
+async function ensureAdviserAccounts(client) {
+  const adviserHash = await bcrypt.hash('adviser123', 10);
+  await client.query(`
+    UPDATE users
+       SET password_hash = $1, status = 'ACTIVE'
+     WHERE role = 'ADVISER'
+  `, [adviserHash]);
+}
+
 async function applyIncrementalMigrations(client) {
   console.log('[MIGRATE] Ensuring education_level and organization categories types are registered...');
   await client.query(`
@@ -198,6 +209,7 @@ async function initializeDatabase() {
 
     // Ensure default administrative account exists
     await ensureAdminAccount(client);
+    await ensureAdviserAccounts(client);
 
     // Verify system data counts
     const counts = await client.query(`

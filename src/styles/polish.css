@@ -2631,3 +2631,120 @@ tbody tr:hover .cell-sticky { background: transparent; }
   letter-spacing: 0.5px;
 }
 
+
+
+/* 10 · Auth Verified Faculty Adviser Seeds -------------------------------- */
+.auth-adviser-seeds {
+  margin-top: 20px;
+  padding: 14px;
+  background: #fdf8f9;
+  border: 1px solid #f1d5dc;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-adviser-seeds-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.auth-adviser-seeds-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--crimson, #990000);
+}
+
+.auth-adviser-seeds-pwd {
+  font-size: var(--text-xs);
+  color: #514b53;
+  background: #fff;
+  border: 1px solid #e7dfe3;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.auth-adviser-seeds-pwd strong {
+  color: var(--crimson, #990000);
+  font-family: monospace;
+}
+
+.auth-adviser-seeds-hint {
+  font-size: var(--text-xs);
+  color: #6c6368;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.auth-adviser-seed-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.auth-adviser-chip {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid #eedde1;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.auth-adviser-chip:hover {
+  border-color: var(--crimson, #990000);
+  background: #fffafa;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(153, 0, 0, 0.08);
+}
+
+.auth-adviser-chip-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.auth-adviser-chip-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: #211c24;
+}
+
+.auth-adviser-chip-college {
+  font-size: 11px;
+  font-weight: 700;
+  background: #fbf1f3;
+  color: var(--crimson, #990000);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.auth-adviser-chip-org {
+  font-size: 11px;
+  color: #72686f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auth-adviser-chip-email {
+  font-size: 11px;
+  color: #8f858c;
+  font-family: monospace;
+}

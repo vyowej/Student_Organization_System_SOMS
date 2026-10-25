@@ -12,6 +12,39 @@ import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import LandingPage from './LandingPage.jsx'
 
+const FACULTY_ADVISER_SEEDS = [
+  {
+    name: 'Engr. Marjorie Rojas',
+    college: 'CCS',
+    org: 'College Student Council – CCS',
+    email: 'marjorie.rojas@wmsu.edu.ph',
+  },
+  {
+    name: 'Mr. Guiller Ellomer',
+    college: 'CFES',
+    org: 'Agroforestry Student Org / CSC - CFES',
+    email: 'guiller.ellomer@wmsu.edu.ph',
+  },
+  {
+    name: 'Mr. Reinier Rosaldo',
+    college: 'CCJE',
+    org: 'College Student Council – CCJE',
+    email: 'reinier.rosaldo@wmsu.edu.ph',
+  },
+  {
+    name: 'Asso. Prof. Eric Roland Natividad',
+    college: 'CTE',
+    org: 'College Student Council – CTE',
+    email: 'ericroland.natividad@wmsu.edu.ph',
+  },
+  {
+    name: 'Default Adviser Alias',
+    college: 'CCS',
+    org: 'CSC – CCS (Quick Login)',
+    email: 'adviser@wmsu.edu.ph',
+  },
+]
+
 function PasswordVisibilityIcon({ visible }) {
   return <Icon name={visible ? 'eye-off' : 'eye'} size={20} />
 }
@@ -198,6 +231,44 @@ function AuthenticationPage({ page }) {
           {error && <p className="auth-error" role="alert">{error}</p>}
           <Button className="auth-submit" disabled={submitting} type="submit">{submitting ? 'Signing in...' : 'Login'}</Button>
         </form>
+      )}
+      {page === 'login' && (
+        <div className="auth-adviser-seeds">
+          <div className="auth-adviser-seeds-header">
+            <div className="auth-adviser-seeds-title">
+              <Icon name="shield" size={15} />
+              <span>Verified Faculty Adviser Access</span>
+            </div>
+            <span className="auth-adviser-seeds-pwd">
+              Password: <strong>adviser123</strong>
+            </span>
+          </div>
+          <p className="auth-adviser-seeds-hint">
+            Click any verified faculty adviser below to autofill real credentials:
+          </p>
+          <div className="auth-adviser-seed-grid">
+            {FACULTY_ADVISER_SEEDS.map((seed) => (
+              <button
+                key={seed.email}
+                type="button"
+                className="auth-adviser-chip"
+                onClick={() => {
+                  setIdentifier(seed.email)
+                  setPassword('adviser123')
+                  setError('')
+                }}
+                title={`Autofill ${seed.name} (${seed.email})`}
+              >
+                <div className="auth-adviser-chip-top">
+                  <span className="auth-adviser-chip-name">{seed.name}</span>
+                  <span className="auth-adviser-chip-college">{seed.college}</span>
+                </div>
+                <div className="auth-adviser-chip-org">{seed.org}</div>
+                <div className="auth-adviser-chip-email">{seed.email}</div>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
       {page === 'register' && (
         <form className="auth-form auth-register-form" noValidate onSubmit={handleRegister}>
