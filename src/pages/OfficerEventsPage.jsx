@@ -7,7 +7,7 @@ import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import Table from '../components/ui/Table.jsx'
-import { officerEventStatuses } from '../data/officerPortal.js'
+import { officerEventStatuses } from '../data/navigation.js'
 
 export default function OfficerEventsPage() {
   const { adminOrganizations = [], currentUser, officerEvents = [] } = useOutletContext()

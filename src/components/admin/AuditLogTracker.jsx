@@ -200,47 +200,56 @@ export default function AuditLogTracker({ logs = [], onRefresh }) {
     const query = search.trim().toLowerCase()
     const now = Date.now()
 
-    return logs.filter((item) => {
-      // Entity Filter
-      if (entityFilter !== 'All' && item.entityType !== entityFilter) {
-        return false
-      }
-      // Action Filter
-      if (actionFilter !== 'All' && item.action !== actionFilter) {
-        return false
-      }
-      // Role Filter
-      if (roleFilter !== 'All' && String(item.role).toUpperCase() !== roleFilter.toUpperCase()) {
-        return false
-      }
-      // Time Period Filter
-      if (periodFilter !== 'ALL' && item.createdAt) {
-        const itemTime = new Date(item.createdAt).getTime()
-        const diffMs = now - itemTime
-        if (periodFilter === 'TODAY' && diffMs > 24 * 60 * 60 * 1000) return false
-        if (periodFilter === 'WEEK' && diffMs > 7 * 24 * 60 * 60 * 1000) return false
-        if (periodFilter === 'MONTH' && diffMs > 30 * 24 * 60 * 60 * 1000) return false
-      }
-      // Search Query
-      if (query) {
-        const matchText = [
-          item.actor,
-          item.role,
-          item.action,
-          item.entityType,
-          item.entityId,
-          item.description,
-          item.ipAddress,
-          item.timestamp,
-          item.metadata ? JSON.stringify(item.metadata) : '',
-        ]
-          .join(' ')
-          .toLowerCase()
+    return logs
+      .filter((item) => {
+        // Entity Filter
+        if (entityFilter !== 'All' && item.entityType !== entityFilter) {
+          return false
+        }
+        // Action Filter
+        if (actionFilter !== 'All' && item.action !== actionFilter) {
+          return false
+        }
+        // Role Filter
+        if (roleFilter !== 'All' && String(item.role).toUpperCase() !== roleFilter.toUpperCase()) {
+          return false
+        }
+        // Time Period Filter
+        if (periodFilter !== 'ALL' && item.createdAt) {
+          const itemTime = new Date(item.createdAt).getTime()
+          const diffMs = now - itemTime
+          if (periodFilter === 'TODAY' && diffMs > 24 * 60 * 60 * 1000) return false
+          if (periodFilter === 'WEEK' && diffMs > 7 * 24 * 60 * 60 * 1000) return false
+          if (periodFilter === 'MONTH' && diffMs > 30 * 24 * 60 * 60 * 1000) return false
+        }
+        // Search Query
+        if (query) {
+          const matchText = [
+            item.actor,
+            item.role,
+            item.action,
+            item.entityType,
+            item.entityId,
+            item.description,
+            item.ipAddress,
+            item.timestamp,
+            item.metadata ? JSON.stringify(item.metadata) : '',
+          ]
+            .join(' ')
+            .toLowerCase()
 
-        if (!matchText.includes(query)) return false
-      }
-      return true
-    })
+          if (!matchText.includes(query)) return false
+        }
+        return true
+      })
+      .sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        if (timeB !== timeA) return timeB - timeA
+        const idA = Number(a.id) || 0
+        const idB = Number(b.id) || 0
+        return idB - idA
+      })
   }, [logs, search, entityFilter, actionFilter, roleFilter, periodFilter])
 
   // Refresh handler
@@ -334,6 +343,7 @@ export default function AuditLogTracker({ logs = [], onRefresh }) {
       {
         key: 'timestamp',
         label: 'Date & Time',
+        getOrderValue: (_, row) => (row.createdAt ? new Date(row.createdAt).getTime() : 0),
         render: (value, row) => (
           <div className="log-time-cell">
             <span className="log-time-primary">{value || '—'}</span>
@@ -588,6 +598,7 @@ export default function AuditLogTracker({ logs = [], onRefresh }) {
           <Table
             columns={columns}
             getRowKey={(row) => row.id}
+            order={[]}
             rows={filteredLogs}
             useDataTable
           />

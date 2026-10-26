@@ -110,49 +110,19 @@ export default function PortalLayout({ role }) {
     return sharedPortalData.captureUndo()
   }
 
-  const outletContext = role === 'Student'
-    ? {
-      ...sharedPortalData,
-      eventRegisteredCounts,
-      markNotificationRead,
-      markStudentNotificationRead: sharedPortalData.markNotificationRead,
-      markAllNotificationsRead: sharedPortalData.markAllNotificationsRead,
-      readNotificationIds,
-      registerForEvent,
-      cancelRegistration,
-      studentRegistrations,
-      currentUser,
-    }
-    : role === 'Organization Officer'
-      ? {
-        ...sharedPortalData,
-        captureUndo,
-        studentRegistrations,
-        currentUser,
-        markNotificationRead,
-        markAllNotificationsRead: sharedPortalData.markAllNotificationsRead,
-        readNotificationIds,
-      }
-      : role === 'Organization Adviser'
-        ? {
-          ...sharedPortalData,
-          captureUndo,
-          currentUser,
-          markNotificationRead,
-          markAllNotificationsRead: sharedPortalData.markAllNotificationsRead,
-          readNotificationIds,
-        }
-        : role === 'Student Affairs Admin'
-          ? {
-            ...sharedPortalData,
-            captureUndo,
-            currentUser,
-            studentRegistrations,
-            markNotificationRead,
-            markAllNotificationsRead: sharedPortalData.markAllNotificationsRead,
-            readNotificationIds,
-          }
-          : undefined
+  const outletContext = {
+    ...sharedPortalData,
+    captureUndo,
+    eventRegisteredCounts,
+    markNotificationRead,
+    markStudentNotificationRead: sharedPortalData.markNotificationRead,
+    markAllNotificationsRead: sharedPortalData.markAllNotificationsRead,
+    readNotificationIds,
+    registerForEvent,
+    cancelRegistration,
+    studentRegistrations,
+    currentUser,
+  }
 
   const currentNotifications = role === 'Student'
     ? sharedPortalData.studentNotifications
@@ -182,7 +152,7 @@ export default function PortalLayout({ role }) {
         destination = role === 'Organization Officer'
           ? '/officer/announcements'
           : role === 'Student'
-            ? '/student/notifications'
+            ? '/student/dashboard'
             : role === 'Organization Adviser'
               ? '/adviser/dashboard'
               : '/admin/dashboard'
@@ -223,8 +193,8 @@ export default function PortalLayout({ role }) {
         destination = role === 'Organization Adviser'
           ? '/adviser/organizations'
           : role === 'Organization Officer'
-            ? '/officer/organization-profile'
-            : '/admin/advisers'
+            ? '/officer/organization'
+            : '/admin/approvals'
       } else if (rawType.includes('CONFIRMATION')) {
         destination = role === 'Organization Officer'
           ? (rawType.includes('DOC') ? '/officer/documents' : '/officer/events')

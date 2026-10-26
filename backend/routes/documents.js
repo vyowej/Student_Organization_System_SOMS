@@ -225,7 +225,13 @@ router.post('/', async (req, res) => {
       action: isAccomplishment ? 'SUBMIT_ACCOMPLISHMENT_REPORT' : 'SUBMIT_DOCUMENT',
       entity: 'documents',
       entityId: docRow.id,
-      metadata: { title: title.trim(), organization_id, doc_type: docType },
+      metadata: {
+        title: title.trim(),
+        organization_id,
+        doc_type: docType,
+        description: `Submitted ${isAccomplishment ? 'Accomplishment Report' : `${docType} document`} "${title.trim()}" for ${orgName}`,
+      },
+      req,
     });
 
     res.status(201).json(docRow);
@@ -330,7 +336,14 @@ router.put('/:id/review', async (req, res) => {
       action: `REVIEW_DOCUMENT_${normalizedStatus}`,
       entity: 'documents',
       entityId: docRow.id,
-      metadata: { title: docRow.title, organization_id: docRow.organization_id, status: normalizedStatus, review_remarks },
+      metadata: {
+        title: docRow.title,
+        organization_id: docRow.organization_id,
+        status: normalizedStatus,
+        review_remarks,
+        description: `Reviewed document "${docRow.title}" for ${docRow.organization_name || 'organization'}: ${normalizedStatus}`,
+      },
+      req,
     });
 
     res.json(docRow);
@@ -350,7 +363,21 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Document not found' });
     }
 
-    res.json({ message: 'Document deleted', document: result.rows[0] });
+    const deletedDoc = result.rows[0];
+    await recordAuditLog({
+      userId: req.body?.user_id || req.query?.user_id || null,
+      action: 'DELETE_DOCUMENT',
+      entity: 'documents',
+      entityId: id,
+      metadata: {
+        title: deletedDoc.title,
+        organization_id: deletedDoc.organization_id,
+        description: `Deleted document "${deletedDoc.title}"`,
+      },
+      req,
+    });
+
+    res.json({ message: 'Document deleted', document: deletedDoc });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

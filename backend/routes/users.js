@@ -15,6 +15,7 @@ try {
   bcrypt = require('bcryptjs');
 }
 const db = require('../db');
+const { recordAuditLog } = require('../notificationsHelper');
 
 function formatYearLevelLabel(yearNum) {
   const n = Number(yearNum);
@@ -446,6 +447,8 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
+    const cleanEmail = String(email).trim().toLowerCase();
+
     const fName = (first_name || firstName || email.split('@')[0]).trim();
     const lName = (last_name || lastName || 'User').trim();
     const mName = (middle_name || middleName || '').trim() || null;
@@ -464,7 +467,7 @@ router.post('/register', async (req, res) => {
       `INSERT INTO users (email, password_hash, first_name, middle_name, last_name, suffix, role, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
-      [email.trim(), password_hash, fName, mName, lName, sfx, userRole, userStatus]
+      [cleanEmail, password_hash, fName, mName, lName, sfx, userRole, userStatus]
     );
 
     const createdUserId = userRes.rows[0].id;
@@ -502,6 +505,22 @@ router.post('/register', async (req, res) => {
     }
 
     const fullProfile = await buildUserProfile(createdUserId);
+
+    // Record registration in audit logs
+    await recordAuditLog({
+      userId: createdUserId,
+      action: 'USER_REGISTER',
+      entity: 'users',
+      entityId: createdUserId,
+      metadata: {
+        name: `${lName}, ${fName}`,
+        email: cleanEmail,
+        role: userRole,
+        description: `New user account registered for ${fName} ${lName} (${cleanEmail}) with role ${userRole}.`,
+      },
+      req,
+    });
+
     res.status(201).json(fullProfile);
   } catch (err) {
     console.error(err);
@@ -527,7 +546,7 @@ router.post('/login', async (req, res) => {
     }
 
     const result = await db.query(
-      `SELECT u.id, u.email, u.first_name, u.last_name, u.password_hash, u.role, u.status
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.suffix, u.password_hash, u.role, u.status
          FROM users u
     LEFT JOIN students s ON s.user_id = u.id
     LEFT JOIN advisers a ON a.user_id = u.id
@@ -539,6 +558,17 @@ router.post('/login', async (req, res) => {
     );
 
     if (result.rows.length === 0) {
+      await recordAuditLog({
+        userId: null,
+        action: 'LOGIN_FAILED',
+        entity: 'users',
+        metadata: {
+          identifier,
+          reason: 'No account found with this email or ID',
+          description: `Failed login attempt for identifier "${identifier}" (Account not found).`,
+        },
+        req,
+      });
       return res.status(401).json({ error: 'No account found with this email or ID. Please check your credentials or register.' });
     }
 
@@ -551,10 +581,37 @@ router.post('/login', async (req, res) => {
     }
 
     if (!isMatch) {
+      await recordAuditLog({
+        userId: user.id,
+        action: 'LOGIN_FAILED',
+        entity: 'users',
+        entityId: user.id,
+        metadata: {
+          identifier,
+          email: user.email,
+          role: user.role,
+          reason: 'Incorrect password',
+          description: `Failed login attempt for ${user.email} (Incorrect password).`,
+        },
+        req,
+      });
       return res.status(401).json({ error: 'Incorrect password. Please verify and try again.' });
     }
 
     if (user.status !== 'ACTIVE') {
+      await recordAuditLog({
+        userId: user.id,
+        action: 'LOGIN_BLOCKED',
+        entity: 'users',
+        entityId: user.id,
+        metadata: {
+          email: user.email,
+          role: user.role,
+          status: user.status,
+          description: `Login blocked for ${user.email}: account is ${user.status.toLowerCase()}.`,
+        },
+        req,
+      });
       return res.status(403).json({ error: `This account is ${user.status.toLowerCase()}. Please contact Student Affairs.` });
     }
 
@@ -562,10 +619,56 @@ router.post('/login', async (req, res) => {
     if (!fullProfile) {
       return res.status(500).json({ error: 'Failed to construct user profile.' });
     }
+
+    // Record successful login in audit logs
+    const actorDisplayName = `${user.last_name}, ${user.first_name}${user.suffix ? ` ${user.suffix}` : ''}`;
+    await recordAuditLog({
+      userId: user.id,
+      action: 'USER_LOGIN',
+      entity: 'users',
+      entityId: user.id,
+      metadata: {
+        name: actorDisplayName,
+        email: user.email,
+        role: user.role,
+        description: `Signed in to the UNIDOS ${user.role} portal (${user.email}).`,
+      },
+      req,
+    });
+
     res.json(fullProfile);
   } catch (err) {
     console.error('[LOGIN ERROR]', err);
     res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+// POST /api/users/logout — Record user sign-out
+router.post('/logout', async (req, res) => {
+  try {
+    const { user_id } = req.body || {};
+    if (user_id && Number.isFinite(Number(user_id))) {
+      const uRes = await db.query('SELECT id, email, first_name, last_name, role FROM users WHERE id = $1', [user_id]);
+      if (uRes.rows.length > 0) {
+        const u = uRes.rows[0];
+        await recordAuditLog({
+          userId: u.id,
+          action: 'USER_LOGOUT',
+          entity: 'users',
+          entityId: u.id,
+          metadata: {
+            email: u.email,
+            role: u.role,
+            description: `Signed out of the UNIDOS portal (${u.email}).`,
+          },
+          req,
+        });
+      }
+    }
+    res.json({ ok: true, message: 'Logged out successfully' });
+  } catch (err) {
+    console.error('[LOGOUT ERROR]', err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -708,6 +811,35 @@ router.put('/:id', async (req, res) => {
     }
 
     const updatedProfile = await buildUserProfile(id);
+
+    const changedRole = validRole !== current.role;
+    const changedStatus = validStatus !== current.status;
+    let updateDesc = `Updated account profile for ${updatedProfile?.name || updatedProfile?.email || `User #${id}`}`;
+    if (changedRole && changedStatus) {
+      updateDesc = `Updated ${updatedProfile?.name || updatedProfile?.email}: role changed from ${current.role} to ${validRole}, status changed from ${current.status} to ${validStatus}`;
+    } else if (changedRole) {
+      updateDesc = `Changed role of ${updatedProfile?.name || updatedProfile?.email} from ${current.role} to ${validRole}`;
+    } else if (changedStatus) {
+      updateDesc = `Changed status of ${updatedProfile?.name || updatedProfile?.email} from ${current.status} to ${validStatus}`;
+    }
+
+    await recordAuditLog({
+      userId: req.body.updated_by || req.body.admin_id || id,
+      action: changedRole ? 'UPDATE_USER_ROLE' : (changedStatus ? 'UPDATE_USER_STATUS' : 'UPDATE_USER_PROFILE'),
+      entity: 'users',
+      entityId: id,
+      metadata: {
+        target_user_id: id,
+        target_email: updatedProfile?.email,
+        previous_role: current.role,
+        new_role: validRole,
+        previous_status: current.status,
+        new_status: validStatus,
+        description: updateDesc,
+      },
+      req,
+    }).catch(() => null);
+
     res.json(updatedProfile);
   } catch (err) {
     console.error(err);

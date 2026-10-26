@@ -10,11 +10,52 @@ export const eventCategories = [
   'Other',
 ]
 
+export const organizationCategories = [
+  'All',
+  'Academic',
+  'Technology',
+  'Leadership',
+  'Student Council',
+  'Socio-Civic',
+  'Cultural',
+  'Sports & Recreation',
+  'Sports',
+  'Religious',
+  'Special Interest',
+  'Publication',
+  'Other',
+]
+
 export const studentEvents = []
+export const studentOrganizations = []
 
-export const initialStudentRegistrations = []
+export function getOrganizationEvents(organization, officerEvents = []) {
+  if (!organization) return []
+  const fromOfficerEvents = officerEvents
+    .filter(
+      (ev) =>
+        String(ev.organizationId ?? ev.organization_id) === String(organization.id) &&
+        ['PUBLISHED', 'APPROVED'].includes(ev.status),
+    )
+    .map((ev) => ({
+      id: ev.id,
+      title: ev.title,
+      date: ev.date,
+      time: ev.startTime && ev.endTime ? `${ev.startTime} - ${ev.endTime}` : ev.startTime || 'TBA',
+      location: ev.location || 'TBA',
+      status: ev.status,
+    }))
 
-export const studentNotifications = []
+  if (fromOfficerEvents.length > 0) return fromOfficerEvents
+  return (organization.upcomingEvents ?? []).map((ev) => ({
+    id: ev.id,
+    title: ev.title,
+    date: ev.date,
+    time: ev.time || 'TBA',
+    location: ev.venue || ev.location || 'TBA',
+    status: ev.status || 'PUBLISHED',
+  }))
+}
 
 export function isEventAlmostFull(event) {
   if (!event) return false
@@ -90,31 +131,10 @@ export function officerEventToStudentEvent(event) {
   }
 }
 
-export function toStudentDiscoverableEvent(event, organizations = []) {
-  const organization = organizations.find(
-    (item) => String(item.id) === String(event.organizationId ?? event.organization_id),
-  )
-  const base = officerEventToStudentEvent(event)
-  return {
-    ...base,
-    organization: base.organizationName || organization?.name || 'Student Organization',
-    category: event.category ?? organization?.category ?? 'Academic',
-    college: organization?.college ?? 'University-Wide',
-    audience: 'Open to eligible students',
-    summary: base.description,
-    agenda: event.agenda ?? [],
-    requirements: event.requirements ?? [
-      'Valid student ID and active Event Pass QR code.',
-    ],
-    contactEmail: organization?.contactEmail ?? organization?.adviserEmail ?? '',
-    coordinator: event.submittedBy ?? event.created_by_name ?? 'Organization Officer',
-  }
-}
-
-export function findStudentEvent(eventId, officerEvents = [], studentEvents = []) {
+export function findStudentEvent(eventId, officerEvents = [], fallbackEvents = []) {
   const matchedOfficer = (officerEvents || []).find((item) => String(item.id) === String(eventId))
   if (matchedOfficer) return officerEventToStudentEvent(matchedOfficer)
-  const matchedStudent = (studentEvents || []).find((item) => String(item.id) === String(eventId))
+  const matchedStudent = (fallbackEvents || []).find((item) => String(item.id) === String(eventId))
   if (matchedStudent) return officerEventToStudentEvent(matchedStudent)
   return null
 }

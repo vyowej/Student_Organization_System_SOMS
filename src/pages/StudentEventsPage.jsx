@@ -45,10 +45,10 @@ export default function StudentEventsPage() {
   const visibleEvents = useMemo(() => {
     const query = search.trim().toLowerCase()
     const publishedOfficerEvents = officerEvents
-      .filter((event) => event.status === 'PUBLISHED')
+      .filter((event) => ['PUBLISHED', 'APPROVED'].includes(event.status))
       .map(officerEventToStudentEvent)
     return [...studentEvents, ...publishedOfficerEvents]
-      .filter((event) => event && event.status === 'PUBLISHED')
+      .filter((event) => event && ['PUBLISHED', 'APPROVED'].includes(event.status))
       .map((event) => ({
         ...event,
         registeredCount: eventRegisteredCounts[event.id] ?? event.registeredCount ?? 0,
@@ -62,7 +62,7 @@ export default function StudentEventsPage() {
         const matchesSearch = !query || searchableText.includes(query)
         const registrationState = getEventRegistrationState(event, registration)
         const matchesStatus = statusFilter === 'All'
-          || (statusFilter === 'Upcoming' && event.status === 'PUBLISHED')
+          || (statusFilter === 'Upcoming' && ['PUBLISHED', 'APPROVED'].includes(event.status))
           || (statusFilter === 'Registration Open' && registrationState === 'NOT REGISTERED' && !isEventAlmostFull(event))
           || (statusFilter === 'Almost Full' && isEventAlmostFull(event) && registrationState !== 'EVENT FULL')
         return matchesCategory && matchesSearch && matchesStatus

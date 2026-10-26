@@ -303,7 +303,26 @@ router.post('/', async (req, res) => {
         action: 'SUBMIT_ORGANIZATION_ACCREDITATION',
         entity: 'organizations',
         entityId: createdOrgId,
-        metadata: { name: name.trim(), scope: orgScope },
+        metadata: {
+          name: name.trim(),
+          scope: orgScope,
+          description: `Submitted accreditation application for organization "${name.trim()}"`,
+        },
+        req,
+      });
+    } else {
+      await recordAuditLog({
+        userId: created_by || null,
+        action: 'CREATE_ORGANIZATION',
+        entity: 'organizations',
+        entityId: createdOrgId,
+        metadata: {
+          name: name.trim(),
+          scope: orgScope,
+          status: orgStatusVal,
+          description: `Created organization "${name.trim()}" (${orgStatusVal})`,
+        },
+        req,
       });
     }
 
@@ -318,7 +337,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/organizations/:id/approve — Approve or change status of an organization
-router.put('/:id/approve', async (req, res) => {
+router.put(['/:id/approve', '/:id/status'], async (req, res) => {
   try {
     const { id } = req.params;
     const { approved_by, status } = req.body || {};
@@ -364,10 +383,14 @@ router.put('/:id/approve', async (req, res) => {
       action: `APPROVE_ORGANIZATION_${targetStatus}`,
       entity: 'organizations',
       entityId: orgRow.id,
-      metadata: { name: orgRow.name, status: targetStatus },
+      metadata: {
+        name: orgRow.name,
+        status: targetStatus,
+        description: `Updated accreditation status for "${orgRow.name}" to ${targetStatus}`,
+      },
+      req,
     });
 
-    res.json(orgRow);
     res.json(orgRow);
   } catch (err) {
     console.error(err);
@@ -504,11 +527,16 @@ router.put('/:id', async (req, res) => {
 
     // 3. Record audit log
     await recordAuditLog({
-      userId: approved_by || null,
+      userId: approved_by || req.body?.user_id || null,
       action: 'UPDATE_ORGANIZATION',
       entity: 'organizations',
       entityId: orgRow.id,
-      metadata: { name: orgRow.name, status: nextStatus },
+      metadata: {
+        name: orgRow.name,
+        status: nextStatus,
+        description: `Updated profile details and settings for "${orgRow.name}"`,
+      },
+      req,
     });
 
     res.json(orgRow);

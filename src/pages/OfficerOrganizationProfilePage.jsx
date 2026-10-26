@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
@@ -9,7 +9,7 @@ import ProfileCover from '../components/layout/ProfileCover.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import Icon from '../components/ui/Icon.jsx'
 import { formatDisplayName } from '../data/displayName.js'
-import { organizationCategories } from '../data/studentOrganizations.js'
+import { organizationCategories } from '../data/studentEvents.js'
 
 const editableFields = ['name', 'acronym', 'category', 'mission', 'vision']
 const documentTypes = ['Constitution & By-Laws', 'Accreditation Document', 'Officer Roster', 'Event Proposal', 'Safety Plan', 'Financial Statement', 'Accomplishment Report', 'Other']

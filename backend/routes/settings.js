@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { recordAuditLog } = require('../notificationsHelper');
 
 const DEFAULT_CATEGORIES = [
   'Academic',
@@ -140,13 +141,19 @@ router.put('/', async (req, res) => {
       [JSON.stringify(merged)]
     );
 
-    // Optional audit log
-    const actorId = req.body.userId || req.body.actorId || null;
-    await db.query(
-      `INSERT INTO audit_logs (user_id, action, entity, metadata)
-       VALUES ($1, 'SETTINGS_UPDATED', 'settings', $2)`,
-      [actorId, JSON.stringify({ updatedKeys: Object.keys(newSettings) })]
-    ).catch(() => {});
+    // Audit log
+    const actorId = req.body.userId || req.body.actorId || req.body.user_id || null;
+    await recordAuditLog({
+      userId: actorId,
+      action: 'SETTINGS_UPDATED',
+      entity: 'settings',
+      entityId: null,
+      metadata: {
+        updatedKeys: Object.keys(newSettings),
+        description: `Updated system settings (${Object.keys(newSettings).join(', ')})`,
+      },
+      req,
+    }).catch(() => {});
 
     res.json(saveRes.rows[0]?.value || merged);
   } catch (err) {

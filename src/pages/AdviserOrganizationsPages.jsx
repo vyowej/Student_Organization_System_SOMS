@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
 import Card from '../components/ui/Card.jsx'
@@ -17,11 +17,14 @@ function adviserInitials(name = '') {
 const weekDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const calendarStatusClass = {
   DRAFT: 'is-neutral',
+  PENDING: 'is-warning',
   SUBMITTED: 'is-warning',
   UNDER_REVIEW: 'is-warning',
   APPROVED: 'is-success',
   PUBLISHED: 'is-success',
+  RETURNED: 'is-danger',
   RETURNED_FOR_REVISION: 'is-danger',
+  CANCELLED: 'is-danger',
   REJECTED: 'is-danger',
   ONGOING: 'is-crimson',
   COMPLETED: 'is-neutral',
@@ -29,24 +32,106 @@ const calendarStatusClass = {
 }
 
 function eventDateKey(value) {
-  const date = new Date(value)
+  if (!value) return ''
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+    const localIsoMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})T/)
+    if (localIsoMatch && !trimmed.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(trimmed)) {
+      return localIsoMatch[1]
+    }
+  }
+  const date = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function CalendarOfEvents({ events, organizationName }) {
+function getEventPrimaryDateKey(event) {
+  if (!event) return ''
+  return (
+    eventDateKey(event.startDatetime) ||
+    eventDateKey(event.start_date) ||
+    eventDateKey(event.date) ||
+    eventDateKey(event.submittedDate) ||
+    eventDateKey(event.createdAt) ||
+    ''
+  )
+}
+
+function getEventDateKeys(event) {
+  const startKey = getEventPrimaryDateKey(event)
+  if (!startKey) return []
+  const endRaw = event.endDatetime || event.end_date
+  const endKey = endRaw ? eventDateKey(endRaw) : ''
+  if (!endKey || endKey <= startKey) return [startKey]
+
+  const startDt = new Date(`${startKey}T00:00:00`)
+  const endDt = new Date(`${endKey}T00:00:00`)
+  const diffDays = Math.round((endDt.getTime() - startDt.getTime()) / (1000 * 60 * 60 * 24))
+  if (Number.isNaN(diffDays) || diffDays <= 0 || diffDays > 14) return [startKey]
+
+  const keys = []
+  for (let i = 0; i <= diffDays; i += 1) {
+    const d = new Date(startDt.getFullYear(), startDt.getMonth(), startDt.getDate() + i)
+    keys.push(eventDateKey(d))
+  }
+  return keys
+}
+
+export function CalendarOfEvents({ events = [], organizationName = 'Organization' }) {
+  const [today] = useState(() => eventDateKey(new Date()))
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
-  const [today] = useState(() => eventDateKey(new Date()))
   const [selectedDate, setSelectedDate] = useState(today)
   const [selectedEvent, setSelectedEvent] = useState(null)
-  const eventsByDate = useMemo(() => events.reduce((groups, event) => {
-    const key = eventDateKey(event.date)
-    if (key) groups[key] = [...(groups[key] ?? []), event]
-    return groups
-  }, {}), [events])
+  const initializedEventsSigRef = useRef('')
+
+  const eventsByDate = useMemo(() => {
+    return events.reduce((groups, event) => {
+      const keys = getEventDateKeys(event)
+      keys.forEach((key) => {
+        if (key) {
+          const existing = groups[key] ?? []
+          if (!existing.some((item) => String(item.id) === String(event.id))) {
+            groups[key] = [...existing, event]
+          }
+        }
+      })
+      return groups
+    }, {})
+  }, [events])
+
+  const sortedEventDates = useMemo(
+    () => Object.keys(eventsByDate).sort(),
+    [eventsByDate]
+  )
+
+  useEffect(() => {
+    if (!sortedEventDates.length) return
+    const sig = sortedEventDates.join(',') + ':' + events.length
+    if (initializedEventsSigRef.current === sig) return
+    initializedEventsSigRef.current = sig
+
+    const currentMonthPrefix = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}-`
+    const monthEventDates = sortedEventDates.filter((d) => d.startsWith(currentMonthPrefix))
+
+    if (monthEventDates.length > 0) {
+      if (!eventsByDate[selectedDate]?.length) {
+        const upcomingInMonth = monthEventDates.find((d) => d >= today) || monthEventDates[0]
+        setSelectedDate(upcomingInMonth)
+      }
+    } else {
+      const targetKey = sortedEventDates.find((d) => d >= today) || sortedEventDates[sortedEventDates.length - 1]
+      if (targetKey) {
+        const [yearStr, monthStr] = targetKey.split('-')
+        setCalendarMonth(new Date(Number(yearStr), Number(monthStr) - 1, 1))
+        setSelectedDate(targetKey)
+      }
+    }
+  }, [sortedEventDates, events.length, calendarMonth, eventsByDate, selectedDate, today])
+
   const calendarDays = useMemo(() => {
     const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1)
     const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate()
@@ -55,24 +140,55 @@ function CalendarOfEvents({ events, organizationName }) {
       return day > 0 && day <= daysInMonth ? new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day) : null
     })
   }, [calendarMonth])
+
+  const currentMonthPrefix = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}-`
+  const monthEventsCount = useMemo(() => {
+    const seen = new Set()
+    Object.entries(eventsByDate).forEach(([key, list]) => {
+      if (key.startsWith(currentMonthPrefix)) {
+        list.forEach((ev) => seen.add(String(ev.id)))
+      }
+    })
+    return seen.size
+  }, [eventsByDate, currentMonthPrefix])
+
   const selectedEvents = eventsByDate[selectedDate] ?? []
-  const selectedDateLabel = new Intl.DateTimeFormat('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(`${selectedDate}T00:00:00`))
+  const selectedDateLabel = useMemo(() => {
+    const d = new Date(`${selectedDate}T00:00:00`)
+    if (Number.isNaN(d.getTime())) return selectedDate
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(d)
+  }, [selectedDate])
 
   function changeMonth(offset) {
     setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1))
   }
 
+  function jumpToEvent(event) {
+    const key = getEventPrimaryDateKey(event)
+    if (!key) return
+    const [yearStr, monthStr] = key.split('-')
+    setCalendarMonth(new Date(Number(yearStr), Number(monthStr) - 1, 1))
+    setSelectedDate(key)
+  }
+
+  const monthLabel = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(calendarMonth)
+  const shortMonthLabel = new Intl.DateTimeFormat('en-US', { month: 'short' }).format(calendarMonth)
+
   return (
     <div className="adviser-calendar" aria-label={`${organizationName} Calendar of Events`}>
       <div className="adviser-calendar-toolbar">
         <div className="adviser-calendar-heading">
-          <h3>{new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(calendarMonth)}</h3>
-          <span>{events.length} event{events.length === 1 ? '' : 's'}</span>
+          <h3>{monthLabel}</h3>
+          <span>
+            {monthEventsCount === events.length
+              ? `${events.length} event${events.length === 1 ? '' : 's'}`
+              : `${monthEventsCount} in ${shortMonthLabel} · ${events.length} total`}
+          </span>
         </div>
         <div className="adviser-calendar-controls">
           <button aria-label="Previous month" className="button button-secondary" onClick={() => changeMonth(-1)} type="button">‹</button>
@@ -84,18 +200,91 @@ function CalendarOfEvents({ events, organizationName }) {
           <button aria-label="Next month" className="button button-secondary" onClick={() => changeMonth(1)} type="button">›</button>
         </div>
       </div>
+      {events.length > 0 && (
+        <div className="adviser-calendar-quickjump" aria-label="Jump to scheduled events">
+          <span className="adviser-muted-label">Events:</span>
+          {events.map((event) => {
+            const key = getEventPrimaryDateKey(event)
+            const isSelected = key === selectedDate
+            return (
+              <button
+                className={`adviser-calendar-jump-chip ${calendarStatusClass[event.status] ?? 'is-neutral'}${isSelected ? ' is-active' : ''}`}
+                key={event.id}
+                onClick={() => jumpToEvent(event)}
+                title={`Jump to ${event.title} (${event.date || key})`}
+                type="button"
+              >
+                <span className={`adviser-event-status-dot ${calendarStatusClass[event.status] ?? 'is-neutral'}`} />
+                <strong>{event.title}</strong>
+                <small>{event.date || key}</small>
+              </button>
+            )
+          })}
+        </div>
+      )}
       <div className="adviser-calendar-grid">
         {weekDays.map((day) => <div className="adviser-calendar-weekday" key={day}>{day.slice(0, 3)}</div>)}
         {calendarDays.map((day, index) => {
           const key = day ? eventDateKey(day) : `empty-${index}`
           const dayEvents = eventsByDate[key] ?? []
           return (
-            <div className={`adviser-calendar-day${day ? '' : ' is-outside'}${key === selectedDate ? ' is-selected' : ''}`} key={key}>
+            <div
+              className={`adviser-calendar-day${day ? '' : ' is-outside'}${key === selectedDate ? ' is-selected' : ''}${dayEvents.length ? ' has-events' : ''}`}
+              key={key}
+              onClick={() => {
+                if (day) setSelectedDate(key)
+              }}
+            >
               {day && <>
-                <button aria-label={`Select ${day.toDateString()}`} className={`adviser-calendar-date${key === today ? ' is-today' : ''}`} onClick={() => setSelectedDate(key)} type="button">{day.getDate()}</button>
+                <div className="adviser-calendar-day-top">
+                  <button
+                    aria-label={`Select ${day.toDateString()}`}
+                    className={`adviser-calendar-date${key === today ? ' is-today' : ''}${dayEvents.length && key !== today ? ' has-event-dot' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedDate(key)
+                    }}
+                    type="button"
+                  >
+                    {day.getDate()}
+                  </button>
+                  {dayEvents.length > 0 && (
+                    <span className="adviser-calendar-day-badge">
+                      {dayEvents.length} {dayEvents.length === 1 ? 'event' : 'events'}
+                    </span>
+                  )}
+                </div>
                 <div className="adviser-calendar-events">
-                  {dayEvents.slice(0, 3).map((event) => <button className={`adviser-calendar-event ${calendarStatusClass[event.status] ?? 'is-neutral'}`} key={event.id} onClick={() => setSelectedEvent(event)} title={event.title} type="button">{event.title}</button>)}
-                  {dayEvents.length > 3 && <button className="adviser-calendar-more" onClick={() => setSelectedDate(key)} type="button">+{dayEvents.length - 3} more</button>}
+                  {dayEvents.slice(0, 3).map((event) => (
+                    <button
+                      className={`adviser-calendar-event ${calendarStatusClass[event.status] ?? 'is-neutral'}`}
+                      key={event.id}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedDate(key)
+                        setSelectedEvent(event)
+                      }}
+                      title={`${event.title} — ${event.time || event.startTime || 'Time TBA'} (${(event.status || 'SUBMITTED').replaceAll('_', ' ')})`}
+                      type="button"
+                    >
+                      <span className="adviser-calendar-event-title">{event.title}</span>
+                      {(event.startTime || event.time) && (
+                        <small className="adviser-calendar-event-time">{event.startTime || event.time}</small>
+                      )}
+                    </button>
+                  ))}
+                  {dayEvents.length > 3 && (
+                    <button
+                      className="adviser-calendar-more"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedDate(key)
+                      }}
+                      type="button"
+                    >
+                      +{dayEvents.length - 3} more
+                    </button>
+                  )}
                 </div>
               </>}
             </div>
@@ -110,23 +299,29 @@ function CalendarOfEvents({ events, organizationName }) {
         {selectedEvents.length ? <div className="adviser-selected-events">
           {selectedEvents.map((event) => <button className="adviser-selected-event" key={event.id} onClick={() => setSelectedEvent(event)} type="button">
             <span className={`adviser-event-status-dot ${calendarStatusClass[event.status] ?? 'is-neutral'}`} />
-            <span><strong>{event.title}</strong><small>{event.time || event.startTime || 'Time to be confirmed'} · {event.location || event.venue || 'Venue to be confirmed'}</small></span>
-            <Badge tone={calendarStatusClass[event.status] === 'is-success' ? 'success' : calendarStatusClass[event.status] === 'is-danger' ? 'danger' : 'warning'}>{event.status.replaceAll('_', ' ')}</Badge>
+            <span>
+              <strong>{event.title}</strong>
+              <small>
+                {event.organizationName && event.organizationName !== organizationName ? `${event.organizationName} · ` : ''}
+                {event.time || event.startTime || 'Time to be confirmed'} · {event.location || event.venue || 'Venue to be confirmed'}
+              </small>
+            </span>
+            <Badge tone={calendarStatusClass[event.status] === 'is-success' ? 'success' : calendarStatusClass[event.status] === 'is-danger' ? 'danger' : 'warning'}>{(event.status || 'SUBMITTED').replaceAll('_', ' ')}</Badge>
           </button>)}
         </div> : <p className="adviser-calendar-empty">No events are scheduled for this date.</p>}
       </section>
       <Modal onClose={() => setSelectedEvent(null)} open={Boolean(selectedEvent)} size="md" title="Event Details">
         {selectedEvent && <div className="adviser-calendar-event-dialog">
           <div className="adviser-review-summary">
-            <div><span className="adviser-muted-label">{organizationName}</span><h3>{selectedEvent.title}</h3></div>
-            <Badge tone={calendarStatusClass[selectedEvent.status] === 'is-success' ? 'success' : calendarStatusClass[selectedEvent.status] === 'is-danger' ? 'danger' : 'warning'}>{selectedEvent.status.replaceAll('_', ' ')}</Badge>
+            <div><span className="adviser-muted-label">{selectedEvent.organizationName || organizationName}</span><h3>{selectedEvent.title}</h3></div>
+            <Badge tone={calendarStatusClass[selectedEvent.status] === 'is-success' ? 'success' : calendarStatusClass[selectedEvent.status] === 'is-danger' ? 'danger' : 'warning'}>{(selectedEvent.status || 'SUBMITTED').replaceAll('_', ' ')}</Badge>
           </div>
           <dl className="adviser-review-facts">
-            <div><dt>Organization</dt><dd>{organizationName}</dd></div>
+            <div><dt>Organization</dt><dd>{selectedEvent.organizationName || organizationName}</dd></div>
             <div><dt>Date</dt><dd>{selectedEvent.date}</dd></div>
             <div><dt>Time</dt><dd>{selectedEvent.time || selectedEvent.startTime || 'Not provided'}</dd></div>
             <div><dt>Venue</dt><dd>{selectedEvent.location || selectedEvent.venue || 'Not provided'}</dd></div>
-            <div><dt>Approval status</dt><dd>{selectedEvent.status.replaceAll('_', ' ')}</dd></div>
+            <div><dt>Approval status</dt><dd>{(selectedEvent.status || 'SUBMITTED').replaceAll('_', ' ')}</dd></div>
           </dl>
           <section><h4>Description</h4><p>{selectedEvent.description || 'No description was provided.'}</p></section>
         </div>}
@@ -317,7 +512,7 @@ export function AdviserOrganizationDetailsPage() {
         </Card>
         <Card className="adviser-panel adviser-detail-wide">
           <h2>Calendar of Events</h2>
-          {events.length ? <CalendarOfEvents events={events} organizationName={organization.name} /> : <p>No events have been submitted.</p>}
+          <CalendarOfEvents events={events} organizationName={organization.name} />
         </Card>
         <Card className="adviser-panel">
           <h2>Announcements</h2>

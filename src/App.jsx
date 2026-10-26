@@ -21,7 +21,6 @@ import OfficerMembershipRequestsPage from './pages/OfficerMembershipRequestsPage
 import OfficerOrganizationProfilePage from './pages/OfficerOrganizationProfilePage.jsx'
 import OfficerReportsPage from './pages/OfficerReportsPage.jsx'
 import OfficerSettingsPage from './pages/OfficerSettingsPage.jsx'
-import PlaceholderPage from './pages/PlaceholderPage.jsx'
 import PublicPage from './pages/PublicPage.jsx'
 import AccessDeniedPage from './pages/AccessDeniedPage.jsx'
 import StudentDashboardPage from './pages/StudentDashboardPage.jsx'
@@ -34,7 +33,7 @@ import StudentOrganizationsPage from './pages/StudentOrganizationsPage.jsx'
 import StudentRegistrationsPage from './pages/StudentRegistrationsPage.jsx'
 import StudentNotificationsPage from './pages/StudentNotificationsPage.jsx'
 import StudentProfilePage from './pages/StudentProfilePage.jsx'
-import { adminPages, officerPages, studentPages } from './data/navigation.js'
+import { adminPages } from './data/navigation.js'
 import { PortalDataProvider } from './context/PortalDataContext.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import ErrorBoundary from './components/ui/ErrorBoundary.jsx'
@@ -87,7 +86,6 @@ function DocumentTitle() {
     pageTitle = pageKey.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'Student Organization Management System'
   }
 
-  // Synchronize browser tab title with current route
   useEffect(() => {
     document.title = `UNIDOS | ${pageTitle}`
   }, [pageTitle])
@@ -95,23 +93,6 @@ function DocumentTitle() {
   return null
 }
 
-// Helper for rendering fallback placeholder routes for pages under construction
-function pageRoutes(pages, role) {
-  return pages.map((page) => (
-    <Route
-      key={page.path}
-      path={page.path}
-      element={<PlaceholderPage page={page} role={role} />}
-    />
-  ))
-}
-
-/**
- * Root Application Router (src/App.jsx)
- *
- * Wraps the application in ErrorBoundary, AuthProvider, and PortalDataProvider and defines
- * role-protected route trees for Public, Student, Officer, Adviser, and Admin portals.
- */
 function App() {
   return (
     <ErrorBoundary>
@@ -119,7 +100,6 @@ function App() {
         <PortalDataProvider>
           <DocumentTitle />
           <Routes>
-            {/* Public landing and authentication routes */}
             <Route element={<PublicLayout />}>
               <Route index element={<PublicPage page="home" />} />
               <Route path="login" element={<PublicOnly><PublicPage page="login" /></PublicOnly>} />
@@ -128,7 +108,6 @@ function App() {
               <Route path="access-denied" element={<AccessDeniedPage />} />
             </Route>
 
-            {/* Student portal routes */}
             <Route element={<RequireRole role="STUDENT" />}>
               <Route path="student" element={<StudentLayout />}>
                 <Route index element={<Navigate to="dashboard" replace />} />
@@ -143,10 +122,9 @@ function App() {
                 <Route path="attendance" element={<StudentAttendancePage />} />
                 <Route path="notifications" element={<StudentNotificationsPage />} />
                 <Route path="profile" element={<StudentProfilePage />} />
-                {pageRoutes(studentPages.filter((page) => !['dashboard', 'organizations', 'organizations/:id', 'my-organizations', 'events', 'events/:id', 'registrations', 'attendance', 'notifications', 'profile'].includes(page.path)), 'Student')}
               </Route>
             </Route>
-            {/* Organization Officer portal routes */}
+
             <Route element={<RequireRole role="OFFICER" />}>
               <Route path="officer" element={<OfficerLayout />}>
                 <Route index element={<Navigate to="dashboard" replace />} />
@@ -161,7 +139,6 @@ function App() {
                 <Route path="settings" element={<OfficerSettingsPage />} />
                 <Route path="documents" element={<OfficerDocumentsPage />} />
                 <Route path="reports" element={<OfficerReportsPage />} />
-                {pageRoutes(officerPages.filter((page) => !['dashboard', 'organization', 'members', 'membership-requests', 'events', 'events/create', 'attendance', 'announcements', 'documents', 'reports', 'settings'].includes(page.path)), 'Organization Officer')}
               </Route>
             </Route>
             {/* Faculty Adviser portal routes */}

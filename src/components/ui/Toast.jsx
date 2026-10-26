@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import ToastContext from './ToastContext.jsx'
+import { ToastContext } from './useToast.js'
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([])

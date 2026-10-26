@@ -9,6 +9,7 @@ const router = express.Router();
 const db = require('../db');
 const fs = require('fs');
 const path = require('path');
+const { recordAuditLog } = require('../notificationsHelper');
 
 // ============================================================
 // ATTENDANCE SESSION CODE MANAGER (IN-MEMORY + FILE BACKED)
@@ -73,11 +74,27 @@ function normalizeCode(str) {
 async function resolveStudentDbId(identifier) {
   if (!identifier) return null;
   if (Number.isFinite(Number(identifier))) {
+    const numId = Number(identifier);
     const byId = await db.query(
       'SELECT id FROM students WHERE id = $1 OR user_id = $1 ORDER BY CASE WHEN id = $1 THEN 0 ELSE 1 END LIMIT 1',
-      [Number(identifier)]
+      [numId]
     );
     if (byId.rows.length > 0) return byId.rows[0].id;
+
+    // Fallback: if numId is a valid users.id without a students row yet, auto-create student profile
+    const userCheck = await db.query('SELECT id FROM users WHERE id = $1 LIMIT 1', [numId]);
+    if (userCheck.rows.length > 0) {
+      const progRes = await db.query('SELECT id FROM programs ORDER BY id ASC LIMIT 1');
+      const defaultProgId = progRes.rows[0]?.id || 1;
+      const ins = await db.query(
+        `INSERT INTO students (user_id, student_number, program_id, year_level)
+         VALUES ($1, $2, $3, 1)
+         ON CONFLICT (user_id) DO UPDATE SET user_id = EXCLUDED.user_id
+         RETURNING id`,
+        [numId, `WMSU-${numId}`, defaultProgId]
+      );
+      if (ins.rows.length > 0) return ins.rows[0].id;
+    }
   }
   const trimmed = String(identifier).trim();
   const byNumber = await db.query(
@@ -85,6 +102,13 @@ async function resolveStudentDbId(identifier) {
     [trimmed]
   );
   if (byNumber.rows.length > 0) return byNumber.rows[0].id;
+
+  // Support QR code lookup in event_registrations
+  const byQr = await db.query(
+    'SELECT student_id FROM event_registrations WHERE lower(qr_code) = lower($1) LIMIT 1',
+    [trimmed]
+  );
+  if (byQr.rows.length > 0) return byQr.rows[0].student_id;
 
   // Support registration format (e.g. REG-1, UNIDOS-1)
   const matchReg = trimmed.match(/^(?:REG|UNIDOS)[-_]?(\d+)$/i);
@@ -104,6 +128,8 @@ const REGISTRATION_SELECT_QUERY = `
   SELECT er.id,
          er.event_id,
          er.student_id,
+         er.qr_code,
+         er.qr_code AS qr_code_value,
          er.registered_at,
          er.status,
          e.title AS event_title,
@@ -125,9 +151,11 @@ const REGISTRATION_SELECT_QUERY = `
          p.name AS program_name,
          p.acronym AS program_acronym,
          att.id AS attendance_id,
-         att.checked_in_at,
+         COALESCE(att.checked_in_at, att.scanned_at) AS checked_in_at,
+         COALESCE(att.scanned_at, att.checked_in_at) AS scanned_at,
          att.method AS checkin_method,
-         att.recorded_by
+         COALESCE(att.recorded_by, att.verified_by) AS recorded_by,
+         COALESCE(att.verified_by, att.recorded_by) AS verified_by
     FROM event_registrations er
     JOIN events e ON e.id = er.event_id
     JOIN organizations o ON o.id = e.organization_id
@@ -217,13 +245,14 @@ router.post('/register', async (req, res) => {
       }
     }
 
+    const qrCodeValue = `UNIDOS-EVT${event_id}-STU${resolvedStudentId}`;
     const insertRes = await db.query(
-      `INSERT INTO event_registrations (event_id, student_id, status)
-       VALUES ($1, $2, 'REGISTERED')
+      `INSERT INTO event_registrations (event_id, student_id, qr_code, status)
+       VALUES ($1, $2, $3, 'REGISTERED')
        ON CONFLICT (event_id, student_id)
-       DO UPDATE SET status = 'REGISTERED', registered_at = now()
+       DO UPDATE SET status = 'REGISTERED', qr_code = COALESCE(event_registrations.qr_code, EXCLUDED.qr_code), registered_at = now()
        RETURNING id`,
-      [event_id, resolvedStudentId]
+      [event_id, resolvedStudentId, qrCodeValue]
     );
 
     const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [insertRes.rows[0].id]);
@@ -244,15 +273,19 @@ router.post('/register', async (req, res) => {
         );
 
         // Record audit trail
-        await db.query(
-          `INSERT INTO audit_logs (user_id, action, entity, entity_id, metadata, created_at)
-           VALUES ($1, 'REGISTER_EVENT', 'event_registrations', $2, $3::jsonb, now())`,
-          [
-            studentUser.rows[0].user_id,
-            String(registration.id),
-            JSON.stringify({ event_id, student_id: resolvedStudentId, event_title: registration.event_title })
-          ]
-        ).catch(() => null);
+        await recordAuditLog({
+          userId: studentUser.rows[0].user_id,
+          action: 'REGISTER_EVENT',
+          entity: 'event_registrations',
+          entityId: registration.id,
+          metadata: {
+            event_id,
+            student_id: resolvedStudentId,
+            event_title: registration.event_title,
+            description: `Registered for event "${registration.event_title || 'Campus Event'}"`,
+          },
+          req,
+        });
       }
     } catch (notifErr) {
       console.error('[ATTENDANCE NOTIF ERROR]', notifErr);
@@ -301,6 +334,20 @@ router.put('/registrations/:id/cancel', async (req, res) => {
       console.error('[CANCEL NOTIF ERROR]', notifErr);
     }
 
+    await recordAuditLog({
+      userId: cancelledReg?.user_id || req.body?.user_id || null,
+      action: 'CANCEL_EVENT_REGISTRATION',
+      entity: 'event_registrations',
+      entityId: id,
+      metadata: {
+        event_id: cancelledReg?.event_id,
+        student_id: cancelledReg?.student_id,
+        event_title: cancelledReg?.event_title,
+        description: `Cancelled registration for event "${cancelledReg?.event_title || 'Campus Event'}"`,
+      },
+      req,
+    });
+
     res.json({ message: 'Registration cancelled', registration: cancelledReg });
   } catch (err) {
     console.error(err);
@@ -326,7 +373,23 @@ router.delete('/registrations/:event_id/:student_id', async (req, res) => {
     }
 
     const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [result.rows[0].id]);
-    res.json({ message: 'Registration cancelled', registration: fullRow.rows[0] });
+    const cancelledReg = fullRow.rows[0];
+
+    await recordAuditLog({
+      userId: cancelledReg?.user_id || req.body?.user_id || null,
+      action: 'CANCEL_EVENT_REGISTRATION',
+      entity: 'event_registrations',
+      entityId: result.rows[0].id,
+      metadata: {
+        event_id,
+        student_id: resolvedStudentId,
+        event_title: cancelledReg?.event_title,
+        description: `Cancelled registration for event "${cancelledReg?.event_title || 'Campus Event'}"`,
+      },
+      req,
+    });
+
+    res.json({ message: 'Registration cancelled', registration: cancelledReg });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -438,22 +501,23 @@ router.post('/check-in', async (req, res) => {
     const checkInMethod = ['QR_SCAN', 'MANUAL', 'SELF_CHECKIN'].includes(rawMethod) ? rawMethod : 'QR_SCAN';
 
     const result = await db.query(
-      `INSERT INTO attendance (event_id, student_id, method, recorded_by, checked_in_at)
-       VALUES ($1, $2, $3, $4, now())
+      `INSERT INTO attendance (event_id, student_id, method, verified_by, recorded_by, scanned_at, checked_in_at)
+       VALUES ($1, $2, $3, $4, $4, now(), now())
        ON CONFLICT (event_id, student_id)
-       DO UPDATE SET checked_in_at = now(), method = $3, recorded_by = $4
+       DO UPDATE SET checked_in_at = now(), scanned_at = now(), method = $3, recorded_by = $4, verified_by = $4
        RETURNING *`,
       [event_id, resolvedStudentId, checkInMethod, recorded_by || null]
     );
 
     // Synchronize or create corresponding event_registrations record with status = 'ATTENDED'
+    const qrCodeValue = `UNIDOS-EVT${event_id}-STU${resolvedStudentId}`;
     const regRes = await db.query(
-      `INSERT INTO event_registrations (event_id, student_id, status)
-       VALUES ($1, $2, 'ATTENDED')
+      `INSERT INTO event_registrations (event_id, student_id, qr_code, status)
+       VALUES ($1, $2, $3, 'ATTENDED')
        ON CONFLICT (event_id, student_id)
-       DO UPDATE SET status = 'ATTENDED'
+       DO UPDATE SET status = 'ATTENDED', qr_code = COALESCE(event_registrations.qr_code, EXCLUDED.qr_code)
        RETURNING id`,
-      [event_id, resolvedStudentId]
+      [event_id, resolvedStudentId, qrCodeValue]
     );
 
     const fullReg = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [regRes.rows[0].id]);
@@ -475,6 +539,22 @@ router.post('/check-in', async (req, res) => {
     } catch (notifErr) {
       console.error('[ATTENDANCE VERIFY NOTIF ERROR]', notifErr);
     }
+
+    await recordAuditLog({
+      userId: recorded_by || checkedInReg?.user_id || null,
+      action: 'ATTENDANCE_CHECKIN',
+      entity: 'attendance',
+      entityId: result.rows[0]?.id,
+      metadata: {
+        event_id,
+        student_id: resolvedStudentId,
+        student_name: checkedInReg?.student_name,
+        method: checkInMethod,
+        recorded_by: recorded_by || null,
+        description: `Checked in ${checkedInReg?.student_name || 'student'} via ${checkInMethod} for "${checkedInReg?.event_title || 'Campus Event'}"`,
+      },
+      req,
+    });
 
     res.status(201).json({
       message: 'Attendance recorded successfully',
@@ -516,6 +596,22 @@ router.post('/event/:event_id/code', async (req, res) => {
 
     attendanceCodes.set(String(event_id), current);
     saveAttendanceCodes(attendanceCodes);
+
+    await recordAuditLog({
+      userId: req.body?.user_id || null,
+      action: action === 'generate' || action === 'regenerate' ? 'REGENERATE_ATTENDANCE_CODE' : 'TOGGLE_ATTENDANCE_SESSION',
+      entity: 'events',
+      entityId: event_id,
+      metadata: {
+        event_id,
+        code: current.code,
+        active: current.active,
+        description: action === 'generate' || action === 'regenerate'
+          ? `Regenerated attendance code for event #${event_id}`
+          : `Set attendance session for event #${event_id} to ${current.active ? 'ACTIVE' : 'CLOSED'}`,
+      },
+      req,
+    });
 
     res.json(current);
   } catch (err) {
@@ -582,22 +678,23 @@ router.post('/verify-code', async (req, res) => {
 
     // Insert attendance with method 'SELF_CHECKIN'
     const attResult = await db.query(
-      `INSERT INTO attendance (event_id, student_id, method, checked_in_at)
-       VALUES ($1, $2, 'SELF_CHECKIN', now())
+      `INSERT INTO attendance (event_id, student_id, method, scanned_at, checked_in_at)
+       VALUES ($1, $2, 'SELF_CHECKIN', now(), now())
        ON CONFLICT (event_id, student_id)
-       DO UPDATE SET checked_in_at = now(), method = 'SELF_CHECKIN'
+       DO UPDATE SET checked_in_at = now(), scanned_at = now(), method = 'SELF_CHECKIN'
        RETURNING *`,
       [eventIdNum, resolvedStudentId]
     );
 
     // Update or insert event_registrations with status 'ATTENDED'
+    const qrCodeValue = `UNIDOS-EVT${eventIdNum}-STU${resolvedStudentId}`;
     const regRes = await db.query(
-      `INSERT INTO event_registrations (event_id, student_id, status)
-       VALUES ($1, $2, 'ATTENDED')
+      `INSERT INTO event_registrations (event_id, student_id, qr_code, status)
+       VALUES ($1, $2, $3, 'ATTENDED')
        ON CONFLICT (event_id, student_id)
-       DO UPDATE SET status = 'ATTENDED'
+       DO UPDATE SET status = 'ATTENDED', qr_code = COALESCE(event_registrations.qr_code, EXCLUDED.qr_code)
        RETURNING id`,
-      [eventIdNum, resolvedStudentId]
+      [eventIdNum, resolvedStudentId, qrCodeValue]
     );
 
     const fullReg = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [regRes.rows[0].id]);
@@ -621,15 +718,20 @@ router.post('/verify-code', async (req, res) => {
     }
 
     // Audit log
-    await db.query(
-      `INSERT INTO audit_logs (user_id, action, entity, entity_id, metadata, created_at)
-       VALUES ($1, 'ATTENDANCE_SELF_CHECKIN', 'attendance', $2, $3::jsonb, now())`,
-      [
-        checkedInReg?.user_id || null,
-        String(attResult.rows[0].id),
-        JSON.stringify({ event_id: eventIdNum, code: session.code, method: 'SELF_CHECKIN' })
-      ]
-    ).catch(() => null);
+    await recordAuditLog({
+      userId: checkedInReg?.user_id || null,
+      action: 'ATTENDANCE_SELF_CHECKIN',
+      entity: 'attendance',
+      entityId: attResult.rows[0]?.id,
+      metadata: {
+        event_id: eventIdNum,
+        code: session.code,
+        method: 'SELF_CHECKIN',
+        student_name: checkedInReg?.student_name,
+        description: `${checkedInReg?.student_name || 'Student'} checked in to "${event.title}" using code`,
+      },
+      req,
+    });
 
     res.status(200).json({
       ok: true,
@@ -655,10 +757,10 @@ router.post('/manual-toggle', async (req, res) => {
 
     if (status === 'ATTENDED') {
       const attRes = await db.query(
-        `INSERT INTO attendance (event_id, student_id, method, recorded_by, checked_in_at)
-         VALUES ($1, $2, 'MANUAL', $3, now())
+        `INSERT INTO attendance (event_id, student_id, method, verified_by, recorded_by, scanned_at, checked_in_at)
+         VALUES ($1, $2, 'MANUAL', $3, $3, now(), now())
          ON CONFLICT (event_id, student_id)
-         DO UPDATE SET checked_in_at = now(), method = 'MANUAL', recorded_by = $3
+         DO UPDATE SET checked_in_at = now(), scanned_at = now(), method = 'MANUAL', recorded_by = $3, verified_by = $3
          RETURNING *`,
         [eventIdNum, resolvedStudentId, recorded_by || null]
       );
@@ -666,6 +768,22 @@ router.post('/manual-toggle', async (req, res) => {
         `UPDATE event_registrations SET status = 'ATTENDED' WHERE event_id = $1 AND student_id = $2`,
         [eventIdNum, resolvedStudentId]
       );
+
+      await recordAuditLog({
+        userId: recorded_by || null,
+        action: 'ATTENDANCE_MARK_ATTENDED',
+        entity: 'attendance',
+        entityId: attRes.rows[0]?.id,
+        metadata: {
+          event_id: eventIdNum,
+          student_id: resolvedStudentId,
+          status: 'ATTENDED',
+          recorded_by: recorded_by || null,
+          description: `Marked student #${resolvedStudentId} attendance as ATTENDED for event #${eventIdNum}`,
+        },
+        req,
+      });
+
       return res.json({ ok: true, status: 'ATTENDED', message: 'Marked as Attended', attendance: attRes.rows[0] });
     } else {
       await db.query(
@@ -676,6 +794,22 @@ router.post('/manual-toggle', async (req, res) => {
         `UPDATE event_registrations SET status = 'REGISTERED' WHERE event_id = $1 AND student_id = $2`,
         [eventIdNum, resolvedStudentId]
       );
+
+      await recordAuditLog({
+        userId: recorded_by || null,
+        action: 'ATTENDANCE_RESET_PENDING',
+        entity: 'attendance',
+        entityId: eventIdNum,
+        metadata: {
+          event_id: eventIdNum,
+          student_id: resolvedStudentId,
+          status: 'REGISTERED',
+          recorded_by: recorded_by || null,
+          description: `Reset student #${resolvedStudentId} attendance to PENDING for event #${eventIdNum}`,
+        },
+        req,
+      });
+
       return res.json({ ok: true, status: 'REGISTERED', message: 'Status reset to Pending' });
     }
   } catch (err) {

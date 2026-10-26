@@ -13,7 +13,7 @@ import Modal from '../components/ui/Modal.jsx'
 import ProfileCover from '../components/layout/ProfileCover.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
-import { officerEventStatuses } from '../data/officerPortal.js'
+import { officerEventStatuses } from '../data/navigation.js'
 import { formatDisplayName, formatGreetingName, getTimeGreeting } from '../data/displayName.js'
 
 const metricItems = [

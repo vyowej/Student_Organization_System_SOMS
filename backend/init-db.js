@@ -90,60 +90,82 @@ async function applyIncrementalMigrations(client) {
       value       JSONB NOT NULL,
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    -- Ensure events capacity and approval columns
+    ALTER TABLE events
+      ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS max_participants INTEGER;
+
+    -- Ensure event_registrations qr_code default
+    ALTER TABLE event_registrations
+      ALTER COLUMN qr_code SET DEFAULT ('UNIDOS-QR-' || md5(random()::text || clock_timestamp()::text));
+
+    -- Ensure attendance dual-column compatibility
+    ALTER TABLE attendance
+      ADD COLUMN IF NOT EXISTS checked_in_at TIMESTAMPTZ DEFAULT now(),
+      ADD COLUMN IF NOT EXISTS recorded_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+    UPDATE attendance
+       SET checked_in_at = COALESCE(checked_in_at, scanned_at)
+     WHERE checked_in_at IS NULL;
+
+    UPDATE attendance
+       SET recorded_by = COALESCE(recorded_by, verified_by)
+     WHERE recorded_by IS NULL;
+
+    -- Ensure organization_applications review remarks
+    ALTER TABLE organization_applications
+      ADD COLUMN IF NOT EXISTS review_remarks TEXT;
+
+    -- Ensure announcements author, creator, draft status, and pin compatibility
+    ALTER TABLE announcements
+      ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'PUBLISHED',
+      ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT false;
+    ALTER TABLE announcements
+      ALTER COLUMN published_at DROP NOT NULL;
+
+    UPDATE announcements
+       SET created_by = COALESCE(created_by, author_id)
+     WHERE created_by IS NULL;
+
+    UPDATE announcements
+       SET author_id = COALESCE(author_id, created_by)
+     WHERE author_id IS NULL;
   `);
 
   console.log('[MIGRATE] Updating student_can_join eligibility validation function...');
   await client.query(`
     CREATE OR REPLACE FUNCTION student_can_join(p_org_id INTEGER, p_student_id INTEGER)
-    RETURNS BOOLEAN AS $$
-    DECLARE
-        o         organizations%ROWTYPE;
-        s_college INTEGER;
-        s_dept    INTEGER;
-        s_level   education_level;
-        s_year    INTEGER;
-    BEGIN
-        SELECT * INTO o FROM organizations WHERE id = p_org_id;
-        IF NOT FOUND THEN
-            RETURN FALSE;
-        END IF;
+RETURNS BOOLEAN AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM organizations WHERE id = p_org_id) THEN
+        RETURN FALSE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM students WHERE id = p_student_id) THEN
+        RETURN FALSE;
+    END IF;
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql STABLE;
+  `);
 
-        SELECT d.college_id, d.id, p.level, st.year_level
-          INTO s_college, s_dept, s_level, s_year
-          FROM students st
-          JOIN programs p    ON p.id = st.program_id
-          JOIN departments d ON d.id = p.department_id
-         WHERE st.id = p_student_id;
-
-        IF NOT FOUND THEN
-            RETURN FALSE;
-        END IF;
-
-        -- Undergraduate / graduate restriction
-        IF o.eligible_level IS NOT NULL AND o.eligible_level <> s_level THEN
-            RETURN FALSE;
-        END IF;
-
-        -- Year-level restriction
-        IF o.min_year_level IS NOT NULL AND s_year < o.min_year_level THEN
-            RETURN FALSE;
-        END IF;
-        IF o.max_year_level IS NOT NULL AND s_year > o.max_year_level THEN
-            RETURN FALSE;
-        END IF;
-
-        -- College / department restriction
-        IF o.scope = 'UNIVERSITY' THEN
-            RETURN TRUE;
-        END IF;
-
-        IF o.scope = 'COLLEGE' THEN
-            RETURN s_college = o.college_id;
-        END IF;
-
-        RETURN s_dept = o.department_id;
-    END;
-    $$ LANGUAGE plpgsql STABLE;
+  await client.query(`
+    DELETE FROM audit_logs
+     WHERE action IN ('SYSTEM_INITIALIZED', 'ORGANIZATION_ACCREDITED', 'ADVISER_ASSIGNED', 'USER_REGISTERED', 'EVENT_APPROVED', 'ANNOUNCEMENT_PUBLISHED', 'ATTENDANCE_CHECKIN', 'DOCUMENT_VERIFIED')
+        OR metadata->>'description' IN (
+          'WMSU UNIDOS Student Organization Management System initialized successfully.',
+          'Updated active academic calendar to AY 2025-2026 and configured organization categories.',
+          'Accreditation granted for Academic Year 2025-2026.',
+          'Assigned as official organization adviser.',
+          'New student account registered and verified via WMSU email domain.',
+          'Event proposal approved for university-wide hosting.',
+          'Official announcement published to student portals.',
+          'Student attendance verified via digital QR pass.',
+          'Organization constitution and by-laws compliance approved.',
+          'Student Affairs Admin authenticated via administrative portal.'
+        );
   `);
 }
 

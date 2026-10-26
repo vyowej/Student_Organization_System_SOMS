@@ -290,7 +290,22 @@ router.post('/', async (req, res) => {
       }
     }
 
-    res.status(201).json(fullRow.rows[0]);
+    const memberRow = fullRow.rows[0];
+    await recordAuditLog({
+      userId: req.body?.added_by || req.body?.officer_id || req.body?.user_id || null,
+      action: 'ADD_ORGANIZATION_MEMBER',
+      entity: 'organization_members',
+      entityId: insertRes.rows[0].id,
+      metadata: {
+        organization_id,
+        student_id: resolvedStudentId,
+        position: memberPosition,
+        description: `Added "${memberRow?.name || 'student'}" as ${memberPosition} to ${memberRow?.organization_name || 'organization'}`,
+      },
+      req,
+    });
+
+    res.status(201).json(memberRow);
   } catch (err) {
     console.error(err);
     // Catch eligibility trigger exception from student_can_join() in database/student_org_db.sql
@@ -413,11 +428,18 @@ router.put('/:id/position', async (req, res) => {
         message: `Officer role or status for "${memRow.name}" in ${memRow.organization_name || 'organization'} was changed to ${nextPosition} (${nextStatus}).`,
       });
       await recordAuditLog({
-        userId: null,
+        userId: req.body?.user_id || req.body?.updated_by || null,
         action: 'UPDATE_MEMBER_ROLE',
         entity: 'organization_members',
         entityId: id,
-        metadata: { student_id: current.student_id, organization_id: current.organization_id, position: nextPosition, status: nextStatus },
+        metadata: {
+          student_id: current.student_id,
+          organization_id: current.organization_id,
+          position: nextPosition,
+          status: nextStatus,
+          description: `Updated officer role for "${memRow.name}" to ${nextPosition} (${nextStatus}) in ${memRow.organization_name || 'organization'}`,
+        },
+        req,
       });
     }
 
@@ -432,6 +454,9 @@ router.put('/:id/position', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const fullBefore = await db.query(`${MEMBER_SELECT_QUERY} WHERE om.id = $1`, [id]);
+    const memRow = fullBefore.rows[0];
+
     const result = await db.query(
       `UPDATE organization_members
           SET status = 'INACTIVE', left_at = now()
@@ -443,6 +468,20 @@ router.delete('/:id', async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Membership record not found' });
     }
+
+    await recordAuditLog({
+      userId: req.body?.user_id || null,
+      action: 'REMOVE_ORGANIZATION_MEMBER',
+      entity: 'organization_members',
+      entityId: id,
+      metadata: {
+        organization_id: memRow?.organization_id,
+        student_id: memRow?.student_id,
+        description: `Removed "${memRow?.name || 'member'}" from ${memRow?.organization_name || 'organization'}`,
+      },
+      req,
+    });
+
     res.json({ message: 'Membership ended successfully', member: result.rows[0] });
   } catch (err) {
     console.error(err);
@@ -604,7 +643,12 @@ router.post('/applications', async (req, res) => {
       action: 'SUBMIT_MEMBERSHIP_APPLICATION',
       entity: 'organization_applications',
       entityId: appRow.id,
-      metadata: { organization_id: orgIdNum, applicant_id: resolvedApplicantId },
+      metadata: {
+        organization_id: orgIdNum,
+        applicant_id: resolvedApplicantId,
+        description: `${appRow.name || 'Student'} submitted membership application to ${appRow.organization_name || 'organization'}`,
+      },
+      req,
     });
 
     res.status(201).json(appRow);
@@ -778,7 +822,13 @@ router.put('/applications/:id/review', async (req, res) => {
       action: `REVIEW_APPLICATION_${normalizedStatus}`,
       entity: 'organization_applications',
       entityId: id,
-      metadata: { organization_id: reviewedApp.organization_id, applicant_id: reviewedApp.applicant_id, status: normalizedStatus },
+      metadata: {
+        organization_id: reviewedApp.organization_id,
+        applicant_id: reviewedApp.applicant_id,
+        status: normalizedStatus,
+        description: `Reviewed membership application for "${reviewedApp.name || 'student'}" in ${reviewedApp.organization_name || 'organization'}: ${normalizedStatus}`,
+      },
+      req,
     });
 
     res.json({

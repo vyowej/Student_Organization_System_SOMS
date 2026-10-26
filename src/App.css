@@ -8997,6 +8997,10 @@
   justify-content: space-between;
   gap: 14px;
   margin-bottom: 14px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .adviser-panel-heading p {

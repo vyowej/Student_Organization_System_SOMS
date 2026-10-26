@@ -1,6 +1,137 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Badge from '../ui/Badge.jsx'
 import Icon from '../ui/Icon.jsx'
+
+export function AnimatedStatistic({ value, suffix = '', label, format }) {
+  const elementRef = useRef(null)
+  const hasStartedRef = useRef(false)
+  const hasCompletedRef = useRef(false)
+  const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    const element = elementRef.current
+    if (!element) return undefined
+
+    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
+    let frameId
+    let observer
+    let isMounted = true
+
+    function startCount() {
+      if (hasStartedRef.current) return
+      hasStartedRef.current = true
+
+      if (motionPreference.matches) {
+        hasCompletedRef.current = true
+        setCount(value)
+        return
+      }
+
+      const duration = 1800
+      const startTime = performance.now()
+
+      function updateCount(now) {
+        const progress = Math.min((now - startTime) / duration, 1)
+        const easedProgress = progress * progress * (3 - 2 * progress)
+        if (isMounted) {
+          setCount(progress === 1 ? value : Math.floor(value * easedProgress))
+          if (progress === 1) hasCompletedRef.current = true
+        }
+        if (progress < 1) frameId = requestAnimationFrame(updateCount)
+      }
+
+      frameId = requestAnimationFrame(updateCount)
+    }
+
+    if (!('IntersectionObserver' in window)) {
+      startCount()
+      return () => {
+        isMounted = false
+        if (!hasCompletedRef.current) hasStartedRef.current = false
+        cancelAnimationFrame(frameId)
+      }
+    }
+
+    observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        startCount()
+        observer.unobserve(element)
+      }
+    }, { threshold: 0.45 })
+
+    observer.observe(element)
+    return () => {
+      isMounted = false
+      if (!hasCompletedRef.current) hasStartedRef.current = false
+      observer.disconnect()
+      cancelAnimationFrame(frameId)
+    }
+  }, [value])
+
+  const displayValue = format ? format(count) : count.toLocaleString()
+
+  return (
+    <div ref={elementRef}>
+      <strong aria-label={`${format ? format(value) : value.toLocaleString()}${suffix}`}>
+        {displayValue}<span>{suffix}</span>
+      </strong>
+      <small>{label}</small>
+    </div>
+  )
+}
+
+export function Reveal({ as: Element = 'div', className = '', children, ...props }) {
+  const elementRef = useRef(null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const element = elementRef.current
+    if (!element) return undefined
+
+    const rect = element.getBoundingClientRect()
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800
+    if (rect.top <= viewportHeight + 150) {
+      setVisible(true)
+    }
+
+    if (!('IntersectionObserver' in window)) {
+      setVisible(true)
+      return undefined
+    }
+
+    const timer = setTimeout(() => {
+      setVisible(true)
+    }, 600)
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true)
+          clearTimeout(timer)
+          observer.unobserve(element)
+        }
+      },
+      { threshold: 0, rootMargin: '100px 0px 100px 0px' },
+    )
+
+    observer.observe(element)
+    return () => {
+      clearTimeout(timer)
+      observer.disconnect()
+    }
+  }, [])
+
+  return (
+    <Element
+      className={`reveal${visible ? ' is-visible' : ''} ${className}`.trim()}
+      ref={elementRef}
+      {...props}
+    >
+      {children}
+    </Element>
+  )
+}
 
 export function LeaderCard({ leader }) {
   const initials =
@@ -31,15 +162,6 @@ export function OrganizationCard({ organization }) {
   const initials =
     organization.initials ||
     (organization.acronym || organization.name || 'ORG').slice(0, 3).toUpperCase()
-
-  // ============================================================
-  // [GOOGLE DRIVE API PLACEHOLDER — ORGANIZATION CARD LOGO IMAGE]
-  // Insert Google Drive API image URL transformation here if
-  // `organization.logo` stores a Google Drive file ID or link.
-  //
-  //
-  //
-  // ============================================================
 
   return (
     <article className="organization-card">

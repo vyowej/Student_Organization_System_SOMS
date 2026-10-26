@@ -11,6 +11,7 @@ import Icon from '../components/ui/Icon.jsx'
 export default function StudentNotificationsPage() {
   const {
     studentNotifications = [],
+    studentOrganizations = [],
     markStudentNotificationRead,
     readNotificationIds = [],
     markNotificationRead,
@@ -26,11 +27,16 @@ export default function StudentNotificationsPage() {
       let destination = null
       if (rawType.includes('EVENT') && !rawType.includes('REGISTRATION')) {
         destination = '/student/events'
+      } else if (rawType.includes('ANNOUNCEMENT')) {
+        const matchedOrg = (studentOrganizations || []).find(
+          (org) => n.message && n.message.toLowerCase().startsWith((org.name || '').toLowerCase() + ':')
+        )
+        destination = matchedOrg ? `/student/organizations/${matchedOrg.id}` : '/student/dashboard'
       } else if (rawType.includes('REGISTRATION')) {
         destination = '/student/registrations'
       } else if (rawType.includes('ATTENDANCE')) {
         destination = '/student/attendance'
-      } else if (rawType.includes('MEMBERSHIP')) {
+      } else if (rawType.includes('MEMBERSHIP') || rawType.includes('APPLICATION')) {
         destination = '/student/my-organizations'
       }
       return {

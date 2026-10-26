@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Icon from '../components/ui/Icon.jsx'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
-import { EventCard, LeaderCard, OrganizationCard } from '../components/public/LandingCards.jsx'
-import AnimatedStatistic from '../components/public/AnimatedStatistic.jsx'
-import Reveal from '../components/public/Reveal.jsx'
+import { AnimatedStatistic, EventCard, LeaderCard, OrganizationCard, Reveal } from '../components/public/LandingCards.jsx'
+
+
 import { usePortalData } from '../context/usePortalData.js'
-import { organizationCategories as defaultCategories } from '../data/studentOrganizations.js'
+import { organizationCategories as defaultCategories } from '../data/studentEvents.js'
 
 const defaultNotifications = [
   { type: 'Organizations', icon: 'organization', title: 'Organizations Directory', message: 'Browse recognized student organizations on campus.', time: 'live' },

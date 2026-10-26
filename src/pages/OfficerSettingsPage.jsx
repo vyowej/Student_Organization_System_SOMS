@@ -8,7 +8,7 @@ import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
-import { organizationCategories as allCategories } from '../data/studentOrganizations.js'
+import { organizationCategories as allCategories } from '../data/studentEvents.js'
 
 const preferenceOptions = [
   ['membershipRequests', 'Membership Requests'],

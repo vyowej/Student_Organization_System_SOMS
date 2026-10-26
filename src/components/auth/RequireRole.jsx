@@ -5,9 +5,8 @@
  *   by verifying authentication and role membership.
  * - `PublicOnly`: Redirects already-authenticated users to their active role's dashboard.
  */
-import { useEffect } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { dashboardByRole } from '../../data/mockAuthUsers.js'
+import { dashboardByRole } from '../../data/navigation.js'
 import { useAuth } from '../../context/useAuth.js'
 
 export default function RequireRole({ role }) {

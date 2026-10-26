@@ -1,9 +1,10 @@
-/**
- * Role Portal Navigation Definitions
- *
- * Defines page routes, titles, and sidebar/navbar links for each UNIDOS role
- * portal (Student, Organization Officer, Organization Adviser, and Admin).
- */
+export const dashboardByRole = {
+  STUDENT: '/student/dashboard',
+  OFFICER: '/officer/dashboard',
+  ADVISER: '/adviser/dashboard',
+  ADMIN: '/admin/dashboard',
+}
+
 export const studentPages = [
   { path: 'dashboard', title: 'Student Dashboard', description: 'Your overview of organizations, events, and campus updates.', to: '/student/dashboard' },
   { path: 'organizations', title: 'Organizations', description: 'Discover active student organizations at WMSU.', to: '/student/organizations' },
@@ -59,4 +60,69 @@ export const roleNavigation = {
   'Organization Officer': { pages: officerPages.filter((page) => page.path !== 'events/create'), home: '/officer/dashboard', notifications: '/officer/announcements', profile: '/officer/organization' },
   'Organization Adviser': { pages: adviserPages, home: '/adviser/dashboard', notifications: '/adviser/approvals', profile: '/adviser/organizations' },
   'Student Affairs Admin': { pages: adminPages, home: '/admin/dashboard', notifications: '/admin/approvals', profile: '/admin/settings' },
+}
+
+export const officerPositions = [
+  'None',
+  'President',
+  'Vice President',
+  'Secretary',
+  'Treasurer',
+  'Auditor',
+  'PIO',
+  'Committee Head',
+  'General Member',
+]
+
+export const officerEventStatuses = {
+  DRAFT: { label: 'DRAFT', tone: 'neutral' },
+  SUBMITTED: { label: 'SUBMITTED', tone: 'warning' },
+  UNDER_REVIEW: { label: 'UNDER REVIEW', tone: 'warning' },
+  APPROVED: { label: 'APPROVED', tone: 'success' },
+  REJECTED: { label: 'REJECTED', tone: 'danger' },
+  RETURNED: { label: 'RETURNED', tone: 'warning' },
+  PUBLISHED: { label: 'PUBLISHED', tone: 'success' },
+  ONGOING: { label: 'ONGOING', tone: 'crimson' },
+  COMPLETED: { label: 'COMPLETED', tone: 'neutral' },
+  CANCELLED: { label: 'CANCELLED', tone: 'danger' },
+  ARCHIVED: { label: 'ARCHIVED', tone: 'neutral' },
+}
+
+export const adminPrograms = [
+  'All',
+  'BS Computer Science',
+  'BS Information Technology',
+  'BS Civil Engineering',
+  'BS Nursing',
+  'BS Accountancy',
+  'BA Communication',
+  'BS Biology',
+  'BSEd English',
+]
+
+export const adminYears = ['All', '1st Year', '2nd Year', '3rd Year', '4th Year']
+
+export const adminDefaultSettings = {
+  academicYear: '2026–2027',
+  semester: 'Second Semester',
+  organizationCategories: [
+    'Academic',
+    'Technology',
+    'Leadership',
+    'Student Council',
+    'Socio-Civic',
+    'Cultural',
+    'Sports & Recreation',
+    'Sports',
+    'Religious',
+    'Special Interest',
+    'Publication',
+    'Other',
+  ],
+  notifications: {
+    organizationApplications: true,
+    eventApprovals: true,
+    documentReviews: true,
+    securityAlerts: true,
+  },
 }

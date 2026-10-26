@@ -4,7 +4,7 @@ import Badge from '../components/ui/Badge.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
-import { studentOrganizations } from '../data/studentOrganizations.js'
+import { studentOrganizations } from '../data/studentEvents.js'
 import { useAuth } from '../context/useAuth.js'
 
 const statusContent = {

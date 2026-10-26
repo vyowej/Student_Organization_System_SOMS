@@ -1,5 +1,6 @@
-import { useContext } from 'react'
-import ToastContext from './ToastContext.jsx'
+import { createContext, useContext } from 'react'
+
+export const ToastContext = createContext(null)
 
 export function useToast() {
   const context = useContext(ToastContext)
@@ -7,7 +8,6 @@ export function useToast() {
   return context
 }
 
-// Toast option that adds an Undo button: showToast(msg, 'success', undoAction(undo))
 export function undoAction(undo) {
   return { action: { label: 'Undo', onClick: undo } }
 }

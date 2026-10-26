@@ -10,7 +10,7 @@ import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
-import { officerPositions } from '../data/officerPortal.js'
+import { officerPositions } from '../data/navigation.js'
 import { formatDisplayName } from '../data/displayName.js'
 
 const statusTones = { ACTIVE: 'success', SUSPENDED: 'warning', INACTIVE: 'neutral' }

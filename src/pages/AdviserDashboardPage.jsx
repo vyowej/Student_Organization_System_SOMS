@@ -53,6 +53,9 @@ export default function AdviserDashboardPage() {
   const pendingReports = adviserReports
     .filter((report) => !report.organizationId || assignedOrgIds.has(String(report.organizationId)))
     .filter((report) => report.status === 'PENDING_VERIFICATION')
+  const verifiedReports = adviserReports
+    .filter((report) => !report.organizationId || assignedOrgIds.has(String(report.organizationId)))
+    .filter((report) => report.status === 'VERIFIED')
   const pendingApplications = officerMembershipRequests
     .filter((app) => !app.organizationId || assignedOrgIds.has(String(app.organizationId)))
     .filter((app) => app.status === 'PENDING')
@@ -86,7 +89,7 @@ export default function AdviserDashboardPage() {
           <StatCard label="Organizations Under Advisement" value={effectiveOrgs.length} to="/adviser/organizations" />
           <StatCard label="Pending Approvals" value={approvalsCount} to="/adviser/approvals" />
           <StatCard label="Scheduled Activities" value={upcomingEvents.length} to="/adviser/events" />
-          <StatCard label="Verified Accomplishment Reports" value={adviserReports.filter((report) => report.status === 'VERIFIED').length} to="/adviser/reports" />
+          <StatCard label="Verified Accomplishment Reports" value={verifiedReports.length} to="/adviser/reports" />
         </div>
       </PageHeader>
 
@@ -94,7 +97,7 @@ export default function AdviserDashboardPage() {
         <Card className="adviser-panel">
           <div className="adviser-panel-heading">
             <div><h2>Pending Approvals</h2><p>Recent items that require your review.</p></div>
-            <Link to="/adviser/approvals">View all</Link>
+            <Link to="/adviser/approvals">View all <Icon name="arrow-right" size={12} /></Link>
           </div>
           {pending.length ? pending.slice(0, 5).map((item) => (
             <article className="adviser-list-row" key={`${item.type}-${item.id}`}>
@@ -107,7 +110,7 @@ export default function AdviserDashboardPage() {
         <Card className="adviser-panel">
           <div className="adviser-panel-heading">
             <div><h2>Upcoming Activities</h2><p>Approved or published events from your assigned organizations.</p></div>
-            <Link to="/adviser/events">View calendar</Link>
+            <Link to="/adviser/events">View calendar <Icon name="arrow-right" size={12} /></Link>
           </div>
           {upcomingEvents.length ? upcomingEvents.slice(0, 5).map((event) => (
             <article className="adviser-list-row" key={event.id}>

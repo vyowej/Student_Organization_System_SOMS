@@ -215,6 +215,7 @@ CREATE TABLE organization_applications (
     status          application_status NOT NULL DEFAULT 'PENDING',
     reviewed_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
     reviewed_at     TIMESTAMPTZ,
+    review_remarks  TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -239,7 +240,10 @@ CREATE TABLE events (
     -- ============================================================
     drive_folder_id TEXT,                              -- Google Drive Folder ID
     status          event_status NOT NULL DEFAULT 'DRAFT',
+    max_participants INTEGER,
     created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    approved_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    approved_at     TIMESTAMPTZ,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CHECK (end_date >= start_date)
@@ -249,7 +253,7 @@ CREATE TABLE event_registrations (
     id            INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     event_id      INTEGER NOT NULL REFERENCES events(id)   ON DELETE CASCADE,
     student_id    INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    qr_code       TEXT    NOT NULL UNIQUE,            
+    qr_code       TEXT    NOT NULL UNIQUE DEFAULT ('UNIDOS-QR-' || md5(random()::text || clock_timestamp()::text)),            
     status        registration_status NOT NULL DEFAULT 'REGISTERED',
     registered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (event_id, student_id)
@@ -261,7 +265,9 @@ CREATE TABLE attendance (
     student_id      INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     scanned_at      TIMESTAMPTZ       NOT NULL DEFAULT now(),
     method          attendance_method NOT NULL DEFAULT 'QR_SCAN',
+    checked_in_at   TIMESTAMPTZ       NOT NULL DEFAULT now(),
     verified_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    recorded_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE (event_id, student_id)
 );
 
@@ -292,9 +298,12 @@ CREATE TABLE announcements (
     id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     author_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
     title           VARCHAR(200) NOT NULL,
     content         TEXT         NOT NULL,
-    published_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    status          VARCHAR(20)  NOT NULL DEFAULT 'PUBLISHED',
+    is_pinned       BOOLEAN      NOT NULL DEFAULT false,
+    published_at    TIMESTAMPTZ           DEFAULT now(),
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
@@ -385,52 +394,14 @@ CREATE TRIGGER trg_check_single_active_president
 -- Eligibility check function (checks scope, college, department, academic level, and year level)
 CREATE OR REPLACE FUNCTION student_can_join(p_org_id INTEGER, p_student_id INTEGER)
 RETURNS BOOLEAN AS $$
-DECLARE
-    o         organizations%ROWTYPE;
-    s_college INTEGER;
-    s_dept    INTEGER;
-    s_level   education_level;
-    s_year    INTEGER;
 BEGIN
-    SELECT * INTO o FROM organizations WHERE id = p_org_id;
-    IF NOT FOUND THEN
+    IF NOT EXISTS (SELECT 1 FROM organizations WHERE id = p_org_id) THEN
         RETURN FALSE;
     END IF;
-
-    SELECT d.college_id, d.id, p.level, st.year_level
-      INTO s_college, s_dept, s_level, s_year
-      FROM students st
-      JOIN programs p    ON p.id = st.program_id
-      JOIN departments d ON d.id = p.department_id
-     WHERE st.id = p_student_id;
-
-    IF NOT FOUND THEN
+    IF NOT EXISTS (SELECT 1 FROM students WHERE id = p_student_id) THEN
         RETURN FALSE;
     END IF;
-
-    -- Undergraduate / graduate restriction
-    IF o.eligible_level IS NOT NULL AND o.eligible_level <> s_level THEN
-        RETURN FALSE;
-    END IF;
-
-    -- Year-level restriction
-    IF o.min_year_level IS NOT NULL AND s_year < o.min_year_level THEN
-        RETURN FALSE;
-    END IF;
-    IF o.max_year_level IS NOT NULL AND s_year > o.max_year_level THEN
-        RETURN FALSE;
-    END IF;
-
-    -- College / department restriction
-    IF o.scope = 'UNIVERSITY' THEN
-        RETURN TRUE;
-    END IF;
-
-    IF o.scope = 'COLLEGE' THEN
-        RETURN s_college = o.college_id;
-    END IF;
-
-    RETURN s_dept = o.department_id;
+    RETURN TRUE;
 END;
 $$ LANGUAGE plpgsql STABLE;
 

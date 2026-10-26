@@ -6,9 +6,9 @@
  * All hardcoded fake data arrays and localStorage mock databases have been removed.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import PortalDataContext from './PortalData.js'
+import PortalDataContext from './usePortalData.js'
 import { useAuth } from './useAuth.js'
-import { adminDefaultSettings } from '../data/adminPortal.js'
+import { adminDefaultSettings } from '../data/navigation.js'
 
 function formatDisplayDate(isoValue) {
   if (!isoValue) return ''
@@ -103,7 +103,7 @@ function normalizeAnnouncement(a) {
     datePosted: a.published_at || a.created_at,
     lastUpdated: a.updated_at || a.published_at || a.created_at,
     isPinned: Boolean(a.is_pinned),
-    status: a.published_at ? 'PUBLISHED' : 'DRAFT',
+    status: a.status || (a.published_at ? 'PUBLISHED' : 'DRAFT'),
     postedBy: a.first_name
       ? `${a.last_name}, ${a.first_name}`
       : a.author_first_name
@@ -144,7 +144,7 @@ function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allD
       ? row.adviser_first_name
       : 'Unassigned')
 
-  const activeCount = Number(row.member_count ?? orgMembers.length ?? 0)
+  const activeCount = Number(row.active_members ?? row.member_count ?? orgMembers.length ?? 0)
 
   return {
     id: orgId,
@@ -200,8 +200,8 @@ function normalizeEvent(row) {
     organizationAcronym: row.organization_acronym || '',
     title: row.title,
     description: row.description || '',
-    venue: row.venue || 'WMSU Campus',
-    location: row.venue || 'WMSU Campus',
+    venue: row.location || row.venue || 'WMSU Campus',
+    location: row.location || row.venue || 'WMSU Campus',
     startDatetime: startDt,
     endDatetime: endDt,
     date: formatDisplayDate(startDt),
@@ -209,8 +209,8 @@ function normalizeEvent(row) {
     startTime,
     endTime,
     time: timeRange,
-    category: row.event_type || 'Academic',
-    eventType: row.event_type || 'Academic',
+    category: row.category || row.event_type || formatOrgCategoryLabel(row.organization_type),
+    eventType: row.event_type || row.category || formatOrgCategoryLabel(row.organization_type),
     capacity: Number(row.max_participants ?? row.capacity ?? 100),
     registeredCount: Number(row.registered_count ?? 0),
     registrations: Number(row.registered_count ?? 0),
@@ -219,7 +219,7 @@ function normalizeEvent(row) {
     status: (row.is_published && rawStatus === 'APPROVED') || rawStatus === 'PUBLISHED' ? 'PUBLISHED' : mappedStatus,
     rawStatus,
     isPublished: Boolean(row.is_published || rawStatus === 'PUBLISHED'),
-    adviserDecisionDate: row.approved_by || row.adviser_approved_by ? formatDisplayDate(row.adviser_approved_at || row.updated_at || row.created_at) : null,
+    adviserDecisionDate: row.approved_by || row.adviser_approved_by ? formatDisplayDate(row.approved_at || row.adviser_approved_at || row.updated_at || row.created_at) : null,
     adminApprovedAt: rawStatus === 'PUBLISHED' || row.admin_approved_by ? formatDisplayDate(row.admin_approved_at || row.updated_at || row.created_at) : null,
     createdBy: row.created_by,
     approvedBy: row.approved_by || row.adviser_approved_by,
@@ -277,6 +277,7 @@ function normalizeApplication(row) {
     acronym: row.acronym || row.organization_acronym || '',
     studentRecordId: row.student_id ?? row.applicant_id,
     studentId: row.student_number || String(row.student_id ?? row.applicant_id),
+    userId: row.user_id,
     firstName: row.first_name || '',
     middleName: row.middle_name || '',
     lastName: row.last_name || '',
@@ -286,14 +287,15 @@ function normalizeApplication(row) {
     program: row.program_name || row.program_code || row.program_acronym || '',
     yearLevel: row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : '',
     desiredRole: row.desired_role || 'Member',
-    message: row.reason || row.remarks || 'Membership application submitted via UNIDOS portal.',
-    reason: row.reason || row.remarks || '',
+    message: row.message || row.reason || row.remarks || 'Membership application submitted via UNIDOS portal.',
+    reason: row.message || row.reason || row.remarks || '',
+    reviewRemarks: row.review_remarks || '',
     status: row.status || 'PENDING',
-    applicationDate: formatDisplayDate(row.applied_at),
-    appliedAt: row.applied_at,
+    applicationDate: formatDisplayDate(row.applied_at || row.created_at),
+    appliedAt: row.applied_at || row.created_at,
     decisionDate: row.reviewed_at ? formatDisplayDate(row.reviewed_at) : '',
     reviewedAt: row.reviewed_at,
-    processedBy: row.reviewer_first_name ? `${row.reviewer_last_name}, ${row.reviewer_first_name}` : '',
+    processedBy: row.reviewer_name || (row.reviewer_first_name ? `${row.reviewer_last_name}, ${row.reviewer_first_name}` : ''),
   }
 }
 
@@ -306,6 +308,9 @@ function normalizeRegistration(row) {
   return {
     id: `REG-${regId}`,
     registrationId: regId,
+    qrCodeValue: row.qr_code_value || `REG-${regId}`,
+    userId: row.user_id,
+    studentDbId: row.student_id,
     eventId: row.event_id,
     eventTitle: row.event_title || '',
     organizationId: row.organization_id,
@@ -319,8 +324,8 @@ function normalizeRegistration(row) {
     registrationDate: formatDisplayDate(row.registered_at),
     registeredAt: row.registered_at,
     attendanceStatus,
-    checkInTime: row.time_in ? formatDisplayTime(row.time_in) : null,
-    checkInDate: row.time_in ? formatDisplayDate(row.time_in) : null,
+    checkInTime: (row.checked_in_at || row.scanned_at || row.time_in) ? formatDisplayTime(row.checked_in_at || row.scanned_at || row.time_in) : null,
+    checkInDate: (row.checked_in_at || row.scanned_at || row.time_in) ? formatDisplayDate(row.checked_in_at || row.scanned_at || row.time_in) : null,
   }
 }
 
@@ -359,12 +364,12 @@ function normalizeDocument(row) {
     semester: row.semester || '',
     status: row.status || 'PENDING',
     submittedDate: formatDisplayDate(row.created_at),
-    submittedBy: row.uploader_first_name
+    submittedBy: row.uploader_name || (row.uploader_first_name
       ? `${row.uploader_last_name}, ${row.uploader_first_name}`
-      : 'Organization Officer',
-    processedBy: row.reviewer_first_name
+      : 'Organization Officer'),
+    processedBy: row.reviewer_name || (row.reviewer_first_name
       ? `${row.reviewer_last_name}, ${row.reviewer_first_name}`
-      : '',
+      : ''),
     decisionReason: (row.reviewed_at || row.reviewed_by) ? extractAdviserRemarks(row.review_remarks) : '',
     revisionNote: (row.reviewed_at || row.reviewed_by || row.status === 'REJECTED') ? extractAdviserRemarks(row.review_remarks) : '',
     reviewRemarks: row.review_remarks || '',
@@ -724,6 +729,7 @@ export function PortalDataProvider({ children }) {
         advisersRes,
         adviserReqRes,
         hierarchyRes,
+        settingsRes,
       ] = await Promise.all([
         fetch('/api/organizations?all=true').catch(() => null),
         fetch('/api/events?all=true').catch(() => null),
@@ -738,6 +744,7 @@ export function PortalDataProvider({ children }) {
         fetch('/api/advisers').catch(() => null),
         fetch('/api/advisers/requests').catch(() => null),
         fetch('/api/academic/hierarchy').catch(() => null),
+        fetch('/api/settings').catch(() => null),
       ])
 
       if (orgsRes?.ok) setRawOrganizations(await orgsRes.json())
@@ -753,6 +760,16 @@ export function PortalDataProvider({ children }) {
       if (advisersRes?.ok) setRawAdvisers(await advisersRes.json())
       if (adviserReqRes?.ok) setRawAdviserChangeRequests(await adviserReqRes.json())
       if (hierarchyRes?.ok) setAcademicHierarchy(await hierarchyRes.json())
+      if (settingsRes?.ok) {
+        const dbSettings = await settingsRes.json().catch(() => ({}))
+        if (dbSettings && (dbSettings.academic_year || dbSettings.semester)) {
+          setAdminSettings((prev) => ({
+            ...prev,
+            academicYear: dbSettings.academic_year || prev.academicYear,
+            semester: dbSettings.semester || prev.semester,
+          }))
+        }
+      }
     } finally {
       setLoading(false)
     }
@@ -978,8 +995,109 @@ export function PortalDataProvider({ children }) {
   )
 
   const adminAuditLogs = useMemo(
-    () => rawAuditLogs.map(normalizeAuditLog),
+    () =>
+      rawAuditLogs
+        .map(normalizeAuditLog)
+        .sort((a, b) => {
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+          if (timeB !== timeA) return timeB - timeA
+          return (Number(b.id) || 0) - (Number(a.id) || 0)
+        }),
     [rawAuditLogs]
+  )
+
+  const adviserActivity = useMemo(() => {
+    const activeUserId = currentUser?.dbUserId ?? currentUser?.id
+    const assignedOrgIds = new Set(
+      adminOrganizations
+        .filter((org) => {
+          if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
+          if (activeUserId && String(org.adviserUserId) === String(activeUserId)) return true
+          if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
+          if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id ?? a.organizationId) === String(org.id))) return true
+          return false
+        })
+        .map((org) => String(org.id))
+    )
+
+    const items = []
+
+    notifications
+      .filter((n) => activeUserId && String(n.userId) === String(activeUserId))
+      .forEach((n) => {
+        items.push({
+          id: `notif-${n.id}`,
+          description: n.message,
+          message: n.message,
+          timestamp: n.createdAt,
+          time: n.time,
+
+
+
+
+        })
+      })
+
+    adminAuditLogs
+      .filter((log) => {
+        if (activeUserId && String(log.userId) === String(activeUserId)) return true
+        if (log.entityType === 'organizations' && assignedOrgIds.has(String(log.entityId))) return true
+        if (log.metadata?.organization_id && assignedOrgIds.has(String(log.metadata.organization_id))) return true
+        return false
+      })
+      .forEach((log) => {
+        items.push({
+          id: `log-${log.id}`,
+          description: log.description,
+          message: log.description,
+          timestamp: log.timestamp,
+          time: log.time,
+        })
+      })
+
+    officerEvents
+      .filter((e) => e.organizationId && assignedOrgIds.has(String(e.organizationId)))
+      .forEach((e) => {
+        items.push({
+          id: `evt-${e.id}`,
+          description: `${e.organizationName}: Event "${e.title}" (${e.status})`,
+          message: `${e.organizationName}: Event "${e.title}" (${e.status})`,
+          timestamp: e.adviserDecisionDate || e.submittedDate || e.date,
+          time: e.adviserDecisionDate || e.submittedDate || e.date,
+        })
+      })
+
+    adviserDocuments
+      .filter((d) => d.organizationId && assignedOrgIds.has(String(d.organizationId)))
+      .forEach((d) => {
+        items.push({
+          id: `doc-${d.id}`,
+          description: `${d.organizationName}: Document "${d.title}" (${d.status})`,
+          message: `${d.organizationName}: Document "${d.title}" (${d.status})`,
+          timestamp: d.reviewedAt || d.submittedDate,
+          time: d.reviewedAt || d.submittedDate,
+        })
+      })
+
+    officerAnnouncements
+      .filter((a) => a.organizationId && assignedOrgIds.has(String(a.organizationId)))
+      .forEach((a) => {
+        items.push({
+          id: `ann-${a.id}`,
+          description: `${a.organizationName}: Announcement "${a.title}"`,
+          message: `${a.organizationName}: Announcement "${a.title}"`,
+          timestamp: a.date,
+          time: a.date,
+        })
+      })
+
+    return items.sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0
+      return timeB - timeA
+    })
+  }, [currentUser, adminOrganizations, notifications, adminAuditLogs, officerEvents, adviserDocuments, officerAnnouncements]
   )
 
   const organizationApplications = useMemo(
@@ -1064,7 +1182,7 @@ export function PortalDataProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         status: 'APPROVED',
-        reviewed_by: currentUser?.userId || currentUser?.id || null,
+        reviewed_by: currentUser?.dbUserId || currentUser?.id || null,
         position,
         custom_title: customTitle,
       }),
@@ -1084,7 +1202,7 @@ export function PortalDataProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         status: 'REJECTED',
-        reviewed_by: currentUser?.userId || currentUser?.id || null,
+        reviewed_by: currentUser?.dbUserId || currentUser?.id || null,
         review_remarks: reason,
         reason,
       }),
@@ -1174,7 +1292,8 @@ export function PortalDataProvider({ children }) {
         String(r.eventId) === String(eventId) &&
         (String(r.id).toUpperCase() === code.toUpperCase() ||
           String(r.studentId).toUpperCase() === code.toUpperCase() ||
-          `UNIDOS-${String(r.id).toUpperCase()}` === code.toUpperCase())
+          `UNIDOS-${String(r.id).toUpperCase()}` === code.toUpperCase() ||
+          String(r.qrCodeValue || '').toUpperCase() === code.toUpperCase())
     )
 
     const response = await fetch('/api/attendance/check-in', {
@@ -1184,7 +1303,7 @@ export function PortalDataProvider({ children }) {
         event_id: eventId,
         student_id: matchedReg?.studentRecordId || undefined,
         student_number: matchedReg?.studentId || code,
-        recorded_by: currentUser?.userId || null,
+        recorded_by: currentUser?.dbUserId || currentUser?.id || null,
         status: 'PRESENT',
       }),
     })
@@ -1198,7 +1317,7 @@ export function PortalDataProvider({ children }) {
       message: `Attendance recorded for ${matchedReg?.studentId || code}.`,
       data: payload,
     }
-  }, [studentRegistrations, currentUser?.userId, refreshPortalData])
+  }, [studentRegistrations, currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const getEventAttendanceCode = useCallback(async (eventId) => {
     if (!eventId) return null
@@ -1240,7 +1359,7 @@ export function PortalDataProvider({ children }) {
           code: cleanCode,
           student_id: currentUser?.studentRecordId || currentUser?.studentId,
           student_number: currentUser?.studentId,
-          user_id: currentUser?.userId,
+          user_id: currentUser?.dbUserId || currentUser?.id || null,
         }),
       })
       const payload = await res.json().catch(() => ({}))
@@ -1269,7 +1388,7 @@ export function PortalDataProvider({ children }) {
           event_id: eventId,
           student_id: studentId,
           status,
-          recorded_by: currentUser?.userId || null,
+          recorded_by: currentUser?.dbUserId || currentUser?.id || null,
         }),
       })
       const payload = await res.json().catch(() => ({}))
@@ -1281,28 +1400,45 @@ export function PortalDataProvider({ children }) {
     } catch (err) {
       return { ok: false, message: err.message || 'Network error.' }
     }
-  }, [currentUser?.userId, refreshPortalData])
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const saveOfficerEvent = useCallback(async (eventPayload, statusOverride) => {
     const orgId = eventPayload.organizationId || currentUser?.organizationId || adminOrganizations[0]?.id
     if (!orgId) return null
 
-    const rawDate = eventPayload.startDatetime || eventPayload.date || new Date().toISOString()
-    const parsedDate = new Date(rawDate)
-    const baseIsoDate = Number.isNaN(parsedDate.getTime())
-      ? new Date().toISOString().slice(0, 10)
-      : parsedDate.toISOString().slice(0, 10)
+    const extractLocalDateString = (val) => {
+      if (!val) {
+        const now = new Date()
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      }
+      const str = String(val).trim()
+      const directMatch = str.match(/^(\d{4}-\d{2}-\d{2})/)
+      if (directMatch && !str.includes('Z')) {
+        return directMatch[1]
+      }
+      const parsed = new Date(str)
+      if (Number.isNaN(parsed.getTime())) {
+        const now = new Date()
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      }
+      return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
+    }
 
-    const startIso = eventPayload.startTime && /^\d{2}:\d{2}/.test(eventPayload.startTime)
-      ? `${baseIsoDate}T${eventPayload.startTime}:00`
-      : (Number.isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString())
+    const baseLocalDate = extractLocalDateString(eventPayload.rawDate || eventPayload.startDatetime || eventPayload.date)
+    const cleanStartTime = eventPayload.startTime && /^\d{2}:\d{2}/.test(eventPayload.startTime)
+      ? eventPayload.startTime.slice(0, 5)
+      : '08:00'
+    const cleanEndTime = eventPayload.endTime && /^\d{2}:\d{2}/.test(eventPayload.endTime)
+      ? eventPayload.endTime.slice(0, 5)
+      : (cleanStartTime || '17:00')
 
-    const endIso = eventPayload.endTime && /^\d{2}:\d{2}/.test(eventPayload.endTime)
-      ? `${baseIsoDate}T${eventPayload.endTime}:00`
-      : startIso
+    const startDateObj = new Date(`${baseLocalDate}T${cleanStartTime}:00`)
+    const endDateObj = new Date(`${baseLocalDate}T${cleanEndTime}:00`)
+    const startIso = Number.isNaN(startDateObj.getTime()) ? new Date().toISOString() : startDateObj.toISOString()
+    const endIso = Number.isNaN(endDateObj.getTime()) ? startIso : endDateObj.toISOString()
 
-    const targetStatus = statusOverride || eventPayload.status || 'PENDING'
-    const dbStatus = ['SUBMITTED', 'UNDER_REVIEW', 'DRAFT'].includes(targetStatus) ? 'PENDING' : targetStatus
+    const targetStatus = statusOverride || eventPayload.status || 'SUBMITTED'
+    const dbStatus = ['SUBMITTED', 'UNDER_REVIEW', 'PENDING'].includes(targetStatus) ? 'SUBMITTED' : targetStatus
 
     const isUpdate = Boolean(eventPayload.id || eventPayload.eventId)
     const url = isUpdate ? `/api/events/${eventPayload.id || eventPayload.eventId}` : '/api/events'
@@ -1461,7 +1597,7 @@ export function PortalDataProvider({ children }) {
   }, [currentUser?.organizationId, currentUser?.userId, currentUser?.dbUserId, currentUser?.id, adminOrganizations, refreshPortalData])
 
   const archiveOfficerAnnouncement = useCallback(async (announcementId) => {
-    const existing = rawAnnouncements.find((a) => String(a.announcement_id) === String(announcementId))
+    const existing = rawAnnouncements.find((a) => String(a.announcement_id ?? a.id) === String(announcementId))
     if (!existing) return false
     const response = await fetch(`/api/announcements/${announcementId}`, {
       method: 'PUT',
@@ -1469,6 +1605,7 @@ export function PortalDataProvider({ children }) {
       body: JSON.stringify({
         title: existing.title,
         content: existing.content,
+        status: 'ARCHIVED',
         is_pinned: false,
       }),
     })
@@ -1600,7 +1737,7 @@ export function PortalDataProvider({ children }) {
   const updateOfficerOrganizationProfile = useCallback(async (orgUpdates) => {
     const orgId = orgUpdates.id || orgUpdates.organizationId || currentUser?.organizationId || adminOrganizations[0]?.id
     if (!orgId) return false
-    const currentOrg = rawOrganizations.find((o) => String(o.organization_id) === String(orgId))
+    const currentOrg = rawOrganizations.find((o) => String(o.organization_id ?? o.id) === String(orgId))
     if (!currentOrg) return false
 
     // =========================================================================
@@ -1643,7 +1780,7 @@ export function PortalDataProvider({ children }) {
   const updateOfficerOrganizationContact = useCallback(async (contactValues) => {
     const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
     if (!orgId) return false
-    const currentOrg = rawOrganizations.find((o) => String(o.organization_id) === String(orgId))
+    const currentOrg = rawOrganizations.find((o) => String(o.organization_id ?? o.id) === String(orgId))
     if (!currentOrg) return false
     const contactSummary = [
       contactValues.officialEmail ? `Email: ${contactValues.officialEmail}` : '',
@@ -1746,7 +1883,7 @@ export function PortalDataProvider({ children }) {
           department_id: orgData.department_id ? Number(orgData.department_id) : null,
           adviser_id: orgData.adviser_id ? Number(orgData.adviser_id) : null,
           status: orgData.status || 'ACTIVE',
-          created_by: currentUser?.userId || null,
+          created_by: currentUser?.dbUserId || currentUser?.id || null,
         }),
       })
       if (!response.ok) {
@@ -1814,16 +1951,17 @@ export function PortalDataProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         organization_id: payload.organizationId || currentUser?.organizationId,
-        requested_by: currentUser?.userId,
+        requested_by: currentUser?.dbUserId || currentUser?.id || null,
         current_adviser_id: payload.currentAdviserId || null,
-        requested_adviser_id: payload.requestedAdviserId,
+        proposed_adviser_id: payload.requestedAdviserId || payload.proposedAdviserId,
+        requested_adviser_id: payload.requestedAdviserId || payload.proposedAdviserId,
         reason: payload.reason,
       }),
     })
     if (!response.ok) return false
     await refreshPortalData()
     return true
-  }, [currentUser?.organizationId, currentUser?.userId, refreshPortalData])
+  }, [currentUser?.organizationId, currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const reviewAdviserChangeRequest = useCallback(async (requestId, status, reviewRemarks = '') => {
     const response = await fetch(`/api/advisers/requests/${requestId}/review`, {
@@ -1831,7 +1969,7 @@ export function PortalDataProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         status,
-        reviewed_by: currentUser?.userId || null,
+        reviewed_by: currentUser?.dbUserId || currentUser?.id || null,
         review_remarks: reviewRemarks,
       }),
     })
@@ -1919,6 +2057,14 @@ export function PortalDataProvider({ children }) {
       try {
         if (typeof window !== 'undefined') {
           localStorage.setItem('soms_admin_settings', JSON.stringify(updated))
+          fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              academic_year: updated.academicYear,
+              semester: updated.semester,
+            }),
+          }).catch(() => null)
         }
       } catch {
         // ignore
@@ -1986,15 +2132,16 @@ export function PortalDataProvider({ children }) {
     studentRegistrations,
     adviserDocuments,
     adviserReports,
-    adviserActivity: notifications.length > 0
-      ? notifications.map((n) => ({
-          id: n.id,
-          description: n.message,
-          message: n.message,
-          timestamp: n.createdAt,
-          time: n.time,
-        })).concat(adminAuditLogs)
-      : adminAuditLogs,
+    adviserActivity,
+
+
+
+
+
+
+
+
+
     adminUsers,
     adminAuditLogs,
     adminSettings,
@@ -2087,6 +2234,7 @@ export function PortalDataProvider({ children }) {
     studentRegistrations,
     adviserDocuments,
     adviserReports,
+    adviserActivity,
     adminAuditLogs,
     adminUsers,
     adminSettings,

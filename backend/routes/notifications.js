@@ -30,30 +30,22 @@ async function syncUserNotifications(userId) {
 
     if (userRes.rows.length === 0) return;
     const user = userRes.rows[0];
-    const collegeId = user.student_college_id || user.adviser_college_id || null;
-    const isAdmin = user.role === 'ADMIN';
+    const isAdviserOnly = user.role === 'ADVISER';
 
-    // 1. Announcements sync
+    // 1. Announcements sync (published announcements)
     let annQuery = `
       SELECT a.id, a.title, a.content, a.published_at, o.name AS org_name
         FROM announcements a
         JOIN organizations o ON o.id = a.organization_id
-       WHERE 1=1
+       WHERE a.published_at IS NOT NULL
+         AND COALESCE(a.status, 'PUBLISHED') = 'PUBLISHED'
     `;
     const annParams = [];
-    if (!isAdmin) {
+    if (isAdviserOnly) {
       annParams.push(uid);
-      let condition = `(o.scope = 'UNIVERSITY'`;
-      if (collegeId) {
-        annParams.push(collegeId);
-        condition += ` OR o.college_id = $${annParams.length}`;
-      }
-      condition += ` OR a.organization_id IN (
-        SELECT om.organization_id FROM organization_members om JOIN students st ON st.id = om.student_id WHERE st.user_id = $1 AND om.status = 'ACTIVE'
-        UNION
+      annQuery += ` AND a.organization_id IN (
         SELECT oa.organization_id FROM organization_advisers oa JOIN advisers adv ON adv.id = oa.adviser_id WHERE adv.user_id = $1 AND oa.ended_at IS NULL
-      ))`;
-      annQuery += ` AND ${condition}`;
+      )`;
     }
 
     const annRes = await db.query(annQuery, annParams);
@@ -62,7 +54,7 @@ async function syncUserNotifications(userId) {
       const preview = a.content.length > 120 ? `${a.content.slice(0, 120)}...` : a.content;
       const message = `${a.org_name}: "${preview}"`;
       const notifExists = await db.query(
-        'SELECT id FROM notifications WHERE user_id = $1 AND type = $2 AND title = $3',
+        'SELECT id FROM notifications WHERE user_id = $1 AND type = $2 AND LOWER(title) = LOWER($3) LIMIT 1',
         [uid, 'ANNOUNCEMENT', title]
       );
       if (notifExists.rows.length === 0) {
@@ -74,27 +66,19 @@ async function syncUserNotifications(userId) {
       }
     }
 
-    // 2. Events sync
+    // 2. Events sync (approved & published events)
     let evQuery = `
       SELECT e.id, e.title, e.start_date, o.name AS org_name
         FROM events e
         JOIN organizations o ON o.id = e.organization_id
-       WHERE e.status = 'PUBLISHED'
+       WHERE e.status IN ('PUBLISHED', 'APPROVED')
     `;
     const evParams = [];
-    if (!isAdmin) {
+    if (isAdviserOnly) {
       evParams.push(uid);
-      let condition = `(o.scope = 'UNIVERSITY'`;
-      if (collegeId) {
-        evParams.push(collegeId);
-        condition += ` OR o.college_id = $${evParams.length}`;
-      }
-      condition += ` OR e.organization_id IN (
-        SELECT om.organization_id FROM organization_members om JOIN students st ON st.id = om.student_id WHERE st.user_id = $1 AND om.status = 'ACTIVE'
-        UNION
+      evQuery += ` AND e.organization_id IN (
         SELECT oa.organization_id FROM organization_advisers oa JOIN advisers adv ON adv.id = oa.adviser_id WHERE adv.user_id = $1 AND oa.ended_at IS NULL
-      ))`;
-      evQuery += ` AND ${condition}`;
+      )`;
     }
 
     const evRes = await db.query(evQuery, evParams);
@@ -105,7 +89,7 @@ async function syncUserNotifications(userId) {
         : 'Upcoming';
       const message = `${ev.org_name} published a new event: "${ev.title}" on ${startDate}. Registration is now open!`;
       const notifExists = await db.query(
-        'SELECT id FROM notifications WHERE user_id = $1 AND type = $2 AND title = $3',
+        'SELECT id FROM notifications WHERE user_id = $1 AND type = $2 AND LOWER(title) = LOWER($3) LIMIT 1',
         [uid, 'EVENT', title]
       );
       if (notifExists.rows.length === 0) {

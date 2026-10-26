@@ -217,6 +217,7 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+
   const registerStudent = useCallback(async (registrationPayload) => {
     try {
       const response = await fetch('/api/users/register', {
@@ -246,9 +247,16 @@ export function AuthProvider({ children }) {
   }, [])
 
   const logout = useCallback(() => {
+    if (currentUser?.id) {
+      fetch('/api/users/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: currentUser.id }),
+      }).catch(() => null)
+    }
     sessionStorage.removeItem(SESSION_STORAGE_KEY)
     setCurrentUser(null)
-  }, [])
+  }, [currentUser?.id])
 
   const setActiveRole = useCallback((nextRole, organizationId) => {
     if (!currentUser) return false

@@ -7,6 +7,7 @@ import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
+import { CalendarOfEvents } from './AdviserOrganizationsPages.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 
 const filters = ['All', 'Pending Review', 'Approved', 'Returned', 'Rejected', 'Upcoming', 'Completed']
@@ -36,9 +37,9 @@ export default function AdviserEventsPage() {
     return false
   })
   const assignedOrgIds = new Set(assignedOrgs.map((org) => String(org.id)))
+  const assignedEvents = officerEvents.filter((event) => assignedOrgIds.has(String(event.organizationId)))
 
-  const visibleEvents = officerEvents
-    .filter((event) => assignedOrgIds.has(String(event.organizationId)))
+  const visibleEvents = assignedEvents
     .filter((event) => matchesEventFilter(event, filter))
     .filter((event) => matchesQuery(search, event.title, event.organizationName, event.date, event.location, event.category))
 
@@ -65,7 +66,7 @@ export default function AdviserEventsPage() {
       <SearchBar label="Search events" onChange={setSearch} placeholder="Search events by title, organization or date…" value={search} />
       <Card className="adviser-panel">
         <div className="adviser-filter-row" aria-label="Filter adviser events" role="group">
-          {filters.map((item) => <button aria-pressed={filter === item} className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} type="button">{item}<span>{officerEvents.filter((event) => matchesEventFilter(event, item)).length}</span></button>)}
+          {filters.map((item) => <button aria-pressed={filter === item} className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} type="button">{item}<span>{assignedEvents.filter((event) => matchesEventFilter(event, item)).length}</span></button>)}
         </div>
         {visibleEvents.length ? (
           <div className="adviser-event-list">
@@ -83,6 +84,10 @@ export default function AdviserEventsPage() {
             ))}
           </div>
         ) : <EmptyState description="No organization events match this filter." title="No events found" />}
+      </Card>
+      <Card className="adviser-panel">
+        <h2>Calendar of Events</h2>
+        <CalendarOfEvents events={visibleEvents} organizationName="Assigned Organizations" />
       </Card>
       <AdviserReviewDialog item={selected} key={selected?.id ?? 'closed'} onClose={() => setSelected(null)} onDecision={decide} />
     </div>

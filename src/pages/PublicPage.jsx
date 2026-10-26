@@ -6,7 +6,7 @@ import Button from '../components/ui/Button.jsx'
 import { useToast } from '../components/ui/useToast.js'
 import { useAuth } from '../context/useAuth.js'
 import { usePortalData } from '../context/usePortalData.js'
-import { dashboardByRole } from '../data/mockAuthUsers.js'
+import { dashboardByRole } from '../data/navigation.js'
 import { isValidEmail, isWmsuEmail } from '../data/displayName.js'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import Icon from '../components/ui/Icon.jsx'
@@ -136,10 +136,6 @@ function AuthenticationPage({ page }) {
       }
       if (!isValidEmail(form.email)) {
         setError('Enter a valid email address.')
-        return false
-      }
-      if (!isWmsuEmail(form.email)) {
-        setError('Use your WMSU email address ending in @wmsu.edu.ph.')
         return false
       }
       return true

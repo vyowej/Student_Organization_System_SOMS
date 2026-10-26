@@ -75,6 +75,7 @@ export default function OfficerEventFormPage() {
       id: existing?.id,
       organizationId: organization.id,
       title: title.trim(),
+      rawDate: date,
       date: new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
       startDatetime: `${date}T${startTime || '08:00'}:00`,
       endDatetime: `${date}T${endTime || startTime || '17:00'}:00`,

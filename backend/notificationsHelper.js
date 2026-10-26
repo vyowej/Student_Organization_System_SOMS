@@ -80,19 +80,43 @@ async function notifyAdmins({ type, title, message }) {
 /**
  * Records an entry in the system `audit_logs` table.
  */
-async function recordAuditLog({ userId, action, entity, entityId, metadata = {} }) {
+async function recordAuditLog({ userId, action, entity, entityId, metadata = {}, ipAddress, req }) {
   try {
     const validUserId = userId && Number.isFinite(Number(userId)) ? Number(userId) : null;
+    const numericEntityId = entityId && Number.isFinite(Number(entityId)) ? Number(entityId) : null;
+
+    let clientIp = ipAddress;
+    if (!clientIp && req) {
+      const xForwarded = req.headers?.['x-forwarded-for'];
+      clientIp = typeof xForwarded === 'string' ? xForwarded.split(',')[0].trim() : req.socket?.remoteAddress;
+    }
+    if (typeof clientIp === 'string') {
+      clientIp = clientIp.trim().replace(/^::ffff:/, '');
+    }
+    if (clientIp === '::1') clientIp = '127.0.0.1';
+    if (!clientIp || !/^[\da-fA-F:.]+$/.test(clientIp)) clientIp = '127.0.0.1';
+
+    const cleanMeta = metadata && typeof metadata === 'object' ? { ...metadata } : {};
+    if (entityId && numericEntityId === null && !cleanMeta.refId) {
+      cleanMeta.refId = String(entityId);
+    }
+
+    if (!cleanMeta.description) {
+      const actStr = String(action || 'ACTION').replaceAll('_', ' ');
+      cleanMeta.description = `${actStr} on ${entity || 'system'}${entityId ? ` #${entityId}` : ''}.`;
+    }
+
     const result = await db.query(
-      `INSERT INTO audit_logs (user_id, action, entity, entity_id, metadata, created_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, now())
+      `INSERT INTO audit_logs (user_id, action, entity, entity_id, metadata, ip_address, created_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::inet, now())
        RETURNING *`,
       [
         validUserId,
         action || 'ACTION',
         entity || 'system',
-        entityId ? String(entityId) : null,
-        JSON.stringify(metadata),
+        numericEntityId,
+        JSON.stringify(cleanMeta),
+        clientIp,
       ]
     );
     return result.rows[0];

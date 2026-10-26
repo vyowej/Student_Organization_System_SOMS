@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import WmsuLogo from '../ui/WmsuLogo.jsx'
 import { useAuth } from '../../context/useAuth.js'
-import { dashboardByRole } from '../../data/mockAuthUsers.js'
+import { dashboardByRole } from '../../data/navigation.js'
 
 const publicLinks = [
   { label: 'Home', to: '/' },

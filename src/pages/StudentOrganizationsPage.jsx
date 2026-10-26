@@ -11,7 +11,7 @@ import FilterSelect from '../components/ui/FilterSelect.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar from '../components/ui/SearchBar.jsx'
-import { organizationCategories, studentOrganizations } from '../data/studentOrganizations.js'
+import { organizationCategories, studentOrganizations } from '../data/studentEvents.js'
 
 export default function StudentOrganizationsPage() {
   const context = useOutletContext() || {}

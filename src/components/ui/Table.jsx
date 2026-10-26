@@ -9,7 +9,14 @@ export default function Table(props) {
   return <TableInner key={tableKey} {...props} />
 }
 
-function TableInner({ columns, rows, getRowKey = (row, index) => row.id ?? index, useDataTable = false }) {
+function TableInner({
+  columns,
+  rows,
+  getRowKey = (row, index) => row.id ?? index,
+  useDataTable = false,
+  order,
+  defaultOrder,
+}) {
   const tableRef = useRef(null)
   const stickyCount = stickyColumnCount(columns)
   useStickyOffset(tableRef, [rows, columns])
@@ -23,6 +30,7 @@ function TableInner({ columns, rows, getRowKey = (row, index) => row.id ?? index
         ordering: true,
         info: true,
         autoWidth: false,
+        order: order !== undefined ? order : (defaultOrder !== undefined ? defaultOrder : []),
         layout: {
           topStart: null,
           topEnd: null,
@@ -38,7 +46,7 @@ function TableInner({ columns, rows, getRowKey = (row, index) => row.id ?? index
         dt.destroy()
       }
     }
-  }, [useDataTable, rows, columns])
+  }, [useDataTable, rows, columns, order, defaultOrder])
 
   return (
     <div className={`data-table-wrap ${useDataTable ? 'using-datatables' : ''}`}>
@@ -51,15 +59,24 @@ function TableInner({ columns, rows, getRowKey = (row, index) => row.id ?? index
         <tbody>
           {rows.map((row, rowIndex) => (
             <tr key={getRowKey(row, rowIndex)}>
-              {columns.map((column, columnIndex) => (
-                <td
-                  className={[stickyClass(columnIndex, stickyCount), column.nowrap || ['id', 'userId', 'studentId'].includes(column.key) ? 'cell-nowrap' : ''].filter(Boolean).join(' ') || undefined}
-                  data-label={column.label}
-                  key={column.key}
-                >
-                  {column.render ? column.render(row[column.key], row) : row[column.key]}
-                </td>
-              ))}
+              {columns.map((column, columnIndex) => {
+                const orderValue = column.getOrderValue
+                  ? column.getOrderValue(row[column.key], row)
+                  : (['timestamp', 'date', 'createdAt', 'updatedAt'].includes(column.key)
+                      ? (row.createdAt || row.timestamp || row.date || undefined)
+                      : undefined)
+
+                return (
+                  <td
+                    className={[stickyClass(columnIndex, stickyCount), column.nowrap || ['id', 'userId', 'studentId'].includes(column.key) ? 'cell-nowrap' : ''].filter(Boolean).join(' ') || undefined}
+                    data-label={column.label}
+                    data-order={orderValue !== undefined ? orderValue : undefined}
+                    key={column.key}
+                  >
+                    {column.render ? column.render(row[column.key], row) : row[column.key]}
+                  </td>
+                )
+              })}
             </tr>
           ))}
         </tbody>

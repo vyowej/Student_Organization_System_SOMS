@@ -44,7 +44,7 @@ const frontend = existsSync(viteBin)
       stdio: 'pipe',
       env: { ...process.env, FORCE_COLOR: '1' },
     })
-  : spawn(npmCmd, ['run', 'dev'], {
+  : spawn(npmCmd, ['run', 'dev:vite'], {
       stdio: 'pipe',
       shell: isWindows,
       env: { ...process.env, FORCE_COLOR: '1' },

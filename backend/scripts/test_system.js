@@ -8,7 +8,7 @@
  * 4. Single-president validation & trigger constraints
  */
 const db = require('../db');
-const { notifyUser, notifyAdmins, notifyAdvisersForOrg } = require('../notificationsHelper');
+const { notifyUser } = require('../notificationsHelper');
 
 async function runSystemChecks() {
   console.log('====================================================');

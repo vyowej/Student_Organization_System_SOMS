@@ -8,7 +8,7 @@ import Modal from '../components/ui/Modal.jsx'
 import ProfileCover from '../components/layout/ProfileCover.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import Icon from '../components/ui/Icon.jsx'
-import { getOrganizationEvents, studentOrganizations } from '../data/studentOrganizations.js'
+import { getOrganizationEvents, studentOrganizations } from '../data/studentEvents.js'
 
 const statusLabels = {
   NOT_MEMBER: 'NOT A MEMBER',
@@ -65,6 +65,7 @@ export default function StudentOrganizationDetailsPage() {
     adminOrganizations = [],
     studentOrganizations: contextStudentOrganizations = [],
     officerEvents = [],
+    officerAnnouncements = [],
     adviserDocuments = [],
     captureUndo,
     getMembershipForOrganization,
@@ -113,7 +114,10 @@ export default function StudentOrganizationDetailsPage() {
         .filter((d) => String(d.organizationId) === String(organization.id) && d.status === 'APPROVED')
         .map((d) => d.title)
 
-  const publishedAnnouncements = (organization.announcements ?? []).filter((announcement) => (
+  const orgAnnouncementsList = (organization.announcements && organization.announcements.length > 0)
+    ? organization.announcements
+    : officerAnnouncements.filter((a) => String(a.organizationId) === String(organization.id))
+  const publishedAnnouncements = orgAnnouncementsList.filter((announcement) => (
     !announcement.status || announcement.status === 'PUBLISHED'
   ))
   const canApply = status === 'NOT_MEMBER' || status === 'REJECTED' || status === 'INACTIVE'

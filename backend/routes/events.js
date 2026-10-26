@@ -66,44 +66,16 @@ async function notifyStudentsForEvent(event) {
       ? new Date(event.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : 'Upcoming';
 
-    let targetStudentsQuery = `
-      SELECT DISTINCT s.user_id
-        FROM students s
-        JOIN users u ON u.id = s.user_id AND u.status = 'ACTIVE' AND u.role IN ('STUDENT', 'OFFICER')
-       WHERE s.id IN (
-         SELECT om.student_id 
-           FROM organization_members om 
-          WHERE om.organization_id = $1 AND om.status = 'ACTIVE'
-       )
-    `;
-    const params = [orgId];
-
-    if (event.organization_scope === 'UNIVERSITY') {
-      targetStudentsQuery = `
-        SELECT DISTINCT s.user_id
-          FROM students s
-          JOIN users u ON u.id = s.user_id AND u.status = 'ACTIVE' AND u.role IN ('STUDENT', 'OFFICER')
-      `;
-      params.length = 0;
-    } else if (event.organization_college_id) {
-      targetStudentsQuery = `
-        SELECT DISTINCT s.user_id
-          FROM students s
-          JOIN users u ON u.id = s.user_id AND u.status = 'ACTIVE' AND u.role IN ('STUDENT', 'OFFICER')
-          JOIN programs p ON p.id = s.program_id
-          JOIN departments d ON d.id = p.department_id
-         WHERE d.college_id = $1
-            OR s.id IN (
-              SELECT om.student_id 
-                FROM organization_members om 
-               WHERE om.organization_id = $2 AND om.status = 'ACTIVE'
-            )
-      `;
-      params.length = 0;
-      params.push(event.organization_college_id, orgId);
-    }
-
-    const studentsRes = await db.query(targetStudentsQuery, params);
+    // Notify all active students & officers so every student sees new approved/published campus events
+    const studentsRes = await db.query(`
+      SELECT DISTINCT id AS user_id
+        FROM users
+       WHERE status = 'ACTIVE' AND role IN ('STUDENT', 'OFFICER')
+      UNION
+      SELECT DISTINCT user_id
+        FROM students
+       WHERE user_id IS NOT NULL
+    `);
 
     // Also notify active Admins and Advisers
     const staffRes = await db.query(
@@ -111,31 +83,39 @@ async function notifyStudentsForEvent(event) {
     );
 
     const recipientUserIds = new Set([
-      ...studentsRes.rows.map((r) => r.user_id),
-      ...staffRes.rows.map((r) => r.user_id),
+      ...studentsRes.rows.map((r) => r.user_id).filter(Boolean),
+      ...staffRes.rows.map((r) => r.user_id).filter(Boolean),
     ]);
 
     const title = `New Event: ${eventTitle}`;
     const message = `${orgName} published a new event: "${eventTitle}" on ${startDate}. Registration is now open!`;
 
     for (const userId of recipientUserIds) {
-      await db.query(
-        `INSERT INTO notifications (user_id, type, title, message, created_at)
-         VALUES ($1, 'EVENT', $2, $3, now())`,
-        [userId, title, message]
+      const existing = await db.query(
+        'SELECT id FROM notifications WHERE user_id = $1 AND type = $2 AND LOWER(title) = LOWER($3) LIMIT 1',
+        [userId, 'EVENT', title]
       );
+      if (existing.rows.length === 0) {
+        await db.query(
+          `INSERT INTO notifications (user_id, type, title, message, created_at)
+           VALUES ($1, 'EVENT', $2, $3, now())`,
+          [userId, title, message]
+        );
+      }
     }
 
     // Record publication in audit_logs
-    await db.query(
-      `INSERT INTO audit_logs (user_id, action, entity, entity_id, metadata, created_at)
-       VALUES ($1, 'PUBLISH_EVENT', 'events', $2, $3::jsonb, now())`,
-      [
-        event.approved_by || event.created_by || null,
-        String(event.id),
-        JSON.stringify({ title: eventTitle, organization_id: orgId })
-      ]
-    ).catch(() => null);
+    await recordAuditLog({
+      userId: event.approved_by || event.created_by || null,
+      action: 'PUBLISH_EVENT',
+      entity: 'events',
+      entityId: event.id,
+      metadata: {
+        title: eventTitle,
+        organization_id: orgId,
+        description: `Published campus event "${eventTitle}" for ${orgName}`,
+      },
+    }).catch(() => null);
 
   } catch (err) {
     console.error('[EVENT NOTIFICATION ERROR]', err);
@@ -254,7 +234,7 @@ router.post('/', async (req, res) => {
     const orgDisplayName = eventRow.organization_name || eventRow.organization_acronym || 'Student Organization';
 
     // If created immediately with PUBLISHED status, notify eligible students & advisers
-    if (eventStatus === 'PUBLISHED') {
+    if (['PUBLISHED', 'APPROVED'].includes(eventStatus)) {
       await notifyStudentsForEvent(eventRow);
       await notifyAdvisersForOrg(organization_id, {
         type: 'EVENT',
@@ -273,7 +253,12 @@ router.post('/', async (req, res) => {
         action: 'PUBLISH_EVENT',
         entity: 'events',
         entityId: eventRow.id,
-        metadata: { title: resolvedTitle, organization_id },
+        metadata: {
+          title: resolvedTitle,
+          organization_id,
+          description: `Created and published event "${resolvedTitle}" for ${orgDisplayName}`,
+        },
+        req,
       });
     } else if (eventStatus === 'SUBMITTED') {
       // 1. Notify assigned adviser(s) that an officer submitted an event proposal
@@ -298,7 +283,28 @@ router.post('/', async (req, res) => {
         action: 'SUBMIT_EVENT_PROPOSAL',
         entity: 'events',
         entityId: eventRow.id,
-        metadata: { title: resolvedTitle, organization_id, status: eventStatus },
+        metadata: {
+          title: resolvedTitle,
+          organization_id,
+          status: eventStatus,
+          description: `Submitted event proposal "${resolvedTitle}" for ${orgDisplayName}`,
+        },
+        req,
+      });
+    } else {
+      // DRAFT event creation
+      await recordAuditLog({
+        userId: resolvedCreatedBy,
+        action: 'CREATE_EVENT_DRAFT',
+        entity: 'events',
+        entityId: eventRow.id,
+        metadata: {
+          title: resolvedTitle,
+          organization_id,
+          status: eventStatus,
+          description: `Saved draft event "${resolvedTitle}" for ${orgDisplayName}`,
+        },
+        req,
       });
     }
 
@@ -355,7 +361,12 @@ router.put('/:id/publish', async (req, res) => {
       action: 'PUBLISH_EVENT',
       entity: 'events',
       entityId: eventRow.id,
-      metadata: { title: eventRow.title, organization_id: eventRow.organization_id },
+      metadata: {
+        title: eventRow.title,
+        organization_id: eventRow.organization_id,
+        description: `Published event "${eventRow.title}" for ${eventRow.organization_name || 'Organization'}`,
+      },
+      req,
     });
 
     res.json(eventRow);
@@ -415,9 +426,15 @@ router.put('/:id/status', async (req, res) => {
         action: 'PUBLISH_EVENT',
         entity: 'events',
         entityId: eventRow.id,
-        metadata: { title: eventRow.title, organization_id: eventRow.organization_id },
+        metadata: {
+          title: eventRow.title,
+          organization_id: eventRow.organization_id,
+          description: `Published event "${eventRow.title}" for ${orgDisplayName}`,
+        },
+        req,
       });
     } else if (targetStatus === 'APPROVED' && current.status !== 'APPROVED') {
+      await notifyStudentsForEvent(eventRow);
       // 1. Notify officer that adviser endorsed the event proposal
       if (eventRow.created_by) {
         await notifyUser(eventRow.created_by, {
@@ -437,7 +454,12 @@ router.put('/:id/status', async (req, res) => {
         action: 'ENDORSE_EVENT',
         entity: 'events',
         entityId: eventRow.id,
-        metadata: { title: eventRow.title, organization_id: eventRow.organization_id },
+        metadata: {
+          title: eventRow.title,
+          organization_id: eventRow.organization_id,
+          description: `Endorsed event proposal "${eventRow.title}" for ${orgDisplayName}`,
+        },
+        req,
       });
     } else if ((targetStatus === 'CANCELLED' || targetStatus === 'DRAFT') && current.status !== targetStatus) {
       // Event returned or rejected
@@ -453,7 +475,14 @@ router.put('/:id/status', async (req, res) => {
         action: 'RETURN_EVENT',
         entity: 'events',
         entityId: eventRow.id,
-        metadata: { title: eventRow.title, organization_id: eventRow.organization_id, status: targetStatus, remarks: review_remarks },
+        metadata: {
+          title: eventRow.title,
+          organization_id: eventRow.organization_id,
+          status: targetStatus,
+          remarks: review_remarks,
+          description: `Returned event proposal "${eventRow.title}" for revisions${review_remarks ? `: ${review_remarks}` : ''}`,
+        },
+        req,
       });
     }
 
@@ -541,7 +570,7 @@ router.put('/:id', async (req, res) => {
     const eventRow = fullEvent.rows[0];
 
     // If transitioned to PUBLISHED, notify students, officer, adviser
-    if (nextStatus === 'PUBLISHED' && current.status !== 'PUBLISHED') {
+    if (['PUBLISHED', 'APPROVED'].includes(nextStatus) && !['PUBLISHED', 'APPROVED'].includes(current.status)) {
       await notifyStudentsForEvent(eventRow);
       if (eventRow.created_by) {
         await notifyUser(eventRow.created_by, {
@@ -571,6 +600,23 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    await recordAuditLog({
+      userId: approved_by || req.body?.user_id || req.body?.updated_by || eventRow.created_by || null,
+      action: nextStatus !== current.status ? 'UPDATE_EVENT_STATUS' : 'UPDATE_EVENT',
+      entity: 'events',
+      entityId: eventRow.id,
+      metadata: {
+        title: eventRow.title,
+        organization_id: eventRow.organization_id,
+        status: nextStatus,
+        previous_status: current.status,
+        description: nextStatus !== current.status
+          ? `Updated event "${eventRow.title}" status to ${nextStatus}`
+          : `Updated details for event "${eventRow.title}"`,
+      },
+      req,
+    });
+
     res.json(eventRow);
   } catch (err) {
     console.error(err);
@@ -581,7 +627,27 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/events/:id — Delete an event
 router.delete('/:id', async (req, res) => {
   try {
-    await db.query('DELETE FROM events WHERE id = $1', [req.params.id]);
+    const { id } = req.params;
+    const existing = await db.query('SELECT title, organization_id, created_by FROM events WHERE id = $1', [id]);
+    const eventData = existing.rows[0];
+
+    await db.query('DELETE FROM events WHERE id = $1', [id]);
+
+    if (eventData) {
+      await recordAuditLog({
+        userId: req.body?.user_id || req.query?.user_id || null,
+        action: 'DELETE_EVENT',
+        entity: 'events',
+        entityId: id,
+        metadata: {
+          title: eventData.title,
+          organization_id: eventData.organization_id,
+          description: `Deleted event "${eventData.title}"`,
+        },
+        req,
+      });
+    }
+
     res.json({ deleted: true });
   } catch (err) {
     console.error(err);

@@ -176,7 +176,12 @@ router.post('/assign', async (req, res) => {
         action: 'ASSIGN_ADVISER',
         entity: 'organization_advisers',
         entityId: result.rows[0].id,
-        metadata: { organization_id, adviser_id },
+        metadata: {
+          organization_id,
+          adviser_id,
+          description: `Assigned faculty adviser #${adviser_id} to ${organization_name || 'organization'}`,
+        },
+        req,
       });
     }
 
@@ -243,7 +248,8 @@ router.get('/requests', async (req, res) => {
 // POST /api/advisers/requests — Submit a new adviser change request (uq_one_pending_change_request)
 router.post('/requests', async (req, res) => {
   try {
-    const { organization_id, proposed_adviser_id, requested_by, reason } = req.body;
+    const { organization_id, requested_by, reason } = req.body;
+    const proposed_adviser_id = req.body.proposed_adviser_id || req.body.requested_adviser_id;
 
     if (!organization_id || !proposed_adviser_id || !reason) {
       return res.status(400).json({
@@ -318,7 +324,14 @@ router.post('/requests', async (req, res) => {
       action: 'REQUEST_ADVISER_CHANGE',
       entity: 'adviser_change_requests',
       entityId: result.rows[0].id,
-      metadata: { organization_id, proposed_adviser_id, current_adviser_id: currentAdviserId, reason: reason.trim() },
+      metadata: {
+        organization_id,
+        proposed_adviser_id,
+        current_adviser_id: currentAdviserId,
+        reason: reason.trim(),
+        description: `Submitted adviser change request for "${orgName}"`,
+      },
+      req,
     });
 
     res.status(201).json(result.rows[0]);
@@ -406,7 +419,13 @@ router.put('/requests/:id/review', async (req, res) => {
       action: `REVIEW_ADVISER_CHANGE_${normalizedStatus}`,
       entity: 'adviser_change_requests',
       entityId: changeRequest.id,
-      metadata: { organization_id: changeRequest.organization_id, status: normalizedStatus, review_remarks },
+      metadata: {
+        organization_id: changeRequest.organization_id,
+        status: normalizedStatus,
+        review_remarks,
+        description: `Reviewed adviser change request for "${orgName}": ${normalizedStatus}`,
+      },
+      req,
     });
 
     res.json({ message: `Request ${normalizedStatus.toLowerCase()} successfully`, request: changeRequest });
