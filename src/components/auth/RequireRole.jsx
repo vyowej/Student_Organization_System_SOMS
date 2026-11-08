@@ -1,8 +1,10 @@
 /**
  * Role-Based Route Guards
  *
- * - `RequireRole`: Protects portal routes (`/student/*`, `/officer/*`, `/adviser/*`, `/admin/*`)
- *   by verifying authentication and role membership.
+ * - `RequireRole`: Protects portal routes (`/officer/*`, `/adviser/*`, `/admin/*`).
+ *   Admin accounts (`isGlobalAdmin` / `ADMIN`) hold global access permissions across
+ *   all modules and records. Coordinator accounts (`isCoordinator`) can also access
+ *   adviser pre-generation & organization administration.
  * - `PublicOnly`: Redirects already-authenticated users to their active role's dashboard.
  */
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
@@ -10,52 +12,47 @@ import { dashboardByRole } from '../../data/navigation.js'
 import { useAuth } from '../../context/useAuth.js'
 
 export default function RequireRole({ role }) {
-  const { currentUser, authLoading, setActiveRole } = useAuth()
+  const { currentUser, authLoading } = useAuth()
   const location = useLocation()
 
   if (authLoading) {
-    return <div className="page-loading-state" style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading...</div>
+    return (
+      <div
+        className="page-loading-state"
+        style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        Loading...
+      </div>
+    )
   }
 
   if (!currentUser) return <Navigate replace state={{ from: location.pathname }} to="/login" />
 
-  const availableRoles = currentUser.roles ?? [currentUser.role]
-
-  // Student portal access: any user with STUDENT capability, or an officer (since every officer is a student)
+  // Student entity/portal has been retired; redirect any legacy route cleanly to public directory
   if (role === 'STUDENT') {
-    const canAccessStudent = availableRoles.includes('STUDENT') ||
-      currentUser?.role === 'STUDENT' ||
-      currentUser?.role === 'OFFICER' ||
-      Boolean(currentUser?.studentNumber || currentUser?.studentId || currentUser?.studentDbId)
-    if (!canAccessStudent) return <Navigate replace to="/access-denied" />
+    return <Navigate replace to="/organizations" />
+  }
+
+  // Global Admin override: full access across all system modules and portals
+  const availableRoles = currentUser.roles ?? [currentUser.role]
+  const isGlobalAdmin = Boolean(
+    currentUser.isGlobalAdmin ||
+    currentUser.role === 'ADMIN' ||
+    availableRoles.includes('ADMIN')
+  )
+  if (isGlobalAdmin) {
     return <Outlet />
   }
 
-  // Officer portal access: requires OFFICER role AND an active organization workspace
+  // Coordinator (Ma'am Marj) override: access Adviser portal + Admin Users/Organizations for adviser account preparation
+  if (currentUser.isCoordinator && (role === 'ADVISER' || role === 'ADMIN')) {
+    return <Outlet />
+  }
+
   if (role === 'OFFICER') {
-    const hasOrg = (currentUser?.organizationRoles && currentUser.organizationRoles.length > 0) ||
-      Boolean(currentUser?.organizationId) ||
-      (currentUser?.memberships && currentUser.memberships.some((m) => m.status === 'ACTIVE' && m.position !== 'MEMBER'))
-
-    const isOfficer = availableRoles.includes('OFFICER') || currentUser?.role === 'OFFICER'
-
-    if (!isOfficer || !hasOrg) {
-      // An officer without an assigned organization cannot enter the organization portal,
-      // but CAN enter the student portal! Redirect them safely to My Organizations in the Student portal.
-      return <Navigate replace to="/student/my-organizations" state={{ notice: 'No active organization workspace assigned to your account yet.' }} />
-    }
-
-    // Auto-activate single organization if coming in with role STUDENT
-    if (currentUser?.role !== 'OFFICER') {
-      const soleOrgId = currentUser?.organizationRoles?.length === 1
-        ? currentUser.organizationRoles[0].organizationId
-        : currentUser?.organizationId
-      if (soleOrgId) {
-        setActiveRole('OFFICER', soleOrgId)
-      } else if (!currentUser?.organizationId) {
-        return <Navigate replace to="/student/my-organizations" />
-      }
-    }
+    const isOfficer = availableRoles.includes('OFFICER') || currentUser.role === 'OFFICER'
+    if (!isOfficer) return <Navigate replace to="/access-denied" />
+    return <Outlet />
   }
 
   if (!availableRoles.includes(role)) return <Navigate replace to="/access-denied" />
@@ -68,10 +65,7 @@ export function PublicOnly({ children }) {
     return null
   }
   if (currentUser) {
-    const hasOrg = (currentUser.organizationRoles && currentUser.organizationRoles.length > 0) || Boolean(currentUser.organizationId)
-    const targetDashboard = (currentUser.role === 'OFFICER' && !hasOrg)
-      ? '/student/dashboard'
-      : (dashboardByRole[currentUser.role] ?? '/student/dashboard')
+    const targetDashboard = dashboardByRole[currentUser.role] ?? '/officer/dashboard'
     return <Navigate replace to={targetDashboard} />
   }
   return children

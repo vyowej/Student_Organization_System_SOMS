@@ -1,7 +1,8 @@
 /**
  * StudentOrganizationsPage.jsx
  *
- * Student portal — full organization directory with live search + category filter.
+ * Public Organizations Directory (`/organizations`) — full accredited organization
+ * directory with live search, category filter, and dynamic active counter.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
@@ -11,12 +12,14 @@ import FilterSelect from '../components/ui/FilterSelect.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar from '../components/ui/SearchBar.jsx'
+import { usePortalData } from '../context/usePortalData.js'
 import { organizationCategories, studentOrganizations } from '../data/studentEvents.js'
 
 export default function StudentOrganizationsPage() {
-  const context = useOutletContext() || {}
-  const adminOrganizations = context.adminOrganizations || []
-  const adminSettings = context.adminSettings || null
+  const outletContext = useOutletContext() || {}
+  const portalData = usePortalData()
+  const adminOrganizations = outletContext.adminOrganizations || portalData?.adminOrganizations || []
+  const adminSettings = outletContext.adminSettings || portalData?.adminSettings || null
 
   const [searchParams] = useSearchParams()
   const initialQuery = searchParams.get('q') ?? ''
@@ -51,7 +54,7 @@ export default function StudentOrganizationsPage() {
     return visibleOrganizations.filter((organization) => {
       const matchesCategory = category === 'All' ||
         String(organization.category || '').trim().toLowerCase() === category.trim().toLowerCase()
-      const searchableText = `${organization.name} ${organization.acronym} ${organization.category} ${organization.description} ${organization.adviser}`.toLowerCase()
+      const searchableText = `${organization.name} ${organization.acronym} ${organization.category} ${organization.college} ${organization.description} ${organization.adviser}`.toLowerCase()
       return matchesCategory && (!query || searchableText.includes(query))
     })
   }, [category, search, visibleOrganizations])
@@ -59,16 +62,16 @@ export default function StudentOrganizationsPage() {
   return (
     <div className="student-organizations-page">
       <PageHeader
-        description="Discover organizations, communities, and activities across WMSU."
-        eyebrow="UNIDOS STUDENT PORTAL"
-        title="Student Organizations"
+        description="Browse all accredited university, college, and departmental organizations across WMSU."
+        eyebrow="UNIDOS CAMPUS DIRECTORY"
+        title="Campus Organizations Directory"
       />
 
       <div className="directory-toolbar">
         <SearchBar
           label="Search organizations"
           onChange={setSearch}
-          placeholder="Search organizations by name, acronym or category…"
+          placeholder="Search organizations by name, acronym, college, or adviser…"
           value={search}
         />
         <FilterSelect label="Category" onChange={setCategory} options={categoryOptions} value={category} />
@@ -78,7 +81,8 @@ export default function StudentOrganizationsPage() {
       </div>
 
       <div aria-live="polite" className="organization-results-label">
-        {filteredOrganizations.length} {filteredOrganizations.length === 1 ? 'organization' : 'organizations'}
+        <strong>{filteredOrganizations.length}</strong> active {filteredOrganizations.length === 1 ? 'organization' : 'organizations'}
+        {visibleOrganizations.length !== filteredOrganizations.length ? ` (of ${visibleOrganizations.length} total)` : ''}
       </div>
 
       {filteredOrganizations.length > 0 ? (
@@ -106,9 +110,9 @@ export default function StudentOrganizationsPage() {
               <p className="organization-card-description">{organization.description}</p>
               <div className="organization-card-meta">
                 <span><small>Faculty adviser</small><strong>{organization.adviser}</strong></span>
-                <span><small>Active members</small><strong>{organization.activeMembers ?? organization.memberCount ?? 0}</strong></span>
+                <span><small>Active officers</small><strong>{organization.activeMembers ?? organization.memberCount ?? 0}</strong></span>
               </div>
-              <Link className="button button-secondary organization-view-button" to={`/student/organizations/${organization.id}`}>
+              <Link className="button button-secondary organization-view-button" to={`/organizations/${organization.id}`}>
                 View Organization <Icon name="arrow-right" size={13} />
               </Link>
             </article>

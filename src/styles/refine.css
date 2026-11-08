@@ -243,8 +243,8 @@
 
 /* ---------- Organization settings: one field per line, full width ---------- */
 .officer-settings-field-grid { grid-template-columns: minmax(0, 1fr); }
-.officer-settings-field-grid > label { 
-  grid-column: 1 / -1; 
+.officer-settings-field-grid > label {
+  grid-column: 1 / -1;
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
   font-size: 13px;
   font-weight: 600;
@@ -252,8 +252,8 @@
 }
 .officer-settings-field-grid input,
 .officer-settings-field-grid select,
-.officer-settings-field-grid textarea { 
-  width: 100%; 
+.officer-settings-field-grid textarea {
+  width: 100%;
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
   font-size: 14px;
   font-weight: 400;
@@ -262,79 +262,3 @@
 .student-profile-block dt,
 .student-profile-block dd { margin: 0; padding: 0; }
 .student-profile-block dd { margin-top: 4px; }
-
-
-
-/* ==========================================================================
-   Persistent undo bar (stays under the top bar, on every portal page,
-   until the last action is undone, dismissed, or replaced).
-   ========================================================================== */
-.undo-bar {
-  position: sticky;
-  top: 80px;
-  z-index: 25;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border: 1px solid #ecd7a8;
-  border-radius: 12px;
-  color: #4a3a12;
-  background: #fff8e3;
-  box-shadow: 0 6px 18px rgba(60, 40, 10, 0.1);
-  animation: undo-bar-in 220ms ease-out both;
-}
-.undo-bar-icon {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: #946200;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.undo-bar-message { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
-.undo-bar-button {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 0 14px;
-  border: 1px solid var(--crimson);
-  border-radius: 8px;
-  color: #fff;
-  background: var(--crimson);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.undo-bar-button:hover { background: var(--crimson-dark); }
-.undo-bar-button kbd {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  font: inherit;
-  font-size: 10px;
-  font-weight: 600;
-}
-.undo-bar-close {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: 6px;
-  color: #7a6428;
-  background: transparent;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-.undo-bar-close:hover { background: rgba(0, 0, 0, 0.06); }
-@keyframes undo-bar-in { from { opacity: 0; transform: translateY(-6px); } }
-@media (max-width: 760px) {
-  .undo-bar { top: 72px; flex-wrap: wrap; }
-  .undo-bar-button kbd { display: none; }
-}
-@media (prefers-reduced-motion: reduce) { .undo-bar { animation: none; } }

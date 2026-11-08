@@ -6,7 +6,8 @@ import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import Input from '../components/ui/Input.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
-import { undoAction, useToast } from '../components/ui/useToast.js'
+import { useToast } from '../components/ui/useToast.js'
+import { readFileAsDataUrl } from '../data/officerHierarchy.js'
 
 function toDateInputValue(value) {
   const parsed = value ? new Date(value) : null
@@ -34,12 +35,18 @@ function toDisplayTime(value) {
 export default function OfficerEventFormPage() {
   const [searchParams] = useSearchParams()
   const editId = searchParams.get('edit')
-  const { adminOrganizations = [], captureUndo, currentUser, officerEvents = [], saveOfficerEvent } = useOutletContext()
+  const { adminOrganizations = [], currentUser, officerEvents = [], saveOfficerEvent } = useOutletContext()
   const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
-  const organization = adminOrganizations?.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0] || { name: 'Your Organization' }
+  const organization =
+    adminOrganizations?.find((item) => String(item.id) === String(orgId)) ||
+    adminOrganizations[0] || { name: 'Your Organization' }
+
   const existing = officerEvents.find((event) => String(event.id) === String(editId))
   const initialDateValue = toDateInputValue(existing?.startDatetime || existing?.date)
   const existingTimes = existing?.time?.split('–').map((value) => value.trim()) ?? []
+  const initialComplianceName =
+    existing?.complianceFileName || existing?.supportingDocuments?.[0] || ''
+
   const [title, setTitle] = useState(existing?.title ?? '')
   const [date, setDate] = useState(initialDateValue)
   const [location, setLocation] = useState(existing?.location ?? '')
@@ -51,16 +58,41 @@ export default function OfficerEventFormPage() {
   const [targetAudience, setTargetAudience] = useState(existing?.targetAudience ?? '')
   const [registrationDeadline, setRegistrationDeadline] = useState(toDateInputValue(existing?.registrationDeadline))
   const [budget, setBudget] = useState(existing?.budget ?? '')
-  const [supportingDocuments, setSupportingDocuments] = useState(existing?.supportingDocuments?.join(', ') ?? '')
+  const [complianceFileName, setComplianceFileName] = useState(initialComplianceName)
+  const [complianceFileData, setComplianceFileData] = useState(undefined)
   const [error, setError] = useState('')
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false)
   const [confirmLeaveOpen, setConfirmLeaveOpen] = useState(false)
   const { showToast } = useToast()
   const navigate = useNavigate()
 
+  async function handleComplianceFileChange(event) {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      setComplianceFileName(file.name)
+      setComplianceFileData(dataUrl)
+      setError('')
+    } catch {
+      setError('Unable to read the selected compliance document file.')
+    }
+  }
+
   async function submit(status, confirmed = false) {
+    const numericCapacity = parseInt(String(capacity), 10)
     if (!title.trim() || !date || !location.trim() || !description.trim()) {
       setError('Complete the event title, date, location, and description before saving.')
+      return
+    }
+    if (!Number.isFinite(numericCapacity) || numericCapacity < 1) {
+      setError('Enter a valid maximum participant limit (minimum 1 participant).')
+      return
+    }
+    if (status === 'SUBMITTED' && !complianceFileName.trim()) {
+      setError('Please upload a compliance document file before submitting the event proposal for adviser review.')
       return
     }
     if (status === 'SUBMITTED' && !confirmed) {
@@ -69,41 +101,60 @@ export default function OfficerEventFormPage() {
       return
     }
     setConfirmSubmitOpen(false)
-    const undo = captureUndo()
-    const saved = await saveOfficerEvent({
-      ...(existing ?? {}),
-      id: existing?.id,
-      organizationId: organization.id,
-      title: title.trim(),
-      rawDate: date,
-      date: new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-      startDatetime: `${date}T${startTime || '08:00'}:00`,
-      endDatetime: `${date}T${endTime || startTime || '17:00'}:00`,
-      location: location.trim(),
-      description: description.trim(),
-      capacity: Number(capacity),
-      category,
-      startTime,
-      endTime,
-      time: startTime && endTime ? `${toDisplayTime(startTime)} – ${toDisplayTime(endTime)}` : toDisplayTime(startTime),
-      targetAudience: targetAudience.trim(),
-      registrationDeadline,
-      budget: budget ? Number(budget) : '',
-      supportingDocuments: supportingDocuments.split(',').map((document) => document.trim()).filter(Boolean),
-      registrations: existing?.registrations ?? 0,
-    }, status)
+    const exactFileName = complianceFileName.trim()
+    const saved = await saveOfficerEvent(
+      {
+        ...(existing ?? {}),
+        id: existing?.id,
+        organizationId: organization.id,
+        title: title.trim(),
+        rawDate: date,
+        date: new Date(`${date}T12:00:00`).toLocaleDateString('en-US', {
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+        }),
+        startDatetime: `${date}T${startTime || '08:00'}:00`,
+        endDatetime: `${date}T${endTime || startTime || '17:00'}:00`,
+        location: location.trim(),
+        description: description.trim(),
+        capacity: numericCapacity,
+        maxParticipants: numericCapacity,
+        category,
+        startTime,
+        endTime,
+        time: startTime && endTime ? `${toDisplayTime(startTime)} – ${toDisplayTime(endTime)}` : toDisplayTime(startTime),
+        targetAudience: targetAudience.trim(),
+        registrationDeadline,
+        budget: budget ? Number(budget) : '',
+        complianceFileName: exactFileName || null,
+        complianceFileData,
+        supportingDocuments: exactFileName ? [exactFileName] : [],
+        registrations: existing?.registrations ?? 0,
+      },
+      status
+    )
     if (!saved) {
       setError('Unable to save the event proposal to the database.')
       return
     }
-    showToast(status === 'SUBMITTED' ? 'Event proposal submitted for adviser review.' : 'Event proposal saved as a draft.', 'success', undoAction(undo))
+    showToast(
+      status === 'SUBMITTED'
+        ? `Event proposal submitted for adviser review with "${exactFileName}".`
+        : 'Event proposal saved as a draft.',
+      'success'
+    )
     navigate('/officer/events')
   }
 
   return (
     <div className="officer-page">
       <PageHeader
-        description={existing ? 'Address the adviser’s feedback, then resubmit the proposal for review.' : `Create a proposal for ${organization.name}. An adviser and Student Affairs Admin will review it.`}
+        description={
+          existing
+            ? 'Address the adviser’s feedback, verify your compliance document attachment, and resubmit for review.'
+            : `Create an event proposal for ${organization.name}. Attach your compliance document and set the maximum participant limit.`
+        }
         eyebrow={organization.name}
         title={existing ? 'Edit Event Proposal' : 'Create Event Proposal'}
       />
@@ -111,39 +162,153 @@ export default function OfficerEventFormPage() {
         <div className="officer-revision-note">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
             <Icon name="alert-circle" size={18} />
-            <strong>Adviser Feedback & Revision Request</strong>
+            <strong>Adviser Feedback &amp; Revision Request</strong>
           </div>
           <p>{existing.revisionNote}</p>
         </div>
       )}
       <Card className="officer-event-form-card">
         <form className="officer-event-form" onSubmit={(event) => event.preventDefault()}>
-          <Input id="officer-event-title" label="Event title" onChange={(event) => setTitle(event.target.value)} placeholder="e.g. WMSU Hackathon 2026" required value={title} />
-          <Input id="officer-event-category" label="Activity category" onChange={(event) => setCategory(event.target.value)} value={category} />
-          <Input id="officer-event-date" label="Event date" onChange={(event) => setDate(event.target.value)} required type="date" value={date} />
-          <Input id="officer-event-location" label="Location" onChange={(event) => setLocation(event.target.value)} placeholder="Venue or campus location" required value={location} />
-          <Input id="officer-event-start-time" label="Start time" onChange={(event) => setStartTime(event.target.value)} type="time" value={startTime} />
-          <Input id="officer-event-end-time" label="End time" onChange={(event) => setEndTime(event.target.value)} type="time" value={endTime} />
-          <Input id="officer-event-capacity" label="Registration capacity" min="1" onChange={(event) => setCapacity(event.target.value)} required type="number" value={capacity} />
-          <Input id="officer-event-deadline" label="Registration deadline" onChange={(event) => setRegistrationDeadline(event.target.value)} type="date" value={registrationDeadline} />
-          <Input id="officer-event-audience" label="Target audience" onChange={(event) => setTargetAudience(event.target.value)} placeholder="e.g. WMSU students" value={targetAudience} />
-          <Input id="officer-event-budget" label="Proposed budget (PHP)" min="0" onChange={(event) => setBudget(event.target.value)} type="number" value={budget} />
-          <Input id="officer-event-documents" label="Compliance document names" onChange={(event) => setSupportingDocuments(event.target.value)} placeholder="Venue clearance.pdf, Safety plan.pdf" value={supportingDocuments} />
+          <Input
+            id="officer-event-title"
+            label="Event title *"
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="e.g. WMSU Hackathon 2026"
+            required
+            value={title}
+          />
+          <Input
+            id="officer-event-category"
+            label="Activity category"
+            onChange={(event) => setCategory(event.target.value)}
+            value={category}
+          />
+          <Input
+            id="officer-event-date"
+            label="Event date *"
+            onChange={(event) => setDate(event.target.value)}
+            required
+            type="date"
+            value={date}
+          />
+          <Input
+            id="officer-event-location"
+            label="Location / Venue *"
+            onChange={(event) => setLocation(event.target.value)}
+            placeholder="Venue or campus location"
+            required
+            value={location}
+          />
+          <Input
+            id="officer-event-start-time"
+            label="Start time"
+            onChange={(event) => setStartTime(event.target.value)}
+            type="time"
+            value={startTime}
+          />
+          <Input
+            id="officer-event-end-time"
+            label="End time (registration closes automatically after end time)"
+            onChange={(event) => setEndTime(event.target.value)}
+            type="time"
+            value={endTime}
+          />
+          <Input
+            id="officer-event-capacity"
+            label="Maximum participant limit *"
+            min="1"
+            onChange={(event) => setCapacity(event.target.value.replace(/[^\d]/g, ''))}
+            required
+            type="number"
+            value={capacity}
+          />
+          <Input
+            id="officer-event-deadline"
+            label="Registration deadline"
+            onChange={(event) => setRegistrationDeadline(event.target.value)}
+            type="date"
+            value={registrationDeadline}
+          />
+          <Input
+            id="officer-event-audience"
+            label="Target audience"
+            onChange={(event) => setTargetAudience(event.target.value)}
+            placeholder="e.g. WMSU campus community"
+            value={targetAudience}
+          />
+          <Input
+            id="officer-event-budget"
+            label="Proposed budget (PHP)"
+            min="0"
+            onChange={(event) => setBudget(event.target.value)}
+            type="number"
+            value={budget}
+          />
+
           <div className="form-field officer-event-description">
-            <label htmlFor="officer-event-description">Event description</label>
-            <textarea className="input" id="officer-event-description" onChange={(event) => setDescription(event.target.value)} required rows="5" value={description} />
+            <label className="admin-field-label" htmlFor="officer-event-compliance-file">
+              Compliance Document File Upload <span className="required-asterisk">*</span>
+            </label>
+            <input
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              className="input"
+              id="officer-event-compliance-file"
+              onChange={handleComplianceFileChange}
+              type="file"
+            />
+            {complianceFileName ? (
+              <div className="compliance-upload-badge">
+                <Icon name="file" size={16} />
+                <span>
+                  Attached file (shown identically to Adviser): <strong>{complianceFileName}</strong>
+                </span>
+              </div>
+            ) : (
+              <small style={{ color: '#6d6570', fontSize: '12px' }}>
+                Upload a single consolidated compliance document (PDF, DOCX, JPG, or PNG). The exact filename uploaded here will appear on your Faculty Adviser&apos;s review screen.
+              </small>
+            )}
           </div>
+
+          <div className="form-field officer-event-description">
+            <label className="admin-field-label" htmlFor="officer-event-description">
+              Event description <span className="required-asterisk">*</span>
+            </label>
+            <textarea
+              className="input"
+              id="officer-event-description"
+              onChange={(event) => setDescription(event.target.value)}
+              required
+              rows="5"
+              value={description}
+            />
+          </div>
+
           {error && <p className="officer-form-error" role="alert">{error}</p>}
           <div className="officer-form-footer">
-            <p>Submission sends this proposal to your adviser. Officers cannot approve event proposals.</p>
+            <p>
+              Submission sends this proposal and compliance file (<strong>{complianceFileName || 'none attached'}</strong>) to your Faculty Adviser. Registration closes automatically once the event ends or reaches {capacity || 0} participants.
+            </p>
             <div>
-              <Button onClick={() => (title.trim() || description.trim() || location.trim() ? setConfirmLeaveOpen(true) : navigate('/officer/events'))} variant="secondary">Cancel</Button>
+              <Button
+                onClick={() =>
+                  title.trim() || description.trim() || location.trim()
+                    ? setConfirmLeaveOpen(true)
+                    : navigate('/officer/events')
+                }
+                variant="secondary"
+              >
+                Cancel
+              </Button>
               <Button onClick={() => submit('DRAFT')} variant="secondary">Save Draft</Button>
-              <Button onClick={() => submit('SUBMITTED')} variant="primary">{existing ? 'Save and Resubmit' : 'Submit Proposal'}</Button>
+              <Button onClick={() => submit('SUBMITTED')} variant="primary">
+                {existing ? 'Save and Resubmit' : 'Submit Proposal'}
+              </Button>
             </div>
           </div>
         </form>
       </Card>
+
       <ConfirmDialog
         cancelLabel="Keep editing"
         confirmLabel="Discard and leave"
@@ -156,11 +321,12 @@ export default function OfficerEventFormPage() {
       />
       <ConfirmDialog
         confirmLabel={existing ? 'Resubmit proposal' : 'Submit proposal'}
-        message="Are you sure you want to submit this event proposal? It will be sent to your adviser for review."
+        message={`Submit "${title.trim() || 'this event proposal'}" with compliance file "${complianceFileName}" and max participant limit of ${capacity}?`}
         onCancel={() => setConfirmSubmitOpen(false)}
         onConfirm={() => submit('SUBMITTED', true)}
         open={confirmSubmitOpen}
         title="Submit event proposal"
+        tone="success"
       />
     </div>
   )

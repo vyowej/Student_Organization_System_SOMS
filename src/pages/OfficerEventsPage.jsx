@@ -48,7 +48,10 @@ export default function OfficerEventsPage() {
       render: (_, event) => (
         <div className="officer-event-table-cell">
           <strong>{event.title}</strong>
-          <small>{event.location || event.venue || 'Campus venue'}</small>
+          <small>
+            {event.location || event.venue || 'Campus venue'}
+            {event.complianceFileName ? ` · Compliance: ${event.complianceFileName}` : ''}
+          </small>
         </div>
       ),
     },

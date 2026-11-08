@@ -8,47 +8,21 @@ export function ToastProvider({ children }) {
     setToasts((current) => current.filter((toast) => toast.id !== id))
   }, [])
 
-  // The most recent undoable action. Unlike a toast it stays until it is used,
-  // dismissed, replaced by a newer action, or the user logs out, so an undo is
-  // always one click away (see UndoBar).
-  const [lastAction, setLastAction] = useState(null)
-
-  const pushToast = useCallback((message, tone, options) => {
+  const showToast = useCallback((message, tone = 'info', options = {}) => {
     const id = `${Date.now()}-${Math.random()}`
-    const { action = null, duration = action ? 9000 : 4500 } = options
-    setToasts((current) => [...current, { id, message, tone, action }])
+    const { action = null, duration = 4200 } = options || {}
+    const cleanAction = action && action.label !== 'Undo' ? action : null
+    setToasts((current) => [...current, { id, message, tone, action: cleanAction }])
     window.setTimeout(() => dismissToast(id), duration)
     return id
   }, [dismissToast])
 
-  const runUndo = useCallback((actionId, undo) => {
-    undo()
-    setLastAction((current) => (current?.id === actionId ? null : current))
-    pushToast('Action undone.', 'info', {})
-  }, [pushToast])
-
-  // options.action = { label, onClick } adds a button (e.g. Undo); such toasts stay longer.
-  // An "Undo" action is also remembered as lastAction so it stays available after the toast is gone.
-  const showToast = useCallback((message, tone = 'info', options = {}) => {
-    const { action = null } = options
-    if (action?.label === 'Undo') {
-      const actionId = `${Date.now()}-${Math.random()}`
-      const run = () => runUndo(actionId, action.onClick)
-      setLastAction({ id: actionId, message, undo: run })
-      pushToast(message, tone, { ...options, action: { ...action, onClick: run } })
-      return
-    }
-    pushToast(message, tone, options)
-  }, [pushToast, runUndo])
-
-  const undoLast = useCallback(() => {
-    if (lastAction) lastAction.undo()
-  }, [lastAction])
-  const clearLastAction = useCallback(() => setLastAction(null), [])
+  const clearLastAction = useCallback(() => {}, [])
+  const undoLast = useCallback(() => {}, [])
 
   const value = useMemo(
-    () => ({ showToast, lastAction, undoLast, clearLastAction }),
-    [showToast, lastAction, undoLast, clearLastAction],
+    () => ({ showToast, lastAction: null, undoLast, clearLastAction }),
+    [showToast, undoLast, clearLastAction],
   )
 
   return (

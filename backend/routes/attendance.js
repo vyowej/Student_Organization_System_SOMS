@@ -208,45 +208,167 @@ router.get('/registrations/:event_id', async (req, res) => {
   }
 });
 
-// POST /api/attendance/register — Register a student for a published event (respecting max_participants)
+// POST /api/attendance/register — Register a participant for a published event (enforcing max_participants & auto-close)
 router.post('/register', async (req, res) => {
+  const client = await db.pool.connect();
   try {
-    const { event_id, student_id, user_id } = req.body;
-    const resolvedStudentId = await resolveStudentDbId(student_id || user_id);
+    await client.query('BEGIN');
 
-    if (!event_id || !resolvedStudentId) {
-      return res.status(400).json({ error: 'event_id and a valid student_id are required' });
+    const {
+      event_id,
+      student_id,
+      user_id,
+      student_number,
+      first_name,
+      last_name,
+      email,
+      program,
+      program_id,
+      year_level,
+      cor_file_name,
+      cor_file_data,
+      require_cor,
+    } = req.body || {};
+
+    if (!event_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'event_id is required' });
     }
 
-    // Verify event exists before allowing registration
-    const eventRes = await db.query(
-      'SELECT id, status, max_participants FROM events WHERE id = $1',
+    let resolvedStudentId = await resolveStudentDbId(student_id || user_id);
+
+    if (!resolvedStudentId && student_number) {
+      const cleanStudentNo = String(student_number).trim();
+      if (!/^\d+$/.test(cleanStudentNo)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Student ID must contain digits only (0-9).' });
+      }
+      if (require_cor && !cor_file_name) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Certificate of Registration (COR) upload is required.' });
+      }
+
+      const existingStu = await client.query(
+        'SELECT id, user_id FROM students WHERE student_number = $1 LIMIT 1',
+        [cleanStudentNo]
+      );
+
+      if (existingStu.rows.length > 0) {
+        resolvedStudentId = existingStu.rows[0].id;
+        if (cor_file_name) {
+          await client.query(
+            `UPDATE students
+                SET cor_file_name = COALESCE($2, cor_file_name),
+                    cor_file_data = COALESCE($3, cor_file_data)
+              WHERE id = $1`,
+            [resolvedStudentId, cor_file_name, cor_file_data || null]
+          );
+        }
+      } else {
+        let resolvedProgId = program_id ? Number(program_id) : null;
+        if (!resolvedProgId && program) {
+          const progMatch = await client.query(
+            `SELECT id FROM programs
+              WHERE lower(name) = lower($1)
+                 OR lower(acronym) = lower($1)
+                 OR lower($1) LIKE '%' || lower(acronym) || '%'
+              ORDER BY id ASC LIMIT 1`,
+            [String(program).trim()]
+          );
+          resolvedProgId = progMatch.rows[0]?.id || null;
+        }
+        if (!resolvedProgId) {
+          const fallbackProg = await client.query('SELECT id FROM programs ORDER BY id ASC LIMIT 1');
+          resolvedProgId = fallbackProg.rows[0]?.id || 1;
+        }
+
+        const parsedYear = parseInt(String(year_level || '1').replace(/\D/g, ''), 10);
+        const validYear = parsedYear >= 1 && parsedYear <= 5 ? parsedYear : 1;
+        const resolvedEmail = (email ? String(email).trim().toLowerCase() : `participant.${cleanStudentNo}@wmsu.edu.ph`);
+        const resolvedFirst = (first_name ? String(first_name).trim() : 'Campus');
+        const resolvedLast = (last_name ? String(last_name).trim() : `Participant ${cleanStudentNo}`);
+
+        const existingUser = await client.query(
+          'SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1',
+          [resolvedEmail]
+        );
+        let participantUserId = existingUser.rows[0]?.id || null;
+
+        if (!participantUserId) {
+          const bcrypt = require('bcryptjs');
+          const pwdHash = await bcrypt.hash(`WMSU-${cleanStudentNo}`, 10);
+          const newUser = await client.query(
+            `INSERT INTO users (email, password_hash, first_name, last_name, role, status)
+             VALUES ($1, $2, $3, $4, 'OFFICER', 'ACTIVE')
+             RETURNING id`,
+            [resolvedEmail, pwdHash, resolvedFirst, resolvedLast]
+          );
+          participantUserId = newUser.rows[0].id;
+        }
+
+        const insertedStudent = await client.query(
+          `INSERT INTO students (user_id, student_number, program_id, year_level, cor_file_name, cor_file_data)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (user_id) DO UPDATE
+             SET cor_file_name = COALESCE(EXCLUDED.cor_file_name, students.cor_file_name),
+                 cor_file_data = COALESCE(EXCLUDED.cor_file_data, students.cor_file_data)
+           RETURNING id`,
+          [participantUserId, cleanStudentNo, resolvedProgId, validYear, cor_file_name || null, cor_file_data || null]
+        );
+        resolvedStudentId = insertedStudent.rows[0].id;
+      }
+    }
+
+    if (!resolvedStudentId) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'event_id and valid participant details are required' });
+    }
+
+    // Lock the event row to prevent capacity race conditions
+    const eventRes = await client.query(
+      'SELECT id, title, status, max_participants, start_date, end_date FROM events WHERE id = $1 FOR UPDATE',
       [event_id]
     );
 
     if (eventRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Event not found' });
     }
 
     const event = eventRes.rows[0];
+    const hasEnded =
+      ['COMPLETED', 'CANCELLED'].includes(event.status) ||
+      (event.end_date && new Date(event.end_date).getTime() <= Date.now());
+
+    if (hasEnded) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: 'Registration is closed because this event has already ended.',
+      });
+    }
+
     if (!['PUBLISHED', 'APPROVED'].includes(event.status)) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Cannot register for an event that is not open for registration' });
     }
 
     // Enforce max_participants capacity limit when set on the event
-    if (event.max_participants) {
-      const countRes = await db.query(
-        "SELECT COUNT(*) FROM event_registrations WHERE event_id = $1 AND status != 'CANCELLED' AND student_id != $2",
+    if (event.max_participants && Number(event.max_participants) > 0) {
+      const countRes = await client.query(
+        "SELECT COUNT(*)::int AS count FROM event_registrations WHERE event_id = $1 AND status != 'CANCELLED' AND student_id != $2",
         [event_id, resolvedStudentId]
       );
-      const currentCount = parseInt(countRes.rows[0].count, 10);
-      if (currentCount >= event.max_participants) {
-        return res.status(400).json({ error: 'Event has reached maximum participant capacity' });
+      const currentCount = Number(countRes.rows[0]?.count || 0);
+      if (currentCount >= Number(event.max_participants)) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `Event has reached maximum participant capacity (${event.max_participants}).`,
+        });
       }
     }
 
     const qrCodeValue = `UNIDOS-EVT${event_id}-STU${resolvedStudentId}`;
-    const insertRes = await db.query(
+    const insertRes = await client.query(
       `INSERT INTO event_registrations (event_id, student_id, qr_code, status)
        VALUES ($1, $2, $3, 'REGISTERED')
        ON CONFLICT (event_id, student_id)
@@ -255,13 +377,15 @@ router.post('/register', async (req, res) => {
       [event_id, resolvedStudentId, qrCodeValue]
     );
 
+    await client.query('COMMIT');
+
     const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [insertRes.rows[0].id]);
     const registration = fullRow.rows[0];
 
-    // Dispatch registration confirmation notification to the student
+    // Dispatch registration confirmation notification to the participant
     try {
       const studentUser = await db.query('SELECT user_id FROM students WHERE id = $1', [resolvedStudentId]);
-      if (studentUser.rows.length > 0) {
+      if (studentUser.rows.length > 0 && studentUser.rows[0].user_id) {
         await db.query(
           `INSERT INTO notifications (user_id, type, title, message, created_at)
            VALUES ($1, 'EVENT_REGISTRATION', $2, $3, now())`,
@@ -272,7 +396,6 @@ router.post('/register', async (req, res) => {
           ]
         );
 
-        // Record audit trail
         await recordAuditLog({
           userId: studentUser.rows[0].user_id,
           action: 'REGISTER_EVENT',
@@ -293,8 +416,11 @@ router.post('/register', async (req, res) => {
 
     res.status(201).json(registration);
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => null);
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error' });
+  } finally {
+    client.release();
   }
 });
 

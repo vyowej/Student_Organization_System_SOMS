@@ -7,10 +7,20 @@ import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
-import { undoAction, useToast } from '../components/ui/useToast.js'
+import { useToast } from '../components/ui/useToast.js'
 
 const filters = ['All', 'Pending', 'Approved', 'Returned', 'Rejected']
-const badgeTone = { PENDING: 'warning', SUBMITTED: 'warning', UNDER_REVIEW: 'warning', APPROVED: 'success', VERIFIED: 'success', RETURNED: 'danger', RETURNED_FOR_REVISION: 'danger', REJECTED: 'danger', PENDING_VERIFICATION: 'warning' }
+const badgeTone = {
+  PENDING: 'warning',
+  SUBMITTED: 'warning',
+  UNDER_REVIEW: 'warning',
+  APPROVED: 'success',
+  VERIFIED: 'success',
+  RETURNED: 'danger',
+  RETURNED_FOR_REVISION: 'danger',
+  REJECTED: 'danger',
+  PENDING_VERIFICATION: 'warning',
+}
 const approvedStatuses = ['APPROVED', 'PUBLISHED', 'ONGOING', 'COMPLETED', 'ARCHIVED', 'VERIFIED']
 
 export default function AdviserApprovalsPage() {
@@ -19,7 +29,6 @@ export default function AdviserApprovalsPage() {
     adviserDocuments = [],
     adviserReports = [],
     approveOfficerMembershipRequest,
-    captureUndo,
     currentUser,
     officerEvents = [],
     officerMembershipRequests = [],
@@ -32,43 +41,65 @@ export default function AdviserApprovalsPage() {
   const [selected, setSelected] = useState(null)
   const [search, setSearch] = useState('')
 
-  const assignedOrgs = adminOrganizations.filter((org) => {
-    if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
-    if (currentUser?.id && String(org.adviserUserId) === String(currentUser.id)) return true
-    if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
-    if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id) || String(a.organizationId) === String(org.id))) return true
-    return false
-  })
-  const baseOrgs = assignedOrgs
-  const assignedOrgIds = new Set(baseOrgs.map((org) => String(org.id)))
+  const isGlobalViewer = Boolean(currentUser?.isGlobalAdmin || currentUser?.role === 'ADMIN')
+
+  const assignedOrgs = isGlobalViewer
+    ? adminOrganizations
+    : adminOrganizations.filter((org) => {
+        if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
+        if (currentUser?.id && String(org.adviserUserId) === String(currentUser.id)) return true
+        if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
+        if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id) || String(a.organizationId) === String(org.id))) return true
+        return false
+      })
+
+  const assignedOrgIds = new Set(assignedOrgs.map((org) => String(org.id)))
 
   const events = officerEvents
-    .filter((event) => !event.organizationId || assignedOrgIds.has(String(event.organizationId)))
-    .map((event) => ({ ...event, type: 'EVENT', title: event.title, submittedDate: event.submittedDate || event.date }))
+    .filter((event) => isGlobalViewer || !event.organizationId || assignedOrgIds.has(String(event.organizationId)))
+    .map((event) => {
+      const exactComplianceName = event.complianceFileName || event.supportingDocuments?.[0] || ''
+      return {
+        ...event,
+        type: 'EVENT',
+        title: event.title,
+        submittedDate: event.submittedDate || event.date,
+        complianceFileName: exactComplianceName,
+        hasComplianceFile: Boolean(event.hasComplianceFile || exactComplianceName),
+        supportingDocuments: exactComplianceName ? [exactComplianceName] : (event.supportingDocuments || []),
+      }
+    })
 
   const documents = adviserDocuments
-    .filter((document) => !document.organizationId || assignedOrgIds.has(String(document.organizationId)))
+    .filter((document) => isGlobalViewer || !document.organizationId || assignedOrgIds.has(String(document.organizationId)))
     .map((document) => ({ ...document, type: document.type || 'DOCUMENT' }))
 
   const reports = adviserReports
-    .filter((report) => !report.organizationId || assignedOrgIds.has(String(report.organizationId)))
-    .map((report) => ({ ...report, type: 'ACCOMPLISHMENT_REPORT', title: report.eventTitle, submittedDate: report.submittedDate }))
+    .filter((report) => isGlobalViewer || !report.organizationId || assignedOrgIds.has(String(report.organizationId)))
+    .map((report) => ({
+      ...report,
+      type: 'ACCOMPLISHMENT_REPORT',
+      title: report.eventTitle,
+      submittedDate: report.submittedDate,
+    }))
 
   const applications = officerMembershipRequests
-    .filter((app) => !app.organizationId || assignedOrgIds.has(String(app.organizationId)))
+    .filter((app) => isGlobalViewer || !app.organizationId || assignedOrgIds.has(String(app.organizationId)))
     .map((app) => ({
       ...app,
       type: 'MEMBERSHIP_APPLICATION',
-      title: `${app.name || 'Student'} — Membership Application`,
-      submittedBy: app.name || 'Student Applicant',
+      title: `${app.name || 'Officer Applicant'} — Officer Onboarding Application`,
+      submittedBy: app.name || 'Officer Applicant',
       submittedDate: app.applicationDate || 'Recently',
     }))
 
-  const items = [...events, ...documents, ...reports, ...applications].filter((item) => (
-    item.type === 'EVENT' ? item.status !== 'DRAFT'
-      : item.type === 'ACCOMPLISHMENT_REPORT' ? item.status !== 'DRAFT'
+  const items = [...events, ...documents, ...reports, ...applications].filter((item) =>
+    item.type === 'EVENT'
+      ? item.status !== 'DRAFT'
+      : item.type === 'ACCOMPLISHMENT_REPORT'
+        ? item.status !== 'DRAFT'
         : true
-  ))
+  )
 
   function matchesFilter(item) {
     if (filter === 'All') return true
@@ -78,13 +109,13 @@ export default function AdviserApprovalsPage() {
     return item.status === filter.toUpperCase()
   }
 
-  async function decide(decision, comment, position = 'MEMBER', customTitle = null) {
+  async function decide(decision, comment, position = 'OTHER_OFFICER', customTitle = null, committee = null) {
     if (!selected) return false
-    const undo = captureUndo()
     let success = false
     if (selected.type === 'MEMBERSHIP_APPLICATION') {
       if (decision === 'APPROVED') {
-        success = await approveOfficerMembershipRequest(selected.id, position, customTitle)
+        const res = await approveOfficerMembershipRequest(selected.id, position, customTitle, committee)
+        success = Boolean(res && res.ok !== false)
       } else {
         success = await rejectOfficerMembershipRequest(selected.id, comment)
       }
@@ -95,13 +126,19 @@ export default function AdviserApprovalsPage() {
     }
 
     if (success) {
-      const message = selected.type === 'MEMBERSHIP_APPLICATION'
-        ? (decision === 'APPROVED' ? `${selected.name || 'Student'} membership approved.` : 'Membership application rejected.')
-        : decision === 'APPROVED' ? 'Request approved successfully.'
-          : decision === 'VERIFIED' ? `${selected.title} report was verified.`
-            : decision === 'REJECTED' ? `${selected.title} was rejected.`
-              : `${selected.title} was returned for revision.`
-      showToast(message, 'success', undoAction(undo))
+      const message =
+        selected.type === 'MEMBERSHIP_APPLICATION'
+          ? decision === 'APPROVED'
+            ? `${selected.name || 'Applicant'} approved as organization officer.`
+            : 'Officer application rejected.'
+          : decision === 'APPROVED'
+            ? 'Request approved successfully.'
+            : decision === 'VERIFIED'
+              ? `${selected.title} report was verified.`
+              : decision === 'REJECTED'
+                ? `${selected.title} was rejected.`
+                : `${selected.title} was returned for revision.`
+      showToast(message, 'success')
     } else {
       showToast('The decision could not be saved. Refresh the page and try again.', 'error')
     }
@@ -110,18 +147,34 @@ export default function AdviserApprovalsPage() {
 
   const visibleItems = items
     .filter(matchesFilter)
-    .filter((item) => matchesQuery(search, item.title, item.type, item.organizationName, item.submittedDate, item.name, item.studentId))
+    .filter((item) =>
+      matchesQuery(
+        search,
+        item.title,
+        item.type,
+        item.organizationName,
+        item.submittedDate,
+        item.name,
+        item.studentId,
+        item.complianceFileName
+      )
+    )
 
   return (
     <div className="adviser-page">
       <PageHeader
-        description="Review submissions from organizations assigned to you. Your decisions are recorded for the officer."
+        description="Review event proposals, compliance documents, accomplishment reports, and officer applications."
         eyebrow="UNIDOS · FACULTY ADVISER"
         title="Adviser Approvals"
       />
-      <SearchBar label="Search approvals" onChange={setSearch} placeholder="Search submissions by title, type or organization…" value={search} />
+      <SearchBar
+        label="Search approvals"
+        onChange={setSearch}
+        placeholder="Search submissions by title, compliance file, type, or organization…"
+        value={search}
+      />
       <Card className="adviser-panel adviser-approvals-panel">
-        <div className="adviser-filter-row" aria-label="Filter approvals" role="group">
+        <div aria-label="Filter approvals" className="adviser-filter-row" role="group">
           {filters.map((item) => {
             const count = items.filter((entry) => {
               if (item === 'All') return true
@@ -130,7 +183,17 @@ export default function AdviserApprovalsPage() {
               if (item === 'Approved') return approvedStatuses.includes(entry.status)
               return entry.status === item.toUpperCase()
             }).length
-            return <button aria-pressed={filter === item} className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} type="button">{item}<span>{count}</span></button>
+            return (
+              <button
+                aria-pressed={filter === item}
+                className={filter === item ? 'is-active' : ''}
+                key={item}
+                onClick={() => setFilter(item)}
+                type="button"
+              >
+                {item}<span>{count}</span>
+              </button>
+            )
           })}
         </div>
         {visibleItems.length ? (
@@ -138,21 +201,33 @@ export default function AdviserApprovalsPage() {
             {visibleItems.map((item) => (
               <article className="adviser-submission-card" key={`${item.type}-${item.id}`}>
                 <div className="adviser-submission-info">
-                  <span className="adviser-muted-label">{item.organizationName ?? 'Campus Organization'} · {item.type.replaceAll('_', ' ')}</span>
+                  <span className="adviser-muted-label">
+                    {item.organizationName ?? 'Campus Organization'} · {item.type.replaceAll('_', ' ')}
+                  </span>
                   <h2>{item.title}</h2>
-                  <p>Submitted by {item.submittedBy ?? 'Organization Officer'} · {item.submittedDate}</p>
-                  {(item.revisionNote || item.decisionReason) && <small>Feedback: {item.revisionNote ?? item.decisionReason}</small>}
+                  <p>
+                    Submitted by {item.submittedBy ?? 'Organization Officer'} · {item.submittedDate}
+                    {item.complianceFileName ? ` · Compliance file: ${item.complianceFileName}` : ''}
+                  </p>
+                  {(item.revisionNote || item.decisionReason) && (
+                    <small>Feedback: {item.revisionNote ?? item.decisionReason}</small>
+                  )}
                 </div>
                 <Badge tone={badgeTone[item.status] ?? 'neutral'}>{item.status.replaceAll('_', ' ')}</Badge>
-                <Button onClick={() => setSelected(item)} variant="secondary">View</Button>
+                <Button onClick={() => setSelected(item)} variant="secondary">Review</Button>
               </article>
             ))}
           </div>
-        ) : <EmptyState description={`No ${filter.toLowerCase()} submissions from assigned organizations.`} title="Nothing to review" />}
+        ) : (
+          <EmptyState
+            description={`No ${filter.toLowerCase()} submissions from assigned organizations.`}
+            title="Nothing to review"
+          />
+        )}
       </Card>
       <AdviserReviewDialog
         approvalConfirmationLabel="Yes, Approve"
-        approvalConfirmationMessage="Are you sure you want to approve this request? Please review the details before proceeding."
+        approvalConfirmationMessage="Are you sure you want to approve this request? Please review the compliance file and details before proceeding."
         approvalConfirmationTitle="Confirm Approval"
         item={selected}
         key={selected?.id ?? 'closed'}

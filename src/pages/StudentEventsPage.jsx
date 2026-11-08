@@ -6,21 +6,30 @@ import FilterSelect from '../components/ui/FilterSelect.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar from '../components/ui/SearchBar.jsx'
-import { eventCategories, getEventRegistrationState, isEventAlmostFull, officerEventToStudentEvent, studentEvents } from '../data/studentEvents.js'
+import { usePortalData } from '../context/usePortalData.js'
+import {
+  eventCategories,
+  getEventRegistrationState,
+  isEventAlmostFull,
+  isEventEnded,
+  officerEventToStudentEvent,
+  studentEvents,
+} from '../data/studentEvents.js'
 
-const eventStatusFilters = ['All', 'Upcoming', 'Registration Open', 'Almost Full']
+const eventStatusFilters = ['All', 'Registration Open', 'Almost Full', 'Registration Closed']
 
 function EventStatusBadge({ event, registration }) {
   const state = getEventRegistrationState(event, registration)
   const label = state === 'REGISTERED' ? 'REGISTERED'
     : state === 'EVENT FULL' ? 'EVENT FULL'
-      : state === 'REGISTRATION CLOSED' ? 'REGISTRATION CLOSED'
+      : state === 'REGISTRATION CLOSED' || state === 'EVENT COMPLETED' ? 'REGISTRATION CLOSED'
         : isEventAlmostFull(event) ? 'ALMOST FULL'
           : 'REGISTRATION OPEN'
   const tone = state === 'REGISTERED' ? 'success'
-    : state === 'EVENT FULL' || state === 'REGISTRATION CLOSED' ? 'neutral'
-      : isEventAlmostFull(event) ? 'warning'
-        : 'success'
+    : state === 'EVENT FULL' ? 'danger'
+      : state === 'REGISTRATION CLOSED' || state === 'EVENT COMPLETED' ? 'neutral'
+        : isEventAlmostFull(event) ? 'warning'
+          : 'success'
 
   return <Badge className="event-state-badge" tone={tone}>{label}</Badge>
 }
@@ -37,7 +46,25 @@ function EventDate({ date }) {
 }
 
 export default function StudentEventsPage() {
-  const { officerEvents = [], studentRegistrations = [], eventRegisteredCounts = {} } = useOutletContext()
+  const outletCtx = useOutletContext() || {}
+  const portalData = usePortalData()
+
+  const officerEvents = useMemo(
+    () => outletCtx.officerEvents || portalData?.officerEvents || [],
+    [outletCtx.officerEvents, portalData?.officerEvents],
+  )
+  const studentRegistrations = useMemo(
+    () => outletCtx.studentRegistrations || portalData?.studentRegistrations || [],
+    [outletCtx.studentRegistrations, portalData?.studentRegistrations],
+  )
+  const eventRegisteredCounts = useMemo(
+    () =>
+      outletCtx.eventRegisteredCounts ||
+      portalData?.eventRegisteredCounts ||
+      Object.fromEntries(officerEvents.map((ev) => [ev.id, ev.registeredCount ?? ev.registrations ?? 0])),
+    [outletCtx.eventRegisteredCounts, portalData?.eventRegisteredCounts, officerEvents],
+  )
+
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('All')
   const [statusFilter, setStatusFilter] = useState('All')
@@ -45,10 +72,10 @@ export default function StudentEventsPage() {
   const visibleEvents = useMemo(() => {
     const query = search.trim().toLowerCase()
     const publishedOfficerEvents = officerEvents
-      .filter((event) => ['PUBLISHED', 'APPROVED'].includes(event.status))
+      .filter((event) => ['PUBLISHED', 'APPROVED', 'COMPLETED'].includes(event.status))
       .map(officerEventToStudentEvent)
     return [...studentEvents, ...publishedOfficerEvents]
-      .filter((event) => event && ['PUBLISHED', 'APPROVED'].includes(event.status))
+      .filter(Boolean)
       .map((event) => ({
         ...event,
         registeredCount: eventRegisteredCounts[event.id] ?? event.registeredCount ?? 0,
@@ -62,9 +89,9 @@ export default function StudentEventsPage() {
         const matchesSearch = !query || searchableText.includes(query)
         const registrationState = getEventRegistrationState(event, registration)
         const matchesStatus = statusFilter === 'All'
-          || (statusFilter === 'Upcoming' && ['PUBLISHED', 'APPROVED'].includes(event.status))
-          || (statusFilter === 'Registration Open' && registrationState === 'NOT REGISTERED' && !isEventAlmostFull(event))
-          || (statusFilter === 'Almost Full' && isEventAlmostFull(event) && registrationState !== 'EVENT FULL')
+          || (statusFilter === 'Registration Open' && registrationState === 'NOT REGISTERED')
+          || (statusFilter === 'Almost Full' && isEventAlmostFull(event))
+          || (statusFilter === 'Registration Closed' && (isEventEnded(event) || registrationState === 'REGISTRATION CLOSED' || registrationState === 'EVENT FULL'))
         return matchesCategory && matchesSearch && matchesStatus
       })
   }, [category, eventRegisteredCounts, officerEvents, search, statusFilter, studentRegistrations])
@@ -72,8 +99,8 @@ export default function StudentEventsPage() {
   return (
     <div className="student-events-page">
       <PageHeader
-        description="Discover upcoming activities, programs, and events organized by WMSU student organizations."
-        eyebrow="UNIDOS STUDENT PORTAL"
+        description="Discover upcoming activities, participant slot limits, and programs organized across WMSU."
+        eyebrow="UNIDOS CAMPUS ACTIVITIES"
         title="Campus Events"
       />
 
@@ -92,7 +119,7 @@ export default function StudentEventsPage() {
       </div>
 
       <p aria-live="polite" className="organization-results-label">
-        {visibleEvents.length} {visibleEvents.length === 1 ? 'event' : 'events'}
+        <strong>{visibleEvents.length}</strong> {visibleEvents.length === 1 ? 'event' : 'events'}
       </p>
 
       {visibleEvents.length ? (
@@ -101,9 +128,11 @@ export default function StudentEventsPage() {
             const registration = studentRegistrations.find((item) => (
               String(item.eventId) === String(event.id) && item.status !== 'CANCELLED'
             ))
+            const ended = isEventEnded(event)
+            const remaining = Math.max((event.capacity || 0) - (event.registeredCount || 0), 0)
             return (
               <article className="campus-event-card" key={event.id} style={{ '--event-index': index }}>
-                <Link aria-label={`View event: ${event.title}`} className={`campus-event-card-link event-${event.color || 'crimson'}`} to={`/student/events/${event.id}`}>
+                <Link aria-label={`View event: ${event.title}`} className={`campus-event-card-link event-${event.color || 'crimson'}`} to={`/events/${event.id}`}>
                   <div className="campus-event-card-top">
                     <EventDate date={event.date} />
                     <Badge tone="crimson">{event.category}</Badge>
@@ -117,11 +146,13 @@ export default function StudentEventsPage() {
                       <span><Icon name="location" size={13} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '4px' }} />{event.location}</span>
                     </div>
                     <div className="campus-event-availability">
-                      <span>Availability</span>
+                      <span>Participant Limit ({event.capacity || 0} max)</span>
                       <strong>
-                        {event.capacity - event.registeredCount > 0
-                          ? `${event.capacity - event.registeredCount} slots available`
-                          : 'No slots available'}
+                        {ended
+                          ? 'Event ended · Registration closed'
+                          : remaining > 0
+                            ? `${remaining} of ${event.capacity} slots available`
+                            : 'Maximum limit reached'}
                       </strong>
                     </div>
                     <span className="button button-secondary campus-event-view-button">

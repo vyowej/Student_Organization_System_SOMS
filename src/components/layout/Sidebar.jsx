@@ -9,7 +9,7 @@ import { NavLink } from 'react-router-dom'
 
 function sectionForPage(title) {
   if (title.includes('Dashboard')) return 'Overview'
-  if (['Users', 'Students', 'Organizations'].includes(title)) return 'People & organizations'
+  if (['Users', 'Users & Advisers', 'Organizations'].includes(title)) return 'People & organizations'
   if (['Campus Events', 'Events', 'Approvals', 'Approval Center', 'Organization Applications'].includes(title)) return 'Activities & approvals'
   return 'Reports & settings'
 }

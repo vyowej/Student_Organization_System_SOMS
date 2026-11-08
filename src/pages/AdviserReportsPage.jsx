@@ -50,39 +50,49 @@ export default function AdviserReportsPage() {
   const [statusFilter, setStatusFilter] = useState('ALL')
   const adviserName = formatDisplayName(currentUser)
 
-  const organizations = useMemo(
-    () => [...new Map(adviserReports.map((report) => [String(report.organizationId), report.organizationName])).entries()],
-    [adviserReports],
+  const isGlobalViewer = Boolean(currentUser?.isGlobalAdmin || currentUser?.role === 'ADMIN')
+  const assignedOrgs = useMemo(
+    () =>
+      isGlobalViewer
+        ? adminOrganizations
+        : adminOrganizations.filter((org) => {
+            if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
+            if (currentUser?.id && String(org.adviserUserId) === String(currentUser.id)) return true
+            if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
+            if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id) || String(a.organizationId) === String(org.id))) return true
+            return false
+          }),
+    [adminOrganizations, currentUser, isGlobalViewer],
+  )
+  const assignedOrgIds = useMemo(() => new Set(assignedOrgs.map((org) => String(org.id))), [assignedOrgs])
+  const assignedReports = useMemo(
+    () => (isGlobalViewer ? adviserReports : adviserReports.filter((report) => assignedOrgIds.has(String(report.organizationId)))),
+    [adviserReports, assignedOrgIds, isGlobalViewer],
   )
 
-  const counts = useMemo(() => adviserReports.reduce((summary, report) => {
+  const organizations = useMemo(
+    () => [...new Map(assignedReports.map((report) => [String(report.organizationId), report.organizationName])).entries()],
+    [assignedReports],
+  )
+
+  const counts = useMemo(() => assignedReports.reduce((summary, report) => {
     summary.total += 1
     if (report.status === 'PENDING_VERIFICATION') summary.pending += 1
     if (report.status === 'VERIFIED') summary.verified += 1
     if (report.status === 'RETURNED') summary.returned += 1
     return summary
-  }, { pending: 0, verified: 0, returned: 0, total: 0 }), [adviserReports])
-
-  const assignedOrgs = adminOrganizations.filter((org) => {
-    if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
-    if (currentUser?.id && String(org.adviserUserId) === String(currentUser.id)) return true
-    if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
-    if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id) || String(a.organizationId) === String(org.id))) return true
-    return false
-  })
-  const assignedOrgIds = new Set(assignedOrgs.map((org) => String(org.id)))
+  }, { pending: 0, verified: 0, returned: 0, total: 0 }), [assignedReports])
 
   const visibleReports = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase()
-    return adviserReports
-      .filter((report) => assignedOrgIds.has(String(report.organizationId)))
+    return assignedReports
       .filter((report) => {
-      const searchText = `${report.eventTitle} ${report.organizationName}`.toLocaleLowerCase()
-      return (!normalizedSearch || searchText.includes(normalizedSearch))
-        && (organizationFilter === 'ALL' || String(report.organizationId) === String(organizationFilter))
-        && (statusFilter === 'ALL' || report.status === statusFilter)
-    })
-  }, [adviserReports, organizationFilter, search, statusFilter])
+        const searchText = `${report.eventTitle} ${report.organizationName}`.toLocaleLowerCase()
+        return (!normalizedSearch || searchText.includes(normalizedSearch))
+          && (organizationFilter === 'ALL' || String(report.organizationId) === String(organizationFilter))
+          && (statusFilter === 'ALL' || report.status === statusFilter)
+      })
+  }, [assignedReports, organizationFilter, search, statusFilter])
 
   function openReport(report) {
     setSelected({ ...report, title: report.eventTitle, type: 'ACCOMPLISHMENT_REPORT' })
@@ -185,7 +195,7 @@ export default function AdviserReportsPage() {
               </article>
             ))}
           </div>
-        ) : adviserReports.length ? (
+        ) : assignedReports.length ? (
           <EmptyState description="Try changing your filters or search terms." title="No activity reports found" />
         ) : (
           <EmptyState description="Submitted activity reports from your assigned organizations will appear here." title="No activity reports yet" />

@@ -34,13 +34,16 @@ export default function AdviserDashboardPage() {
     officerMembershipRequests = [],
   } = useOutletContext()
 
-  const assignedOrgs = adminOrganizations.filter((org) => {
-    if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
-    if (currentUser?.id && String(org.adviserUserId) === String(currentUser.id)) return true
-    if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
-    if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id) || String(a.organizationId) === String(org.id))) return true
-    return false
-  })
+  const isGlobalViewer = Boolean(currentUser?.isGlobalAdmin || currentUser?.role === 'ADMIN')
+  const assignedOrgs = isGlobalViewer
+    ? adminOrganizations
+    : adminOrganizations.filter((org) => {
+        if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
+        if (currentUser?.id && String(org.adviserUserId) === String(currentUser.id)) return true
+        if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
+        if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id) || String(a.organizationId) === String(org.id))) return true
+        return false
+      })
   const effectiveOrgs = assignedOrgs
   const assignedOrgIds = new Set(effectiveOrgs.map((org) => String(org.id)))
 
@@ -71,8 +74,8 @@ export default function AdviserDashboardPage() {
     ...pendingReports.map((report) => ({ ...report, type: 'Accomplishment Report', title: report.eventTitle, submittedDate: report.submittedDate, to: '/adviser/reports' })),
     ...pendingApplications.map((app) => ({
       ...app,
-      type: 'Membership Application',
-      title: `${app.name || 'Student'} — Membership Application`,
+      type: 'Officer Application',
+      title: `${app.name || 'Officer Applicant'} — Officer Application`,
       submittedDate: app.applicationDate || 'Recently',
       to: '/adviser/approvals',
     })),

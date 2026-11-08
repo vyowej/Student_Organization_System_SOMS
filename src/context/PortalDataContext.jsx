@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import PortalDataContext from './usePortalData.js'
 import { useAuth } from './useAuth.js'
 import { adminDefaultSettings } from '../data/navigation.js'
+import { getHierarchyEntry, normalizeYearLevelOption } from '../data/officerHierarchy.js'
 
 function formatDisplayDate(isoValue) {
   if (!isoValue) return ''
@@ -61,32 +62,17 @@ function formatOrgCategoryLabel(orgType) {
 
 function formatPositionLabel(position, customTitle) {
   if (customTitle) return customTitle
-  const map = {
-    PRESIDENT: 'President',
-    VICE_PRESIDENT: 'Vice President',
-    SECRETARY: 'Secretary',
-    TREASURER: 'Treasurer',
-    AUDITOR: 'Auditor',
-    PUBLIC_RELATIONS_OFFICER: 'PIO',
-    PUBLIC_INFORMATION_OFFICER: 'PIO',
-    PRO: 'PIO',
-    PIO: 'PIO',
-    MEMBER: 'General Member',
-    OTHER: 'Committee Head',
-    OTHER_OFFICER: 'Committee Head',
-  }
-  const posUpper = String(position || '').toUpperCase().replace(/[\s.-]+/g, '_')
-  return map[position] || map[posUpper] || position || 'General Member'
+  return getHierarchyEntry(position).title
 }
 
 function formatRoleLabel(role) {
   const map = {
-    STUDENT: 'Student',
+    STUDENT: 'Organization Officer',
     OFFICER: 'Organization Officer',
     ADVISER: 'Faculty Adviser',
     ADMIN: 'Student Affairs Admin',
   }
-  return map[String(role || '').toUpperCase()] || role || 'Student'
+  return map[String(role || '').toUpperCase()] || role || 'Organization Officer'
 }
 
 function normalizeAnnouncement(a) {
@@ -127,8 +113,11 @@ function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allD
       name: `${m.last_name}, ${m.first_name}${m.suffix ? ` ${m.suffix}` : ''}`,
       position: formatPositionLabel(m.position, m.custom_title),
       rawPosition: m.position,
+      committee: m.committee || getHierarchyEntry(m.position).defaultCommittee,
+      hierarchyRank: getHierarchyEntry(m.position).rank,
       status: m.status || 'ACTIVE',
     }))
+    .sort((a, b) => a.hierarchyRank - b.hierarchyRank)
 
   const orgAnnouncements = allAnnouncements
     .filter((a) => String(a.organization_id) === String(orgId))
@@ -192,6 +181,25 @@ function normalizeEvent(row) {
   const rawStatus = row.status || 'SUBMITTED'
   const mappedStatus = rawStatus === 'PENDING' ? 'SUBMITTED' : rawStatus
 
+  const complianceFileName = row.compliance_file_name
+    ? String(row.compliance_file_name).trim()
+    : (Array.isArray(row.supporting_documents) && row.supporting_documents[0] ? String(row.supporting_documents[0]).trim() : '')
+  const rawDocs = Array.isArray(row.supporting_documents)
+    ? row.supporting_documents.map((d) => String(d || '').trim()).filter(Boolean)
+    : []
+  const supportingDocuments = complianceFileName
+    ? [complianceFileName, ...rawDocs.filter((d) => d !== complianceFileName)]
+    : rawDocs
+
+  const hasEnded =
+    Boolean(row.registration_closed) ||
+    ['COMPLETED', 'CANCELLED'].includes(rawStatus) ||
+    Boolean(endDt && !Number.isNaN(new Date(endDt).getTime()) && new Date(endDt).getTime() <= Date.now())
+
+  const maxCap = row.max_participants !== null && row.max_participants !== undefined
+    ? Number(row.max_participants)
+    : Number(row.capacity ?? 100)
+
   return {
     id: evtId,
     eventId: evtId,
@@ -211,20 +219,25 @@ function normalizeEvent(row) {
     time: timeRange,
     category: row.category || row.event_type || formatOrgCategoryLabel(row.organization_type),
     eventType: row.event_type || row.category || formatOrgCategoryLabel(row.organization_type),
-    capacity: Number(row.max_participants ?? row.capacity ?? 100),
+    capacity: maxCap,
+    maxParticipants: maxCap,
     registeredCount: Number(row.registered_count ?? 0),
     registrations: Number(row.registered_count ?? 0),
     attendedCount: Number(row.attended_count ?? 0),
     attendance: Number(row.attended_count ?? 0),
+    registrationClosed: hasEnded,
     status: (row.is_published && rawStatus === 'APPROVED') || rawStatus === 'PUBLISHED' ? 'PUBLISHED' : mappedStatus,
     rawStatus,
     isPublished: Boolean(row.is_published || rawStatus === 'PUBLISHED'),
     adviserDecisionDate: row.approved_by || row.adviser_approved_by ? formatDisplayDate(row.approved_at || row.adviser_approved_at || row.updated_at || row.created_at) : null,
     adminApprovedAt: rawStatus === 'PUBLISHED' || row.admin_approved_by ? formatDisplayDate(row.admin_approved_at || row.updated_at || row.created_at) : null,
     createdBy: row.created_by,
+    createdByName: row.created_by_name || '',
     approvedBy: row.approved_by || row.adviser_approved_by,
     createdAt: row.created_at,
-    supportingDocuments: [],
+    complianceFileName,
+    hasComplianceFile: Boolean(row.has_compliance_file || row.compliance_file_data),
+    supportingDocuments,
   }
 }
 
@@ -232,6 +245,8 @@ function normalizeMember(row) {
   const memId = row.membership_id ?? row.id
   const joinedFormatted = formatDisplayDate(row.joined_at || row.created_at)
   const positionLabel = formatPositionLabel(row.position, row.custom_title)
+  const hierarchy = getHierarchyEntry(row.position)
+  const committee = row.committee || hierarchy.defaultCommittee
   return {
     id: memId,
     membershipId: memId,
@@ -248,9 +263,13 @@ function normalizeMember(row) {
     name: `${row.last_name || ''}, ${row.first_name || ''}${row.suffix ? ` ${row.suffix}` : ''}`.replace(/^,\s*/, ''),
     email: row.email || '',
     program: row.program_name || row.program_code || row.program_acronym || '',
-    yearLevel: row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : '',
+    yearLevel: row.year_level ? normalizeYearLevelOption(row.year_level) : '',
     position: positionLabel,
     rawPosition: row.position || 'MEMBER',
+    hierarchyRank: hierarchy.rank,
+    tierLabel: hierarchy.tierLabel,
+    committee,
+    corFileName: row.cor_file_name || '',
     customTitle: row.custom_title || '',
     termStart: row.term_start,
     termEnd: row.term_end,
@@ -261,7 +280,7 @@ function normalizeMember(row) {
     history: [
       {
         date: joinedFormatted || 'Recorded',
-        action: `Joined as ${positionLabel}`,
+        action: `Assigned as ${positionLabel} (${committee})`,
       },
     ],
   }
@@ -285,9 +304,10 @@ function normalizeApplication(row) {
     name: `${row.last_name || ''}, ${row.first_name || ''}${row.suffix ? ` ${row.suffix}` : ''}`.replace(/^,\s*/, ''),
     email: row.email || '',
     program: row.program_name || row.program_code || row.program_acronym || '',
-    yearLevel: row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : '',
-    desiredRole: row.desired_role || 'Member',
-    message: row.message || row.reason || row.remarks || 'Membership application submitted via UNIDOS portal.',
+    yearLevel: row.year_level ? normalizeYearLevelOption(row.year_level) : '',
+    desiredRole: row.desired_role || 'Committee Officer',
+    corFileName: row.cor_file_name || '',
+    message: row.message || row.reason || row.remarks || 'Officer application submitted via UNIDOS portal.',
     reason: row.message || row.reason || row.remarks || '',
     reviewRemarks: row.review_remarks || '',
     status: row.status || 'PENDING',
@@ -400,7 +420,9 @@ function normalizeUser(row) {
     displayName: row.displayName || fullName,
     email: row.email || '',
     role: formatRoleLabel(row.role),
-    rawRole: row.role || 'STUDENT',
+    rawRole: row.role === 'STUDENT' ? 'OFFICER' : (row.role || 'OFFICER'),
+    isCoordinator: Boolean(row.is_coordinator || row.isCoordinator || String(row.email || '').toLowerCase() === 'marjorie.rojas@wmsu.edu.ph'),
+    corFileName: row.cor_file_name || row.corFileName || '',
     status: row.status || 'ACTIVE',
     programId: row.program_id ?? row.programId ?? null,
     program: row.program || row.program_name || row.adviser_department_name || '—',
@@ -409,7 +431,11 @@ function normalizeUser(row) {
     department: row.department || row.department_name || row.adviser_department_name || '—',
     collegeId: row.college_id ?? row.collegeId ?? row.adviser_college_id ?? null,
     college: row.college || row.college_name || '—',
-    yearLevel: row.yearLevel || (row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : '—'),
+    yearLevel: row.yearLevel
+      ? normalizeYearLevelOption(row.yearLevel)
+      : row.year_level
+        ? normalizeYearLevelOption(row.year_level)
+        : '—',
     organization: row.organization || '—',
     lastActivity: formatDisplayDate(row.updated_at || row.created_at),
     createdAt: formatDisplayDate(row.created_at),
@@ -1138,17 +1164,50 @@ export function PortalDataProvider({ children }) {
       return { ok: false, error: 'Invalid organization.' }
     }
 
-    const studentId = payload.studentRecordId
+    let studentId = payload.studentRecordId
       || payload.student_id
       || currentUser?.studentRecordId
       || currentUser?.studentDbId
       || currentUser?.student_id
       || null
 
-    const userId = currentUser?.user_id || currentUser?.id || null
+    let userId = currentUser?.user_id || currentUser?.id || null
+
+    if (!studentId && !userId && payload.studentNumber) {
+      try {
+        const regRes = await fetch('/api/users/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            first_name: payload.firstName,
+            last_name: payload.lastName,
+            email: payload.email,
+            password: payload.password || `WMSU-${payload.studentNumber}`,
+            student_number: payload.studentNumber,
+            program: payload.program,
+            year_level: payload.yearLevel,
+            cor_file_name: payload.corFileName,
+            cor_file_data: payload.corFileData,
+            require_cor: true,
+          }),
+        })
+        if (regRes.ok) {
+          const created = await regRes.json()
+          studentId = created.studentRecordId || created.studentDbId || null
+          userId = created.id || created.userId || null
+        } else {
+          const regErr = await regRes.json().catch(() => ({}))
+          if (!String(regErr.error || '').toLowerCase().includes('already exists')) {
+            return { ok: false, error: regErr.error || 'Unable to verify applicant details.' }
+          }
+        }
+      } catch (err) {
+        return { ok: false, error: err.message || 'Network error verifying applicant.' }
+      }
+    }
 
     if (!studentId && !userId) {
-      return { ok: false, error: 'You must be signed in as a student to apply.' }
+      return { ok: false, error: 'Please sign in or provide valid officer registration details.' }
     }
 
     try {
@@ -1159,14 +1218,16 @@ export function PortalDataProvider({ children }) {
           organization_id: Number(orgId),
           student_id: studentId,
           user_id: userId,
-          desired_role: payload.desiredRole || 'Member',
-          reason: payload.message || payload.reason || 'Applied via Student Portal',
+          desired_role: payload.desiredRole || 'Committee Chairperson',
+          cor_file_name: payload.corFileName || currentUser?.corFileName || null,
+          cor_file_data: payload.corFileData || null,
+          reason: payload.message || payload.reason || 'Applied via UNIDOS Directory',
         }),
       })
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}))
-        return { ok: false, error: errData.error || 'Unable to submit membership application.' }
+        return { ok: false, error: errData.error || 'Unable to submit application.' }
       }
 
       await refreshPortalData()
@@ -1176,7 +1237,7 @@ export function PortalDataProvider({ children }) {
     }
   }, [currentUser, refreshPortalData])
 
-  const approveOfficerMembershipRequest = useCallback(async (applicationId, position = 'MEMBER', customTitle = null) => {
+  const approveOfficerMembershipRequest = useCallback(async (applicationId, position = 'OTHER_OFFICER', customTitle = null, committee = null) => {
     const response = await fetch(`/api/members/applications/${applicationId}/review`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -1185,6 +1246,7 @@ export function PortalDataProvider({ children }) {
         reviewed_by: currentUser?.dbUserId || currentUser?.id || null,
         position,
         custom_title: customTitle,
+        committee: committee || getHierarchyEntry(position).defaultCommittee,
       }),
     })
     if (!response.ok) {
@@ -1213,7 +1275,7 @@ export function PortalDataProvider({ children }) {
     return true
   }, [currentUser, refreshPortalData, refreshCurrentUser])
 
-  const assignOfficerPosition = useCallback(async (membershipId, nextPosition, customTitle = '') => {
+  const assignOfficerPosition = useCallback(async (membershipId, nextPosition, customTitle = '', committee = '', actionType = '') => {
     try {
       const response = await fetch(`/api/members/${membershipId}/position`, {
         method: 'PUT',
@@ -1221,6 +1283,9 @@ export function PortalDataProvider({ children }) {
         body: JSON.stringify({
           position: nextPosition,
           custom_title: customTitle,
+          committee: committee || getHierarchyEntry(nextPosition).defaultCommittee,
+          action_type: actionType || undefined,
+          updated_by: currentUser?.dbUserId || currentUser?.id || null,
         }),
       })
       if (!response.ok) {
@@ -1231,9 +1296,70 @@ export function PortalDataProvider({ children }) {
       await refreshCurrentUser()
       return { ok: true }
     } catch {
-      return { ok: false, reason: 'Network error while updating member position.' }
+      return { ok: false, reason: 'Network error while updating officer position.' }
     }
-  }, [refreshPortalData, refreshCurrentUser])
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData, refreshCurrentUser])
+
+  const demoteOfficerMember = useCallback(async (membershipId, nextPosition = 'MEMBER', committee = 'General Operations Committee', customTitle = '') => {
+    return assignOfficerPosition(membershipId, nextPosition, customTitle, committee, 'DEMOTE')
+  }, [assignOfficerPosition])
+
+  const removeOfficerMember = useCallback(async (membershipId) => {
+    try {
+      const response = await fetch(`/api/members/${membershipId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          removed_by: currentUser?.dbUserId || currentUser?.id || null,
+        }),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        return { ok: false, reason: err.error || 'Unable to remove officer from organization.' }
+      }
+      await refreshPortalData()
+      await refreshCurrentUser()
+      return { ok: true }
+    } catch {
+      return { ok: false, reason: 'Network error while removing officer.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData, refreshCurrentUser])
+
+  const addOfficerMember = useCallback(async (payload) => {
+    const orgId = payload.organizationId || currentUser?.organizationId || adminOrganizations[0]?.id
+    if (!orgId) return { ok: false, error: 'No active organization selected.' }
+    try {
+      const regRes = await fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: payload.firstName,
+          last_name: payload.lastName,
+          email: payload.email,
+          password: payload.password || `WMSU-${payload.studentNumber}`,
+          student_number: payload.studentNumber,
+          program: payload.program,
+          year_level: payload.yearLevel,
+          cor_file_name: payload.corFileName,
+          cor_file_data: payload.corFileData,
+          require_cor: true,
+          organization_id: orgId,
+          position: payload.position || 'OTHER_OFFICER',
+          custom_title: payload.customTitle || null,
+          committee: payload.committee || getHierarchyEntry(payload.position || 'OTHER_OFFICER').defaultCommittee,
+          direct_enroll: true,
+        }),
+      })
+      const data = await regRes.json().catch(() => ({}))
+      if (!regRes.ok) {
+        return { ok: false, error: data.error || 'Unable to enroll officer.' }
+      }
+      await refreshPortalData()
+      return { ok: true, user: data }
+    } catch (err) {
+      return { ok: false, error: err.message || 'Network error enrolling officer.' }
+    }
+  }, [currentUser?.organizationId, adminOrganizations, refreshPortalData])
 
   const updateOfficerMemberStatus = useCallback(async (membershipId, nextStatus) => {
     const response = await fetch(`/api/members/${membershipId}/position`, {
@@ -1241,30 +1367,54 @@ export function PortalDataProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         status: nextStatus,
+        updated_by: currentUser?.dbUserId || currentUser?.id || null,
       }),
     })
     if (!response.ok) return false
     await refreshPortalData()
     return true
-  }, [refreshPortalData])
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
-  const registerForEvent = useCallback(async (eventId) => {
-    const studentId = currentUser?.studentRecordId || currentUser?.studentDbId || currentUser?.student_id || currentUser?.id
-    if (!studentId) return false
-    const response = await fetch('/api/attendance/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event_id: eventId,
-        student_id: studentId,
-        user_id: currentUser?.dbUserId || currentUser?.id || currentUser?.userId,
-      }),
-    })
-    if (!response.ok) return false
-    await refreshPortalData()
-    await refreshCurrentUser()
-    return true
+  const registerParticipantForEvent = useCallback(async (eventId, participantPayload = null) => {
+    const studentId = currentUser?.studentRecordId || currentUser?.studentDbId || currentUser?.student_id || currentUser?.id || null
+    const body = {
+      event_id: eventId,
+      student_id: studentId,
+      user_id: currentUser?.dbUserId || currentUser?.id || currentUser?.userId || null,
+      ...(participantPayload ? {
+        student_number: participantPayload.studentNumber,
+        first_name: participantPayload.firstName,
+        last_name: participantPayload.lastName,
+        email: participantPayload.email,
+        program: participantPayload.program,
+        year_level: participantPayload.yearLevel,
+        cor_file_name: participantPayload.corFileName,
+        cor_file_data: participantPayload.corFileData,
+        require_cor: Boolean(participantPayload.requireCor),
+      } : {}),
+    }
+    try {
+      const response = await fetch('/api/attendance/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to complete event registration.' }
+      }
+      await refreshPortalData()
+      if (currentUser) await refreshCurrentUser()
+      return { ok: true, registration: data }
+    } catch (err) {
+      return { ok: false, error: err.message || 'Network error registering for event.' }
+    }
   }, [currentUser, refreshPortalData, refreshCurrentUser])
+
+  const registerForEvent = useCallback(async (eventId, participantPayload = null) => {
+    const result = await registerParticipantForEvent(eventId, participantPayload)
+    return participantPayload ? result : result.ok
+  }, [registerParticipantForEvent])
 
   const cancelEventRegistration = useCallback(async (registrationOrEventId) => {
     const reg = studentRegistrations.find(
@@ -1444,6 +1594,13 @@ export function PortalDataProvider({ children }) {
     const url = isUpdate ? `/api/events/${eventPayload.id || eventPayload.eventId}` : '/api/events'
     const method = isUpdate ? 'PUT' : 'POST'
 
+    const complianceName = eventPayload.complianceFileName
+      ? String(eventPayload.complianceFileName).trim()
+      : (Array.isArray(eventPayload.supportingDocuments) && eventPayload.supportingDocuments[0] ? String(eventPayload.supportingDocuments[0]).trim() : undefined)
+    const supportingList = complianceName
+      ? [complianceName]
+      : (Array.isArray(eventPayload.supportingDocuments) ? eventPayload.supportingDocuments : undefined)
+
     const response = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
@@ -1460,8 +1617,11 @@ export function PortalDataProvider({ children }) {
         event_type: eventPayload.category || eventPayload.eventType || 'Academic',
         category: eventPayload.category || eventPayload.eventType || 'Academic',
         status: dbStatus,
-        max_participants: Number(eventPayload.capacity || 100),
-        capacity: Number(eventPayload.capacity || 100),
+        max_participants: Number(eventPayload.capacity || eventPayload.maxParticipants || 100),
+        capacity: Number(eventPayload.capacity || eventPayload.maxParticipants || 100),
+        ...(complianceName !== undefined ? { compliance_file_name: complianceName } : {}),
+        ...(eventPayload.complianceFileData !== undefined ? { compliance_file_data: eventPayload.complianceFileData } : {}),
+        ...(supportingList !== undefined ? { supporting_documents: supportingList } : {}),
         created_by: currentUser?.dbUserId || currentUser?.id || currentUser?.userId || null,
       }),
     })
@@ -1915,10 +2075,10 @@ export function PortalDataProvider({ children }) {
 
   const updateAdminUser = useCallback(async (userId, updates) => {
     const roleMap = {
-      Student: 'STUDENT',
       'Organization Officer': 'OFFICER',
       'Faculty Adviser': 'ADVISER',
       'Student Affairs Admin': 'ADMIN',
+      Student: 'OFFICER',
     }
     const targetUser = rawUsers.find(
       (u) => String(u.id) === String(userId) || String(u.user_id) === String(userId) || String(u.student_number) === String(userId)
@@ -1944,6 +2104,57 @@ export function PortalDataProvider({ children }) {
     await refreshPortalData()
     return { ok: true }
   }, [rawUsers, refreshPortalData])
+
+  const createAdviserAccount = useCallback(async (payload) => {
+    try {
+      const response = await fetch('/api/advisers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: payload.firstName,
+          middle_name: payload.middleName,
+          last_name: payload.lastName,
+          suffix: payload.suffix,
+          email: payload.email,
+          password: payload.password || 'adviser123',
+          employee_number: payload.employeeNumber,
+          academic_rank: payload.academicRank || 'Faculty Adviser',
+          department_id: payload.departmentId ? Number(payload.departmentId) : null,
+          organization_id: payload.organizationId ? Number(payload.organizationId) : null,
+          is_coordinator: Boolean(payload.isCoordinator),
+          created_by: currentUser?.dbUserId || currentUser?.id || null,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to create adviser account.' }
+      }
+      await refreshPortalData()
+      return { ok: true, adviser: data }
+    } catch (err) {
+      return { ok: false, error: err.message || 'Network error creating adviser account.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
+
+  const pregenerateMissingAdvisers = useCallback(async () => {
+    try {
+      const response = await fetch('/api/advisers/pregenerate-missing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          created_by: currentUser?.dbUserId || currentUser?.id || null,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to pre-generate adviser accounts.' }
+      }
+      await refreshPortalData()
+      return { ok: true, createdCount: data.createdCount || 0, created: data.created || [] }
+    } catch (err) {
+      return { ok: false, error: err.message || 'Network error pre-generating adviser accounts.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const submitAdviserChangeRequest = useCallback(async (payload) => {
     const response = await fetch('/api/advisers/requests', {
@@ -2165,8 +2376,12 @@ export function PortalDataProvider({ children }) {
     approveOfficerMembershipRequest,
     rejectOfficerMembershipRequest,
     assignOfficerPosition,
+    demoteOfficerMember,
+    removeOfficerMember,
+    addOfficerMember,
     updateOfficerMemberStatus,
     registerForEvent,
+    registerParticipantForEvent,
     registerStudentForEvent: registerForEvent,
     cancelEventRegistration,
     cancelStudentRegistration: cancelEventRegistration,
@@ -2203,6 +2418,8 @@ export function PortalDataProvider({ children }) {
     reviewOrganizationApplication,
     updateAdminUser,
     updateUserAccount: updateAdminUser,
+    createAdviserAccount,
+    pregenerateMissingAdvisers,
     submitAdviserChangeRequest,
     reviewAdviserChangeRequest,
     assignOrganizationAdviser,
@@ -2250,8 +2467,12 @@ export function PortalDataProvider({ children }) {
     approveOfficerMembershipRequest,
     rejectOfficerMembershipRequest,
     assignOfficerPosition,
+    demoteOfficerMember,
+    removeOfficerMember,
+    addOfficerMember,
     updateOfficerMemberStatus,
     registerForEvent,
+    registerParticipantForEvent,
     cancelEventRegistration,
     checkInStudent,
     getEventAttendanceCode,
@@ -2279,6 +2500,8 @@ export function PortalDataProvider({ children }) {
     createAdminOrganization,
     reviewOrganizationApplication,
     updateAdminUser,
+    createAdviserAccount,
+    pregenerateMissingAdvisers,
     submitAdviserChangeRequest,
     reviewAdviserChangeRequest,
     assignOrganizationAdviser,

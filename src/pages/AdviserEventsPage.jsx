@@ -29,15 +29,20 @@ export default function AdviserEventsPage() {
   const [filter, setFilter] = useState('All')
   const [selected, setSelected] = useState(null)
   const [search, setSearch] = useState('')
-  const assignedOrgs = adminOrganizations.filter((org) => {
-    if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
-    if (currentUser?.id && String(org.adviserUserId) === String(currentUser.id)) return true
-    if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
-    if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id) || String(a.organizationId) === String(org.id))) return true
-    return false
-  })
+  const isGlobalViewer = Boolean(currentUser?.isGlobalAdmin || currentUser?.role === 'ADMIN')
+  const assignedOrgs = isGlobalViewer
+    ? adminOrganizations
+    : adminOrganizations.filter((org) => {
+        if (currentUser?.adviserRecordId && String(org.adviserId) === String(currentUser.adviserRecordId)) return true
+        if (currentUser?.id && String(org.adviserUserId) === String(currentUser.id)) return true
+        if (currentUser?.email && org.adviserEmail && String(org.adviserEmail).toLowerCase() === String(currentUser.email).toLowerCase()) return true
+        if (currentUser?.advisedOrganizations?.some((a) => String(a.organization_id) === String(org.id) || String(a.organizationId) === String(org.id))) return true
+        return false
+      })
   const assignedOrgIds = new Set(assignedOrgs.map((org) => String(org.id)))
-  const assignedEvents = officerEvents.filter((event) => assignedOrgIds.has(String(event.organizationId)))
+  const assignedEvents = isGlobalViewer
+    ? officerEvents
+    : officerEvents.filter((event) => assignedOrgIds.has(String(event.organizationId)))
 
   const visibleEvents = assignedEvents
     .filter((event) => matchesEventFilter(event, filter))
@@ -76,10 +81,29 @@ export default function AdviserEventsPage() {
                   <span className="adviser-muted-label">{event.organizationName ?? 'Campus Organization'} · {event.category ?? 'Organization Activity'}</span>
                   <h2>{event.title}</h2>
                   <p>{event.date} · {event.time || event.startTime || 'Time to be confirmed'} · {event.location || event.venue || 'Venue to be confirmed'}</p>
-                  <small>{event.registrations ?? 0} registrations · Capacity {event.capacity ?? 'Not specified'}</small>
+                  <small>
+                    {event.registrations ?? 0} registrations · Capacity {event.capacity ?? 'Not specified'}
+                    {event.complianceFileName ? ` · Compliance file: ${event.complianceFileName}` : ''}
+                  </small>
                 </div>
                 <Badge tone={eventTone[event.status] ?? 'neutral'}>{event.status.replaceAll('_', ' ')}</Badge>
-                <Button onClick={() => setSelected({ ...event, organizationName: event.organizationName ?? 'Campus Organization', submittedDate: event.submittedDate || event.date, type: 'EVENT' })} variant="secondary">View Details</Button>
+                <Button
+                  onClick={() =>
+                    setSelected({
+                      ...event,
+                      eventId: event.id,
+                      organizationName: event.organizationName ?? 'Campus Organization',
+                      submittedDate: event.submittedDate || event.date,
+                      complianceFileName: event.complianceFileName || null,
+                      hasComplianceFile: Boolean(event.hasComplianceFile || event.complianceFileName),
+                      supportingDocuments: Array.isArray(event.supportingDocuments) ? event.supportingDocuments : [],
+                      type: 'EVENT',
+                    })
+                  }
+                  variant="secondary"
+                >
+                  View Details
+                </Button>
               </article>
             ))}
           </div>

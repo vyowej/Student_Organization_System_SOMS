@@ -6,6 +6,12 @@
  */
 const express = require('express');
 const router = express.Router();
+let bcrypt;
+try {
+  bcrypt = require('bcrypt');
+} catch {
+  bcrypt = require('bcryptjs');
+}
 const db = require('../db');
 const {
   notifyUser,
@@ -21,8 +27,10 @@ router.get('/', async (req, res) => {
              a.user_id,
              a.employee_number,
              a.title,
+             a.is_coordinator,
              a.college_id,
              u.email,
+             u.status,
              u.first_name,
              u.middle_name,
              u.last_name,
@@ -130,6 +138,209 @@ router.get('/org/:organization_id', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/advisers — Pre-generate / prepare a faculty adviser account beforehand (Admin or Coordinator / Ma'am Marj)
+router.post('/', async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+    const {
+      first_name,
+      firstName,
+      middle_name,
+      middleName,
+      last_name,
+      lastName,
+      suffix,
+      title,
+      email,
+      password,
+      employee_number,
+      employeeNumber,
+      college_id,
+      collegeId,
+      organization_id,
+      organizationId,
+      is_coordinator,
+      isCoordinator,
+      created_by,
+    } = req.body || {};
+
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const fName = String(first_name || firstName || '').trim();
+    const lName = String(last_name || lastName || '').trim();
+    const mName = String(middle_name || middleName || '').trim() || null;
+    const sfx = String(suffix || '').trim() || null;
+    const advTitle = String(title || '').trim() || null;
+
+    if (!cleanEmail || !fName || !lName) {
+      return res.status(400).json({ error: 'First name, last name, and institutional email are required.' });
+    }
+
+    const rawPassword = String(password || 'adviser123').trim() || 'adviser123';
+    const passwordHash = await bcrypt.hash(rawPassword, 10);
+    const targetCollegeId = (college_id || collegeId) ? Number(college_id || collegeId) : null;
+    const targetOrgId = (organization_id || organizationId) ? Number(organization_id || organizationId) : null;
+    const coordinatorFlag = Boolean(is_coordinator ?? isCoordinator ?? false);
+
+    await client.query('BEGIN');
+
+    const userRes = await client.query(
+      `INSERT INTO users (email, password_hash, first_name, middle_name, last_name, suffix, role, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'ADVISER', 'ACTIVE')
+       ON CONFLICT (lower(email)) DO UPDATE
+         SET first_name = EXCLUDED.first_name,
+             middle_name = EXCLUDED.middle_name,
+             last_name = EXCLUDED.last_name,
+             suffix = EXCLUDED.suffix,
+             role = 'ADVISER',
+             status = 'ACTIVE'
+       RETURNING id`,
+      [cleanEmail, passwordHash, fName, mName, lName, sfx]
+    );
+    const userId = userRes.rows[0].id;
+    const empNum = String(employee_number || employeeNumber || '').trim() || `EMP-ADV-${String(userId).padStart(3, '0')}`;
+
+    const advRes = await client.query(
+      `INSERT INTO advisers (user_id, employee_number, title, is_coordinator, college_id)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id) DO UPDATE
+         SET employee_number = EXCLUDED.employee_number,
+             title = COALESCE(EXCLUDED.title, advisers.title),
+             is_coordinator = EXCLUDED.is_coordinator,
+             college_id = COALESCE(EXCLUDED.college_id, advisers.college_id)
+       RETURNING id`,
+      [userId, empNum, advTitle, coordinatorFlag, targetCollegeId]
+    );
+    const adviserId = advRes.rows[0].id;
+
+    let assignedOrgName = null;
+    if (targetOrgId) {
+      await client.query(
+        'UPDATE organization_advisers SET ended_at = now() WHERE organization_id = $1 AND ended_at IS NULL',
+        [targetOrgId]
+      );
+      await client.query(
+        `INSERT INTO organization_advisers (organization_id, adviser_id, assigned_by, assigned_at)
+         VALUES ($1, $2, $3, now())`,
+        [targetOrgId, adviserId, created_by || null]
+      );
+      const oRes = await client.query('SELECT name FROM organizations WHERE id = $1', [targetOrgId]);
+      assignedOrgName = oRes.rows[0]?.name || null;
+    }
+
+    await client.query('COMMIT');
+
+    await recordAuditLog({
+      userId: created_by || null,
+      action: 'PREGENERATE_ADVISER_ACCOUNT',
+      entity: 'advisers',
+      entityId: adviserId,
+      metadata: {
+        email: cleanEmail,
+        employee_number: empNum,
+        organization_id: targetOrgId,
+        description: `Pre-generated faculty adviser account for ${advTitle ? `${advTitle} ` : ''}${fName} ${lName} (${cleanEmail})${assignedOrgName ? ` assigned to ${assignedOrgName}` : ''}.`,
+      },
+      req,
+    });
+
+    res.status(201).json({
+      id: adviserId,
+      user_id: userId,
+      email: cleanEmail,
+      employee_number: empNum,
+      title: advTitle,
+      first_name: fName,
+      last_name: lName,
+      is_coordinator: coordinatorFlag,
+      organization_id: targetOrgId,
+      organization_name: assignedOrgName,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'An adviser account with that email or employee number already exists.' });
+    }
+    res.status(500).json({ error: err.message || 'Server error creating adviser account' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/advisers/pregenerate-missing — Pre-generate adviser accounts for all organizations without an active adviser
+router.post('/pregenerate-missing', async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+    const { created_by, default_password } = req.body || {};
+    const passwordHash = await bcrypt.hash(String(default_password || 'adviser123'), 10);
+
+    await client.query('BEGIN');
+    const unassigned = await client.query(`
+      SELECT o.id, o.name, o.acronym, o.college_id
+        FROM organizations o
+       WHERE NOT EXISTS (
+         SELECT 1 FROM organization_advisers oa
+          WHERE oa.organization_id = o.id AND oa.ended_at IS NULL
+       )
+       ORDER BY o.id ASC
+    `);
+
+    const generated = [];
+    for (const org of unassigned.rows) {
+      const slug = (org.acronym || org.name || `org${org.id}`)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '')
+        .slice(0, 22) || `org${org.id}`;
+      const email = `adviser.${slug}.${org.id}@wmsu.edu.ph`;
+      const empNum = `EMP-PREP-${String(org.id).padStart(3, '0')}`;
+      const label = org.acronym || org.name.split(/\s+/).slice(0, 3).join(' ');
+
+      const uRes = await client.query(
+        `INSERT INTO users (email, password_hash, first_name, last_name, role, status)
+         VALUES ($1, $2, $3, $4, 'ADVISER', 'ACTIVE')
+         ON CONFLICT (lower(email)) DO UPDATE SET status = 'ACTIVE'
+         RETURNING id`,
+        [email, passwordHash, `${label} Adviser`, '(Prepared)']
+      );
+      const aRes = await client.query(
+        `INSERT INTO advisers (user_id, employee_number, title, college_id)
+         VALUES ($1, $2, 'Prof.', $3)
+         ON CONFLICT (user_id) DO UPDATE
+           SET employee_number = COALESCE(advisers.employee_number, EXCLUDED.employee_number)
+         RETURNING id`,
+        [uRes.rows[0].id, empNum, org.college_id || null]
+      );
+      await client.query(
+        `INSERT INTO organization_advisers (organization_id, adviser_id, assigned_by, assigned_at)
+         VALUES ($1, $2, $3, now())`,
+        [org.id, aRes.rows[0].id, created_by || null]
+      );
+      generated.push({ organization_id: org.id, organization_name: org.name, email, employee_number: empNum });
+    }
+
+    await client.query('COMMIT');
+
+    await recordAuditLog({
+      userId: created_by || null,
+      action: 'BULK_PREGENERATE_ADVISERS',
+      entity: 'advisers',
+      metadata: {
+        count: generated.length,
+        description: `Pre-generated ${generated.length} faculty adviser account(s) for unassigned organizations.`,
+      },
+      req,
+    });
+
+    res.json({ ok: true, count: generated.length, generated });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error pre-generating adviser accounts' });
+  } finally {
+    client.release();
   }
 });
 

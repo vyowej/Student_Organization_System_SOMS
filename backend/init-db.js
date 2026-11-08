@@ -40,7 +40,64 @@ async function ensureAdviserAccounts(client) {
     UPDATE users
        SET password_hash = $1, status = 'ACTIVE'
      WHERE role = 'ADVISER'
+       AND password_hash = '$2b$10$YtC9QkW56A0.gsroDeUstueoAUsaEz/VqiXMMt3Zbg/J1BMEIp1ZO'
   `, [adviserHash]);
+
+  // Grant Coordinator privilege to Engr. Marjorie A. Rojas (Ma'am Marj) so she can prepare/create adviser accounts beforehand
+  await client.query(`
+    UPDATE advisers a
+       SET is_coordinator = true
+      FROM users u
+     WHERE u.id = a.user_id
+       AND lower(u.email) = 'marjorie.rojas@wmsu.edu.ph'
+  `);
+
+  // Pre-generate faculty adviser accounts for any active/pending organizations that lack an assigned adviser
+  const unassignedOrgs = await client.query(`
+    SELECT o.id, o.name, o.acronym, o.college_id
+      FROM organizations o
+     WHERE NOT EXISTS (
+       SELECT 1 FROM organization_advisers oa
+        WHERE oa.organization_id = o.id AND oa.ended_at IS NULL
+     )
+     ORDER BY o.id ASC
+  `);
+
+  for (const org of unassignedOrgs.rows) {
+    const rawSlug = (org.acronym || org.name || `org${org.id}`)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')
+      .slice(0, 22) || `org${org.id}`;
+    const email = `adviser.${rawSlug}.${org.id}@wmsu.edu.ph`;
+    const empNum = `EMP-PREP-${String(org.id).padStart(3, '0')}`;
+    const label = org.acronym || org.name.split(/\s+/).slice(0, 3).join(' ');
+
+    const uRes = await client.query(
+      `INSERT INTO users (email, password_hash, first_name, last_name, role, status)
+       VALUES ($1, $2, $3, $4, 'ADVISER', 'ACTIVE')
+       ON CONFLICT (lower(email)) DO UPDATE SET status = 'ACTIVE'
+       RETURNING id`,
+      [email, adviserHash, `${label} Adviser`, '(Prepared)']
+    );
+    const advUserId = uRes.rows[0].id;
+
+    const aRes = await client.query(
+      `INSERT INTO advisers (user_id, employee_number, title, college_id)
+       VALUES ($1, $2, 'Prof.', $3)
+       ON CONFLICT (user_id) DO UPDATE
+         SET employee_number = COALESCE(advisers.employee_number, EXCLUDED.employee_number),
+             college_id = COALESCE(advisers.college_id, EXCLUDED.college_id)
+       RETURNING id`,
+      [advUserId, empNum, org.college_id || null]
+    );
+
+    await client.query(
+      `INSERT INTO organization_advisers (organization_id, adviser_id, assigned_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (organization_id) WHERE ended_at IS NULL DO NOTHING`,
+      [org.id, aRes.rows[0].id]
+    );
+  }
 }
 
 async function applyIncrementalMigrations(client) {
@@ -64,7 +121,12 @@ async function applyIncrementalMigrations(client) {
   console.log('[MIGRATE] Ensuring eligibility columns and adviser titles exist...');
   await client.query(`
     ALTER TABLE advisers
-      ADD COLUMN IF NOT EXISTS title VARCHAR(50);
+      ADD COLUMN IF NOT EXISTS title VARCHAR(50),
+      ADD COLUMN IF NOT EXISTS is_coordinator BOOLEAN NOT NULL DEFAULT false;
+
+    ALTER TABLE students
+      ADD COLUMN IF NOT EXISTS cor_file_name VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS cor_file_data TEXT;
 
     ALTER TABLE programs
       ADD COLUMN IF NOT EXISTS level education_level NOT NULL DEFAULT 'UNDERGRADUATE';
@@ -91,8 +153,16 @@ async function applyIncrementalMigrations(client) {
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
-    -- Ensure events capacity and approval columns
+    -- Ensure organization_members committee column
+    ALTER TABLE organization_members
+      ADD COLUMN IF NOT EXISTS committee VARCHAR(120);
+
+    -- Ensure events capacity, compliance upload, category, and approval columns
     ALTER TABLE events
+      ADD COLUMN IF NOT EXISTS category VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS compliance_file_name VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS compliance_file_data TEXT,
+      ADD COLUMN IF NOT EXISTS supporting_documents JSONB NOT NULL DEFAULT '[]'::jsonb,
       ADD COLUMN IF NOT EXISTS approved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS max_participants INTEGER;
@@ -114,8 +184,10 @@ async function applyIncrementalMigrations(client) {
        SET recorded_by = COALESCE(recorded_by, verified_by)
      WHERE recorded_by IS NULL;
 
-    -- Ensure organization_applications review remarks
+    -- Ensure organization_applications review remarks and COR file columns
     ALTER TABLE organization_applications
+      ADD COLUMN IF NOT EXISTS cor_file_name VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS cor_file_data TEXT,
       ADD COLUMN IF NOT EXISTS review_remarks TEXT;
 
     -- Ensure announcements author, creator, draft status, and pin compatibility

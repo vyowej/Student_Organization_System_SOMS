@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Badge from '../ui/Badge.jsx'
 import Icon from '../ui/Icon.jsx'
+import { getEventRegistrationState, isEventAlmostFull } from '../../data/studentEvents.js'
 
 export function AnimatedStatistic({ value, suffix = '', label, format }) {
   const elementRef = useRef(null)
-  const hasStartedRef = useRef(false)
-  const hasCompletedRef = useRef(false)
-  const [count, setCount] = useState(0)
+  const isVisibleRef = useRef(false)
+  const previousValueRef = useRef(0)
+  const [count, setCount] = useState(Number(value) || 0)
 
   useEffect(() => {
     const element = elementRef.current
+    const targetValue = Number(value) || 0
     if (!element) return undefined
 
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -18,25 +20,26 @@ export function AnimatedStatistic({ value, suffix = '', label, format }) {
     let observer
     let isMounted = true
 
-    function startCount() {
-      if (hasStartedRef.current) return
-      hasStartedRef.current = true
-
-      if (motionPreference.matches) {
-        hasCompletedRef.current = true
-        setCount(value)
+    function animateToTarget() {
+      const startValue = previousValueRef.current
+      if (motionPreference.matches || startValue === targetValue) {
+        previousValueRef.current = targetValue
+        setCount(targetValue)
         return
       }
 
-      const duration = 1800
+      const duration = 900
       const startTime = performance.now()
 
       function updateCount(now) {
         const progress = Math.min((now - startTime) / duration, 1)
         const easedProgress = progress * progress * (3 - 2 * progress)
         if (isMounted) {
-          setCount(progress === 1 ? value : Math.floor(value * easedProgress))
-          if (progress === 1) hasCompletedRef.current = true
+          const currentVal = progress === 1
+            ? targetValue
+            : Math.round(startValue + (targetValue - startValue) * easedProgress)
+          setCount(currentVal)
+          if (progress === 1) previousValueRef.current = targetValue
         }
         if (progress < 1) frameId = requestAnimationFrame(updateCount)
       }
@@ -44,36 +47,37 @@ export function AnimatedStatistic({ value, suffix = '', label, format }) {
       frameId = requestAnimationFrame(updateCount)
     }
 
-    if (!('IntersectionObserver' in window)) {
-      startCount()
+    if (isVisibleRef.current || !('IntersectionObserver' in window)) {
+      isVisibleRef.current = true
+      animateToTarget()
       return () => {
         isMounted = false
-        if (!hasCompletedRef.current) hasStartedRef.current = false
         cancelAnimationFrame(frameId)
       }
     }
 
     observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) {
-        startCount()
+        isVisibleRef.current = true
+        animateToTarget()
         observer.unobserve(element)
       }
-    }, { threshold: 0.45 })
+    }, { threshold: 0.25 })
 
     observer.observe(element)
     return () => {
       isMounted = false
-      if (!hasCompletedRef.current) hasStartedRef.current = false
       observer.disconnect()
       cancelAnimationFrame(frameId)
     }
   }, [value])
 
   const displayValue = format ? format(count) : count.toLocaleString()
+  const ariaVal = format ? format(Number(value) || 0) : (Number(value) || 0).toLocaleString()
 
   return (
     <div ref={elementRef}>
-      <strong aria-label={`${format ? format(value) : value.toLocaleString()}${suffix}`}>
+      <strong aria-label={`${ariaVal}${suffix}`}>
         {displayValue}<span>{suffix}</span>
       </strong>
       <small>{label}</small>
@@ -184,7 +188,7 @@ export function OrganizationCard({ organization }) {
         <h3>{organization.name}</h3>
         <p>{organization.description}</p>
       </div>
-      <Link className="button button-secondary organization-view" to={`/student/organizations/${organization.id}`}>
+      <Link className="button button-secondary organization-view" to={`/organizations/${organization.id}`}>
         View Organization <Icon name="arrow-right" size={13} />
       </Link>
     </article>
@@ -192,9 +196,20 @@ export function OrganizationCard({ organization }) {
 }
 
 export function EventCard({ event }) {
-  const badgeTone = event.status === 'Registration Open' || event.status === 'PUBLISHED'
+  const regState = getEventRegistrationState(event)
+  const almostFull = regState === 'NOT REGISTERED' && isEventAlmostFull(event)
+
+  const badgeLabel = regState === 'EVENT FULL'
+    ? 'Event Full'
+    : regState === 'REGISTRATION CLOSED' || regState === 'EVENT COMPLETED'
+      ? 'Registration Closed'
+      : almostFull
+        ? 'Almost Full'
+        : 'Registration Open'
+
+  const badgeTone = badgeLabel === 'Registration Open'
     ? 'success'
-    : event.status === 'Almost Full'
+    : badgeLabel === 'Almost Full'
       ? 'warning'
       : 'neutral'
 
@@ -216,7 +231,12 @@ export function EventCard({ event }) {
       </div>
       <div className="event-card-content">
         <div className="event-card-topline">
-          <Badge tone={badgeTone}>{event.status === 'PUBLISHED' ? 'Registration Open' : event.status}</Badge>
+          <Badge tone={badgeTone}>{badgeLabel}</Badge>
+          {event.capacity > 0 && (
+            <small style={{ color: 'var(--muted)', fontSize: '12px', fontWeight: 600 }}>
+              {event.registeredCount || 0}/{event.capacity} slots
+            </small>
+          )}
         </div>
         <h3>{event.title}</h3>
         <p className="event-organization">{event.organization || event.organizationName}</p>
@@ -231,7 +251,7 @@ export function EventCard({ event }) {
             {event.location}
           </span>
         </div>
-        <Link className="event-view-link" to={`/student/events/${event.id}`}>
+        <Link className="event-view-link" to={`/events/${event.id}`}>
           View Event <Icon name="arrow-right" size={13} />
         </Link>
       </div>

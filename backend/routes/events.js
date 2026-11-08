@@ -36,7 +36,26 @@ function normalizeEventStatus(input) {
 }
 
 const EVENT_SELECT_QUERY = `
-  SELECT e.*,
+  SELECT e.id,
+         e.organization_id,
+         e.title,
+         e.description,
+         e.category,
+         e.location,
+         e.start_date,
+         e.end_date,
+         e.drive_folder_id,
+         e.compliance_file_name,
+         (e.compliance_file_data IS NOT NULL AND e.compliance_file_data != '') AS has_compliance_file,
+         e.supporting_documents,
+         e.status,
+         e.max_participants,
+         e.created_by,
+         e.approved_by,
+         e.approved_at,
+         e.created_at,
+         e.updated_at,
+         (e.end_date <= now() OR e.status IN ('COMPLETED', 'CANCELLED')) AS registration_closed,
          o.name AS organization_name,
          o.acronym AS organization_acronym,
          o.org_type AS organization_type,
@@ -52,6 +71,26 @@ const EVENT_SELECT_QUERY = `
     LEFT JOIN users cu ON cu.id = e.created_by
     LEFT JOIN users au ON au.id = e.approved_by
 `;
+
+function normalizeSupportingDocs(supportingDocsInput, complianceFileName) {
+  const trimmedCompliance = complianceFileName ? String(complianceFileName).trim() : '';
+  if (trimmedCompliance) {
+    const rest = Array.isArray(supportingDocsInput)
+      ? supportingDocsInput.map((d) => String(d || '').trim()).filter((d) => d && d !== trimmedCompliance)
+      : [];
+    return [trimmedCompliance, ...rest];
+  }
+  if (Array.isArray(supportingDocsInput)) {
+    return supportingDocsInput.map((d) => String(d || '').trim()).filter(Boolean);
+  }
+  if (typeof supportingDocsInput === 'string' && supportingDocsInput.trim()) {
+    return supportingDocsInput
+      .split(',')
+      .map((d) => d.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
 
 /**
  * Dispatches notifications to eligible student users when an event is published.
@@ -152,6 +191,24 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/events/:id/compliance-file — Retrieve uploaded compliance document metadata & base64 data
+router.get('/:id/compliance-file', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query(
+      'SELECT id, title, compliance_file_name, compliance_file_data, supporting_documents FROM events WHERE id = $1',
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // GET /api/events/:id — Retrieve a single event by ID
 router.get('/:id', async (req, res) => {
   try {
@@ -174,6 +231,7 @@ router.post('/', async (req, res) => {
       organization_id,
       title,
       description,
+      category,
       location,
       venue,
       start_date,
@@ -182,6 +240,12 @@ router.post('/', async (req, res) => {
       end_datetime,
       max_participants,
       capacity,
+      compliance_file_name,
+      complianceFileName,
+      compliance_file_data,
+      complianceFileData,
+      supporting_documents,
+      supportingDocuments,
       created_by,
       user_id,
       status,
@@ -193,6 +257,11 @@ router.post('/', async (req, res) => {
     const resolvedLocation = location || venue || 'WMSU Campus';
     const resolvedMaxParticipants = max_participants !== undefined ? max_participants : capacity;
     const resolvedCreatedBy = created_by || user_id || null;
+    const rawSupporting = supporting_documents !== undefined ? supporting_documents : supportingDocuments;
+    const rawComplianceName = compliance_file_name || complianceFileName || (Array.isArray(rawSupporting) && rawSupporting[0] ? String(rawSupporting[0]).trim() : null);
+    const resolvedComplianceData = compliance_file_data || complianceFileData || null;
+    const resolvedSupportingDocs = normalizeSupportingDocs(rawSupporting, rawComplianceName);
+    const resolvedComplianceName = rawComplianceName || resolvedSupportingDocs[0] || null;
 
     if (!organization_id || !resolvedTitle || !resolvedStartDate) {
       return res.status(400).json({
@@ -212,18 +281,24 @@ router.post('/', async (req, res) => {
 
     const insertRes = await db.query(
       `INSERT INTO events (
-        organization_id, title, description, location,
-        start_date, end_date, max_participants, created_by, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        organization_id, title, description, category, location,
+        start_date, end_date, max_participants,
+        compliance_file_name, compliance_file_data, supporting_documents,
+        created_by, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
       RETURNING id`,
       [
         organization_id,
         resolvedTitle,
         description || null,
+        category ? String(category).trim() : null,
         resolvedLocation ? resolvedLocation.trim() : null,
         startDateVal.toISOString(),
         endDateVal.toISOString(),
         maxPartVal,
+        resolvedComplianceName,
+        resolvedComplianceData,
+        JSON.stringify(resolvedSupportingDocs),
         resolvedCreatedBy,
         eventStatus,
       ]
@@ -500,6 +575,7 @@ router.put('/:id', async (req, res) => {
     const {
       title,
       description,
+      category,
       location,
       venue,
       start_date,
@@ -508,6 +584,12 @@ router.put('/:id', async (req, res) => {
       end_datetime,
       max_participants,
       capacity,
+      compliance_file_name,
+      complianceFileName,
+      compliance_file_data,
+      complianceFileData,
+      supporting_documents,
+      supportingDocuments,
       status,
       approved_by,
       approved_at,
@@ -535,6 +617,20 @@ router.put('/:id', async (req, res) => {
       ? (inputMax && Number(inputMax) > 0 ? Number(inputMax) : null)
       : current.max_participants;
 
+    const rawComplianceName = compliance_file_name !== undefined ? compliance_file_name : complianceFileName;
+    const rawComplianceData = compliance_file_data !== undefined ? compliance_file_data : complianceFileData;
+    const rawSupporting = supporting_documents !== undefined ? supporting_documents : supportingDocuments;
+
+    const nextComplianceName = rawComplianceName !== undefined
+      ? (rawComplianceName ? String(rawComplianceName).trim() : null)
+      : current.compliance_file_name;
+    const nextComplianceData = rawComplianceData !== undefined
+      ? (rawComplianceData || null)
+      : current.compliance_file_data;
+    const nextSupportingDocs = (rawSupporting !== undefined || rawComplianceName !== undefined)
+      ? normalizeSupportingDocs(rawSupporting !== undefined ? rawSupporting : current.supporting_documents, nextComplianceName)
+      : (Array.isArray(current.supporting_documents) ? current.supporting_documents : []);
+
     const nextApprovedBy = approved_by !== undefined ? approved_by : current.approved_by;
     const nextApprovedAt = approved_at !== undefined
       ? approved_at
@@ -544,22 +640,31 @@ router.put('/:id', async (req, res) => {
       `UPDATE events
           SET title = $2,
               description = $3,
-              location = $4,
-              start_date = $5,
-              end_date = $6,
-              max_participants = $7,
-              status = $8::event_status,
-              approved_by = $9,
-              approved_at = $10
+              category = $4,
+              location = $5,
+              start_date = $6,
+              end_date = $7,
+              max_participants = $8,
+              compliance_file_name = $9,
+              compliance_file_data = $10,
+              supporting_documents = $11::jsonb,
+              status = $12::event_status,
+              approved_by = $13,
+              approved_at = $14,
+              updated_at = now()
         WHERE id = $1`,
       [
         id,
         title ? title.trim() : current.title,
         description !== undefined ? description : current.description,
+        category !== undefined ? (category ? String(category).trim() : null) : current.category,
         inputLoc !== undefined ? (inputLoc ? inputLoc.trim() : null) : current.location,
         nextStart.toISOString(),
         nextEnd.toISOString(),
         nextMaxPart,
+        nextComplianceName,
+        nextComplianceData,
+        JSON.stringify(nextSupportingDocs),
         nextStatus,
         nextApprovedBy,
         nextApprovedAt,

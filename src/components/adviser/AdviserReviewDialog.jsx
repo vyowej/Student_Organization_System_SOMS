@@ -4,16 +4,23 @@ import Button from '../ui/Button.jsx'
 import ConfirmDialog from '../ui/ConfirmDialog.jsx'
 import Modal from '../ui/Modal.jsx'
 import Icon from '../ui/Icon.jsx'
+import {
+  OFFICER_HIERARCHY,
+  ORGANIZATION_COMMITTEES,
+  getHierarchyEntry,
+} from '../../data/officerHierarchy.js'
 
 const statusTone = {
   PENDING: 'warning',
   SUBMITTED: 'warning',
   UNDER_REVIEW: 'warning',
   APPROVED: 'success',
+  PUBLISHED: 'success',
   VERIFIED: 'success',
   RETURNED: 'danger',
   RETURNED_FOR_REVISION: 'danger',
   REJECTED: 'danger',
+  CANCELLED: 'danger',
   PENDING_VERIFICATION: 'warning',
 }
 
@@ -34,14 +41,16 @@ export default function AdviserReviewDialog({
   const [error, setError] = useState('')
   const [approvalConfirmationOpen, setApprovalConfirmationOpen] = useState(false)
   const [approvalProcessing, setApprovalProcessing] = useState(false)
-  const [assignedPosition, setAssignedPosition] = useState('MEMBER')
+  const [assignedPosition, setAssignedPosition] = useState('OTHER_OFFICER')
+  const [assignedCommittee, setAssignedCommittee] = useState('Programs & Events Committee')
   const [customTitle, setCustomTitle] = useState('')
 
   function close() {
     setDecision('')
     setComment('')
     setError('')
-    setAssignedPosition('MEMBER')
+    setAssignedPosition('OTHER_OFFICER')
+    setAssignedCommittee('Programs & Events Committee')
     setCustomTitle('')
     setApprovalConfirmationOpen(false)
     setApprovalProcessing(false)
@@ -63,28 +72,53 @@ export default function AdviserReviewDialog({
       }
     }
     setApprovalProcessing(true)
-    const saved = await onDecision(decision, comment, assignedPosition, customTitle)
+    const saved = await onDecision(decision, comment, assignedPosition, customTitle, assignedCommittee)
     if (saved) close()
     else setApprovalProcessing(false)
+  }
+
+  async function handleOpenComplianceFile() {
+    const rawId = String(item?.eventId || item?.id || '').replace(/^EVT-|^APR-EVT-/i, '')
+    if (!rawId) return
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const res = await fetch(`${apiBase}/events/${rawId}/compliance-file`)
+      if (!res.ok) return
+      const payload = await res.json()
+      if (payload?.compliance_file_data) {
+        const link = document.createElement('a')
+        link.href = payload.compliance_file_data
+        link.download = payload.compliance_file_name || 'compliance-document'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }
+    } catch {
+      // Ignore if file bytes are not stored
+    }
   }
 
   function confirmationCopy() {
     if (item?.type === 'MEMBERSHIP_APPLICATION') {
       if (decision === 'APPROVED') {
-        const roleLabel = assignedPosition === 'OTHER_OFFICER' ? (customTitle || 'Officer') : assignedPosition.replace('_', ' ')
+        const roleLabel = assignedPosition === 'OTHER_OFFICER'
+          ? (customTitle || 'Committee Chairperson')
+          : getHierarchyEntry(assignedPosition).title
         return {
-          title: 'Confirm Membership Approval',
-          message: `Approve ${item.name || item.submittedBy || 'this student'}'s membership into ${item.organizationName}? They will be enrolled with the position of ${roleLabel}.`,
-          label: 'Yes, Approve Member',
-          icon: '?',
+          title: 'Confirm Officer / Committee Approval',
+          message: `Approve ${item.name || item.submittedBy || 'this applicant'} into ${item.organizationName} as ${roleLabel} (${assignedCommittee})?`,
+          label: 'Yes, Approve & Assign',
+          icon: '✓',
+          tone: 'success',
         }
       }
       if (decision === 'REJECTED') {
         return {
           title: 'Confirm Application Rejection',
-          message: `Reject ${item.name || item.submittedBy || 'this student'}'s application to ${item.organizationName}?`,
+          message: `Reject ${item.name || item.submittedBy || 'this applicant'}'s application to ${item.organizationName}?`,
           label: 'Yes, Reject',
           icon: '!',
+          tone: 'danger',
         }
       }
     }
@@ -93,7 +127,8 @@ export default function AdviserReviewDialog({
         title: approvalConfirmationTitle,
         message: approvalConfirmationMessage,
         label: approvalConfirmationLabel,
-        icon: '?',
+        icon: '✓',
+        tone: 'success',
       }
     }
     if (decision === 'VERIFIED') {
@@ -101,7 +136,8 @@ export default function AdviserReviewDialog({
         title: 'Confirm Report Verification',
         message: 'Are you sure you want to verify this accomplishment report? Please make sure you have reviewed all the report details and supporting documents before proceeding.',
         label: 'Yes, Verify Report',
-        icon: '!',
+        icon: '✓',
+        tone: 'success',
       }
     }
     if (decision === 'REJECTED') {
@@ -110,6 +146,7 @@ export default function AdviserReviewDialog({
         message: 'Are you sure you want to reject this request? Please review the details and provide a reason before proceeding.',
         label: 'Yes, Reject',
         icon: '!',
+        tone: 'danger',
       }
     }
     return {
@@ -117,14 +154,37 @@ export default function AdviserReviewDialog({
       message: 'Are you sure you want to return this request for revision? Please review the details and provide feedback before proceeding.',
       label: 'Yes, Return for Revision',
       icon: '!',
+      tone: 'warning',
     }
   }
 
   const confirmation = confirmationCopy()
+  const complianceDocuments = (() => {
+    if (!item) return []
+    const list = []
+    if (item.complianceFileName) {
+      list.push(item.complianceFileName)
+    }
+    if (Array.isArray(item.supportingDocuments)) {
+      for (const doc of item.supportingDocuments) {
+        const docName = typeof doc === 'string' ? doc : (doc?.name || doc?.title || '')
+        if (docName && !list.includes(docName)) {
+          list.push(docName)
+        }
+      }
+    }
+    return list
+  })()
 
   return (
     <>
-      <Modal onClose={close} open={Boolean(item)} size={report ? 'xl' : 'lg'} title={report ? 'Accomplishment Report' : 'Submission Review'}>
+      <Modal
+        onClose={close}
+        open={Boolean(item)}
+        size={report ? 'xl' : 'lg'}
+        status={item?.status}
+        title={report ? 'Accomplishment Report' : 'Submission Review'}
+      >
         {item && (
           <div className={`adviser-review-dialog${report ? ' adviser-review-dialog--report' : ''}`}>
           <div className="adviser-review-summary">
@@ -174,13 +234,22 @@ export default function AdviserReviewDialog({
                 ))}
               </section>
               <section className="adviser-report-detail-section">
-                <h4>Supporting Documents</h4>
-                {item.supportingDocuments?.length
-                  ? <div className="adviser-report-files">{item.supportingDocuments.map((file, index) => {
-                    const fileName = typeof file === 'string' ? file : file.name ?? file.title ?? `Supporting document ${index + 1}`
-                    return <div className="adviser-report-file-card" key={`${fileName}-${index}`}><Icon name="document" size={16} /><span><strong>{fileName}</strong><small>{file.type ?? 'Supporting document'}</small></span></div>
-                  })}</div>
-                  : <p>No supporting documents attached.</p>}
+                <h4>Compliance & Supporting Documents</h4>
+                {complianceDocuments.length > 0 ? (
+                  <div className="adviser-report-files">
+                    {complianceDocuments.map((fileName, index) => (
+                      <div className="adviser-report-file-card" key={`${fileName}-${index}`}>
+                        <Icon name="document" size={16} />
+                        <span>
+                          <strong>{fileName}</strong>
+                          <small>{index === 0 && item.complianceFileName ? 'Uploaded compliance document' : 'Supporting document'}</small>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p>No supporting documents attached.</p>
+                )}
               </section>
               {item.status === 'VERIFIED' && (
                 <section className="adviser-report-verification">
@@ -193,11 +262,12 @@ export default function AdviserReviewDialog({
           ) : item.type === 'MEMBERSHIP_APPLICATION' ? (
             <>
               <dl className="adviser-review-facts">
-                <div><dt>Applicant</dt><dd>{item.name ?? item.submittedBy ?? 'Student'}</dd></div>
+                <div><dt>Applicant</dt><dd>{item.name ?? item.submittedBy ?? 'Officer Applicant'}</dd></div>
                 <div><dt>Student ID</dt><dd>{item.studentId ?? 'Not recorded'}</dd></div>
                 <div><dt>Program</dt><dd>{item.program ?? 'Not recorded'}</dd></div>
                 {item.yearLevel && <div><dt>Year Level</dt><dd>{item.yearLevel}</dd></div>}
                 <div><dt>Organization</dt><dd>{item.organizationName ?? 'Campus Organization'}</dd></div>
+                <div><dt>COR Document</dt><dd>{item.corFileName || 'Verified on profile'}</dd></div>
                 <div><dt>Date Applied</dt><dd>{item.submittedDate ?? item.applicationDate ?? 'Not recorded'}</dd></div>
                 {item.decisionDate && <div><dt>Decision Date</dt><dd>{item.decisionDate}</dd></div>}
               </dl>
@@ -207,30 +277,45 @@ export default function AdviserReviewDialog({
               </section>
               {item.status === 'PENDING' && (
                 <section style={{ marginTop: '16px', padding: '14px', borderRadius: '10px', background: '#faf8f9', border: '1px solid #ebdbe2' }}>
-                  <h4 style={{ margin: '0 0 10px', fontSize: '14px', color: '#74102d' }}>Assign Organization Position</h4>
-                  <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#49434a' }}>
-                    Select Position for Applicant *
-                    <select
-                      value={assignedPosition}
-                      onChange={(e) => setAssignedPosition(e.target.value)}
-                      style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid #d9d2d7', background: 'white' }}
-                    >
-                      <option value="MEMBER">General Member</option>
-                      <option value="PRESIDENT">President</option>
-                      <option value="VICE_PRESIDENT">Vice President</option>
-                      <option value="SECRETARY">Secretary</option>
-                      <option value="TREASURER">Treasurer</option>
-                      <option value="AUDITOR">Auditor</option>
-                      <option value="PRO">Public Information Officer (PIO)</option>
-                      <option value="OTHER_OFFICER">Other Officer Position</option>
-                    </select>
-                  </label>
+                  <h4 style={{ margin: '0 0 10px', fontSize: '14px', color: '#74102d' }}>Assign Officer Role & Committee</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
+                    <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#49434a' }}>
+                      Officer Hierarchy Position *
+                      <select
+                        value={assignedPosition}
+                        onChange={(e) => {
+                          const nextCode = e.target.value
+                          setAssignedPosition(nextCode)
+                          setAssignedCommittee(getHierarchyEntry(nextCode).defaultCommittee)
+                        }}
+                        style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid #d9d2d7', background: 'white' }}
+                      >
+                        {OFFICER_HIERARCHY.map((entry) => (
+                          <option key={entry.code} value={entry.code}>
+                            {entry.title} ({entry.tierLabel})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#49434a' }}>
+                      Assigned Committee *
+                      <select
+                        value={assignedCommittee}
+                        onChange={(e) => setAssignedCommittee(e.target.value)}
+                        style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid #d9d2d7', background: 'white' }}
+                      >
+                        {ORGANIZATION_COMMITTEES.map((comm) => (
+                          <option key={comm} value={comm}>{comm}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
                   {assignedPosition === 'OTHER_OFFICER' && (
                     <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#49434a', marginTop: '10px' }}>
-                      Custom Officer Title *
+                      Specific Officer / Chairperson Title
                       <input
                         type="text"
-                        placeholder="e.g. Committee Head"
+                        placeholder="e.g. Programs & Events Chairperson"
                         value={customTitle}
                         onChange={(e) => setCustomTitle(e.target.value)}
                         style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid #d9d2d7', background: 'white' }}
@@ -246,21 +331,39 @@ export default function AdviserReviewDialog({
                 <div><dt>Request type</dt><dd>{item.type?.replaceAll('_', ' ') ?? 'EVENT'}</dd></div>
                 <div><dt>Submitted by</dt><dd>{item.submittedBy ?? 'Organization Officer'}</dd></div>
                 <div><dt>Submitted</dt><dd>{item.submittedDate ?? item.submissionDate ?? 'Not recorded'}</dd></div>
-                {item.eventDate && <div><dt>Event date</dt><dd>{item.eventDate}</dd></div>}
-                {item.date && <div><dt>Event date</dt><dd>{item.date}</dd></div>}
+                {(item.eventDate || item.date) && <div><dt>Event date</dt><dd>{item.eventDate || item.date}</dd></div>}
                 {item.time && <div><dt>Time</dt><dd>{item.time}</dd></div>}
                 {(item.venue || item.location) && <div><dt>Venue</dt><dd>{item.venue ?? item.location}</dd></div>}
                 {item.targetAudience && <div><dt>Target audience</dt><dd>{item.targetAudience}</dd></div>}
                 {item.attendance !== undefined && <div><dt>Attendance</dt><dd>{item.attendance}</dd></div>}
-                {item.capacity !== undefined && <div><dt>Capacity</dt><dd>{item.capacity}</dd></div>}
+                {item.capacity !== undefined && <div><dt>Max Participants</dt><dd>{item.capacity || 'Open capacity'}</dd></div>}
                 {item.registrationDeadline && <div><dt>Registration deadline</dt><dd>{item.registrationDeadline}</dd></div>}
                 {item.budget && <div><dt>Budget</dt><dd>{item.budget}</dd></div>}
                 {item.adviserDecisionDate && <div><dt>Decision date</dt><dd>{item.adviserDecisionDate}</dd></div>}
               </dl>
               <section><h4>Description</h4><p>{item.description ?? 'No description was provided.'}</p></section>
               <section>
-                <h4>Supporting documents</h4>
-                {item.supportingDocuments?.length ? <ul>{item.supportingDocuments.map((file) => <li key={file}>{file}</li>)}</ul> : <p>No supporting documents attached.</p>}
+                <h4>Compliance & Supporting Documents</h4>
+                {complianceDocuments.length > 0 ? (
+                  <div className="adviser-report-files">
+                    {complianceDocuments.map((fileName, idx) => (
+                      <div className="adviser-report-file-card" key={`${fileName}-${idx}`}>
+                        <Icon name="document" size={16} />
+                        <span style={{ flex: 1 }}>
+                          <strong>{fileName}</strong>
+                          <small>{idx === 0 ? 'Uploaded compliance document' : 'Supporting attachment'}</small>
+                        </span>
+                        {idx === 0 && item.hasComplianceFile && (
+                          <Button onClick={handleOpenComplianceFile} size="sm" variant="secondary">
+                            Download
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p>No compliance document attached.</p>
+                )}
               </section>
             </>
           )}
@@ -279,7 +382,7 @@ export default function AdviserReviewDialog({
                 ) : item.type === 'MEMBERSHIP_APPLICATION' ? (
                   <>
                     <Button onClick={() => requestDecision('REJECTED')} variant="danger">Reject Application</Button>
-                    <Button onClick={() => requestDecision('APPROVED')} variant="primary">Approve & Assign Position</Button>
+                    <Button onClick={() => requestDecision('APPROVED')} variant="primary">Approve & Assign Role</Button>
                   </>
                 ) : (
                   <>
@@ -327,6 +430,7 @@ export default function AdviserReviewDialog({
         onConfirm={confirmDecision}
         open={approvalConfirmationOpen}
         title={confirmation.title}
+        tone={confirmation.tone}
       />
     </>
   )

@@ -1,8 +1,8 @@
 /**
  * Shared Portal Layout Shell
  *
- * Wraps authenticated role portals (Student, Officer, Adviser, Admin) with
- * the top Navbar, collapsible Sidebar, UndoBar, ErrorBoundary, and role-scoped
+ * Wraps authenticated role portals (Officer, Adviser, Admin) with
+ * the top Navbar, collapsible Sidebar, ErrorBoundary, and role-scoped
  * React Router Outlet context.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -12,7 +12,6 @@ import { usePortalData } from '../../context/usePortalData.js'
 import { useAuth } from '../../context/useAuth.js'
 import Navbar from './Navbar.jsx'
 import Sidebar from './Sidebar.jsx'
-import UndoBar from '../ui/UndoBar.jsx'
 import ErrorBoundary from '../ui/ErrorBoundary.jsx'
 
 export default function PortalLayout({ role }) {
@@ -31,20 +30,8 @@ export default function PortalLayout({ role }) {
     [sharedPortalData.officerEvents],
   )
 
-  const studentId = currentUser?.studentId ?? currentUser?.id
-  const studentRegistrations = useMemo(() => {
-    if (role !== 'Student') return sharedPortalData.studentRegistrations
-    return sharedPortalData.studentRegistrations.filter(
-      (registration) =>
-        (studentId && String(registration.studentId).toLowerCase() === String(studentId).toLowerCase()) ||
-        (currentUser?.id && String(registration.userId) === String(currentUser.id)) ||
-        (currentUser?.studentDbId && String(registration.studentDbId) === String(currentUser.studentDbId)),
-    )
-  }, [role, sharedPortalData.studentRegistrations, studentId, currentUser])
+  const navigation = roleNavigation[role] || roleNavigation['Organization Officer']
 
-  const navigation = roleNavigation[role]
-
-  // While the mobile drawer is open: lock page scroll and let Escape close it.
   useEffect(() => {
     if (!menuOpen) return undefined
     const previousOverflow = document.body.style.overflow
@@ -98,8 +85,8 @@ export default function PortalLayout({ role }) {
     sharedPortalData.markNotificationRead?.(id)
   }
 
-  async function registerForEvent(eventId) {
-    return sharedPortalData.registerStudentForEvent(eventId)
+  async function registerForEvent(eventId, guestPayload) {
+    return sharedPortalData.registerStudentForEvent(eventId, guestPayload)
   }
 
   async function cancelRegistration(registrationId) {
@@ -120,17 +107,15 @@ export default function PortalLayout({ role }) {
     readNotificationIds,
     registerForEvent,
     cancelRegistration,
-    studentRegistrations,
+    studentRegistrations: sharedPortalData.studentRegistrations,
     currentUser,
   }
 
-  const currentNotifications = role === 'Student'
-    ? sharedPortalData.studentNotifications
-    : role === 'Organization Officer'
-      ? sharedPortalData.officerNotifications
-      : role === 'Organization Adviser'
-        ? sharedPortalData.adviserNotifications
-        : sharedPortalData.adminNotifications
+  const currentNotifications = role === 'Organization Officer'
+    ? sharedPortalData.officerNotifications
+    : role === 'Organization Adviser'
+      ? sharedPortalData.adviserNotifications
+      : sharedPortalData.adminNotifications
 
   const roleNotifications = useMemo(() => {
     return (currentNotifications || []).map((n) => {
@@ -145,41 +130,25 @@ export default function PortalLayout({ role }) {
           ? '/admin/events'
           : role === 'Organization Adviser'
             ? '/adviser/events'
-            : role === 'Organization Officer'
-              ? '/officer/events'
-              : '/student/events'
+            : '/officer/events'
       } else if (rawType.includes('ANNOUNCEMENT')) {
         destination = role === 'Organization Officer'
           ? '/officer/announcements'
-          : role === 'Student'
-            ? '/student/dashboard'
-            : role === 'Organization Adviser'
-              ? '/adviser/dashboard'
-              : '/admin/dashboard'
-      } else if (rawType.includes('REGISTRATION')) {
-        destination = role === 'Student'
-          ? '/student/registrations'
-          : role === 'Organization Officer'
-            ? '/officer/attendance'
-            : role === 'Organization Adviser'
-              ? '/adviser/events'
-              : '/admin/events'
-      } else if (rawType.includes('ATTENDANCE')) {
-        destination = role === 'Student'
-          ? '/student/attendance'
-          : role === 'Organization Officer'
-            ? '/officer/attendance'
-            : role === 'Organization Adviser'
-              ? '/adviser/events'
-              : '/admin/events'
+          : role === 'Organization Adviser'
+            ? '/adviser/dashboard'
+            : '/admin/dashboard'
+      } else if (rawType.includes('REGISTRATION') || rawType.includes('ATTENDANCE')) {
+        destination = role === 'Organization Officer'
+          ? '/officer/attendance'
+          : role === 'Organization Adviser'
+            ? '/adviser/events'
+            : '/admin/events'
       } else if (rawType.includes('MEMBERSHIP')) {
         destination = role === 'Organization Officer'
           ? '/officer/membership-requests'
-          : role === 'Student'
-            ? '/student/my-organizations'
-            : role === 'Organization Adviser'
-              ? '/adviser/organizations'
-              : '/admin/students'
+          : role === 'Organization Adviser'
+            ? '/adviser/organizations'
+            : '/admin/users'
       } else if (rawType.includes('DOCUMENT')) {
         destination = role === 'Organization Officer'
           ? '/officer/documents'
@@ -206,10 +175,8 @@ export default function PortalLayout({ role }) {
         } else if (role === 'Organization Adviser') {
           destination = '/adviser/approvals'
           canReview = true
-        } else if (role === 'Organization Officer') {
-          destination = '/officer/events'
         } else {
-          destination = '/student/my-organizations'
+          destination = '/officer/events'
         }
       }
 
@@ -260,7 +227,6 @@ export default function PortalLayout({ role }) {
           role={role}
         />
         <main className="portal-main" id="main-content" tabIndex={-1}>
-          <UndoBar />
           <ErrorBoundary>
             <Outlet context={outletContext} />
           </ErrorBoundary>
@@ -280,8 +246,4 @@ export function AdviserLayout() {
 
 export function OfficerLayout() {
   return <PortalLayout role="Organization Officer" />
-}
-
-export function StudentLayout() {
-  return <PortalLayout role="Student" />
 }

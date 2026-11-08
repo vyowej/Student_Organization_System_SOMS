@@ -34,6 +34,17 @@ const SINGLE_SEAT_ROLES = [
   'PRO',
 ];
 
+const DEFAULT_POSITION_COMMITTEES = {
+  PRESIDENT: 'Executive Committee',
+  VICE_PRESIDENT: 'Internal & External Affairs Committee',
+  SECRETARY: 'Documentation & Secretariat Committee',
+  TREASURER: 'Finance & Budget Committee',
+  AUDITOR: 'Audit & Compliance Committee',
+  PRO: 'Publicity & Media Committee',
+  OTHER_OFFICER: 'Programs & Events Committee',
+  MEMBER: 'Membership & Welfare Committee',
+};
+
 function normalizePositionAndTitle(positionInput, customTitleInput) {
   if (!positionInput || String(positionInput).trim().toLowerCase() === 'member' || String(positionInput).trim() === 'None' || String(positionInput).trim().toLowerCase() === 'general member') {
     return { position: 'MEMBER', custom_title: null };
@@ -46,7 +57,9 @@ function normalizePositionAndTitle(positionInput, customTitleInput) {
   if (VALID_POSITIONS.includes(upper)) {
     return {
       position: upper,
-      custom_title: customTitleInput ? String(customTitleInput).trim() : (upper === 'OTHER_OFFICER' ? raw : null),
+      custom_title: customTitleInput
+        ? String(customTitleInput).trim()
+        : (upper === 'OTHER_OFFICER' && raw.toUpperCase() !== 'OTHER_OFFICER' ? raw : null),
     };
   }
   if (upper === 'VICE_PRES' || upper === 'VP') {
@@ -120,6 +133,7 @@ const MEMBER_SELECT_QUERY = `
          om.student_id,
          om.position,
          om.custom_title,
+         om.committee,
          om.status,
          om.joined_at,
          om.left_at,
@@ -132,6 +146,7 @@ const MEMBER_SELECT_QUERY = `
          s.student_number,
          s.program_id,
          s.year_level,
+         s.cor_file_name,
          u.first_name,
          u.middle_name,
          u.last_name,
@@ -253,10 +268,10 @@ router.get('/student/:student_id', async (req, res) => {
   }
 });
 
-// POST /api/members — Add a student to an organization (enforces trg_members_eligibility trigger)
+// POST /api/members — Add an officer/member to an organization (enforces trg_members_eligibility trigger)
 router.post('/', async (req, res) => {
   try {
-    const { organization_id, student_id, user_id, position, custom_title } = req.body;
+    const { organization_id, student_id, user_id, position, custom_title, committee } = req.body;
     const resolvedStudentId = await resolveStudentDbId(student_id || user_id);
 
     if (!organization_id || !resolvedStudentId) {
@@ -264,30 +279,32 @@ router.post('/', async (req, res) => {
     }
 
     const { position: memberPosition, custom_title: customTitle } = normalizePositionAndTitle(position, custom_title);
+    const resolvedCommittee = committee !== undefined
+      ? (committee ? String(committee).trim() : null)
+      : (DEFAULT_POSITION_COMMITTEES[memberPosition] || null);
 
     const insertRes = await db.query(
-      `INSERT INTO organization_members (organization_id, student_id, position, custom_title, status)
-       VALUES ($1, $2, $3, $4, 'ACTIVE')
+      `INSERT INTO organization_members (organization_id, student_id, position, custom_title, committee, status)
+       VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
        ON CONFLICT (organization_id, student_id)
        DO UPDATE SET position = EXCLUDED.position,
                      custom_title = EXCLUDED.custom_title,
+                     committee = COALESCE(EXCLUDED.committee, organization_members.committee),
                      status = 'ACTIVE',
                      left_at = NULL
        RETURNING id`,
-      [organization_id, resolvedStudentId, memberPosition, customTitle]
+      [organization_id, resolvedStudentId, memberPosition, customTitle, resolvedCommittee]
     );
 
     const fullRow = await db.query(`${MEMBER_SELECT_QUERY} WHERE om.id = $1`, [insertRes.rows[0].id]);
 
-    // Automatically sync users.role to OFFICER if assigned an officer position
-    if (memberPosition !== 'MEMBER') {
-      const stdRes = await db.query('SELECT user_id FROM students WHERE id = $1', [resolvedStudentId]);
-      if (stdRes.rows.length > 0) {
-        await db.query(
-          "UPDATE users SET role = 'OFFICER'::user_role WHERE id = $1 AND role = 'STUDENT'",
-          [stdRes.rows[0].user_id]
-        );
-      }
+    // Sync users.role to OFFICER
+    const stdRes = await db.query('SELECT user_id FROM students WHERE id = $1', [resolvedStudentId]);
+    if (stdRes.rows.length > 0) {
+      await db.query(
+        "UPDATE users SET role = 'OFFICER'::user_role WHERE id = $1 AND role = 'STUDENT'",
+        [stdRes.rows[0].user_id]
+      );
     }
 
     const memberRow = fullRow.rows[0];
@@ -300,7 +317,8 @@ router.post('/', async (req, res) => {
         organization_id,
         student_id: resolvedStudentId,
         position: memberPosition,
-        description: `Added "${memberRow?.name || 'student'}" as ${memberPosition} to ${memberRow?.organization_name || 'organization'}`,
+        committee: resolvedCommittee,
+        description: `Added "${memberRow?.name || 'officer'}" as ${memberPosition}${resolvedCommittee ? ` (${resolvedCommittee})` : ''} to ${memberRow?.organization_name || 'organization'}`,
       },
       req,
     });
@@ -308,7 +326,6 @@ router.post('/', async (req, res) => {
     res.status(201).json(memberRow);
   } catch (err) {
     console.error(err);
-    // Catch eligibility trigger exception from student_can_join() in database/student_org_db.sql
     if (err.message && err.message.includes('Student is not eligible')) {
       return res.status(403).json({ error: err.message });
     }
@@ -316,11 +333,11 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/members/:id/position — Update a member's position, custom officer title, or status
+// PUT /api/members/:id/position — Update an officer's position, committee, custom title, or status (including Demote)
 router.put('/:id/position', async (req, res) => {
   try {
     const { id } = req.params;
-    const { position, custom_title, status } = req.body;
+    const { position, custom_title, committee, status, action_type } = req.body;
 
     const existingRes = await db.query('SELECT * FROM organization_members WHERE id = $1', [id]);
     if (existingRes.rows.length === 0) {
@@ -340,11 +357,18 @@ router.put('/:id/position', async (req, res) => {
       nextCustomTitle = normalized.custom_title;
     }
 
+    let nextCommittee = current.committee;
+    if (committee !== undefined) {
+      nextCommittee = committee ? String(committee).trim() : null;
+    } else if (!nextCommittee && nextPosition !== current.position) {
+      nextCommittee = DEFAULT_POSITION_COMMITTEES[nextPosition] || null;
+    }
+
     const nextStatus = status && ['ACTIVE', 'INACTIVE', 'SUSPENDED'].includes(String(status).toUpperCase())
       ? String(status).toUpperCase()
       : current.status;
 
-    // If assigning a single-seat officer position, reassign previous active holder to General Member
+    // If assigning a single-seat officer position, reassign previous active holder to Committee Member
     if (nextStatus === 'ACTIVE' && SINGLE_SEAT_ROLES.includes(nextPosition)) {
       const prevHolders = await db.query(
         `SELECT om.id, om.student_id, s.user_id
@@ -368,21 +392,6 @@ router.put('/:id/position', async (req, res) => {
               AND status = 'ACTIVE'`,
           [current.organization_id, nextPosition, id]
         );
-
-        for (const prev of prevHolders.rows) {
-          const checkOff = await db.query(
-            `SELECT COUNT(*)::int AS cnt
-               FROM organization_members
-              WHERE student_id = $1 AND status = 'ACTIVE' AND position != 'MEMBER'`,
-            [prev.student_id]
-          );
-          if (checkOff.rows[0].cnt === 0) {
-            await db.query(
-              "UPDATE users SET role = 'STUDENT' WHERE id = $1 AND role = 'OFFICER'",
-              [prev.user_id]
-            );
-          }
-        }
       }
     }
 
@@ -392,52 +401,44 @@ router.put('/:id/position', async (req, res) => {
       `UPDATE organization_members
           SET position = $2,
               custom_title = $3,
-              status = $4,
-              left_at = $5
+              committee = $4,
+              status = $5,
+              left_at = $6
         WHERE id = $1`,
-      [id, nextPosition, nextCustomTitle, nextStatus, nextLeftAt]
+      [id, nextPosition, nextCustomTitle, nextCommittee, nextStatus, nextLeftAt]
     );
 
-    // Sync users.role with officer status if user is a STUDENT/OFFICER
     const stdRes = await db.query('SELECT user_id FROM students WHERE id = $1', [current.student_id]);
     if (stdRes.rows.length > 0) {
-      const userId = stdRes.rows[0].user_id;
-      const officerCountRes = await db.query(
-        `SELECT COUNT(*)::int AS cnt
-           FROM organization_members
-          WHERE student_id = $1 AND status = 'ACTIVE' AND position != 'MEMBER'`,
-        [current.student_id]
-      );
-      const isAnyOfficer = officerCountRes.rows[0].cnt > 0;
       await db.query(
-        `UPDATE users
-            SET role = CASE WHEN $2 THEN 'OFFICER'::user_role ELSE 'STUDENT'::user_role END
-          WHERE id = $1 AND role IN ('STUDENT', 'OFFICER')`,
-        [userId, isAnyOfficer]
+        `UPDATE users SET role = 'OFFICER'::user_role WHERE id = $1 AND role = 'STUDENT'`,
+        [stdRes.rows[0].user_id]
       );
     }
 
     const fullRow = await db.query(`${MEMBER_SELECT_QUERY} WHERE om.id = $1`, [id]);
     const memRow = fullRow.rows[0];
 
-    // Notify assigned faculty adviser of membership / officer position changes
+    const isDemotion = action_type === 'DEMOTE' || (current.position !== 'MEMBER' && nextPosition === 'MEMBER');
     if (memRow) {
       await notifyAdvisersForOrg(current.organization_id, {
         type: 'MEMBERSHIP',
-        title: `Member Role Updated: ${memRow.name || 'Member'}`,
-        message: `Officer role or status for "${memRow.name}" in ${memRow.organization_name || 'organization'} was changed to ${nextPosition} (${nextStatus}).`,
+        title: `${isDemotion ? 'Officer Demoted' : 'Officer Role Updated'}: ${memRow.name || 'Officer'}`,
+        message: `Officer role for "${memRow.name}" in ${memRow.organization_name || 'organization'} was updated to ${nextCustomTitle || nextPosition}${nextCommittee ? ` (${nextCommittee})` : ''} [${nextStatus}].`,
       });
       await recordAuditLog({
         userId: req.body?.user_id || req.body?.updated_by || null,
-        action: 'UPDATE_MEMBER_ROLE',
+        action: isDemotion ? 'DEMOTE_OFFICER' : 'UPDATE_MEMBER_ROLE',
         entity: 'organization_members',
         entityId: id,
         metadata: {
           student_id: current.student_id,
           organization_id: current.organization_id,
+          previous_position: current.position,
           position: nextPosition,
+          committee: nextCommittee,
           status: nextStatus,
-          description: `Updated officer role for "${memRow.name}" to ${nextPosition} (${nextStatus}) in ${memRow.organization_name || 'organization'}`,
+          description: `${isDemotion ? 'Demoted officer' : 'Updated officer role for'} "${memRow.name}" to ${nextCustomTitle || nextPosition}${nextCommittee ? ` (${nextCommittee})` : ''} (${nextStatus}) in ${memRow.organization_name || 'organization'}`,
         },
         req,
       });
@@ -450,7 +451,7 @@ router.put('/:id/position', async (req, res) => {
   }
 });
 
-// DELETE /api/members/:id — Deactivate a membership and set left_at timestamp
+// DELETE /api/members/:id — Remove an officer/member from the organization and set left_at timestamp
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -459,7 +460,10 @@ router.delete('/:id', async (req, res) => {
 
     const result = await db.query(
       `UPDATE organization_members
-          SET status = 'INACTIVE', left_at = now()
+          SET status = 'INACTIVE',
+              position = 'MEMBER',
+              custom_title = NULL,
+              left_at = now()
         WHERE id = $1
         RETURNING *`,
       [id]
@@ -470,19 +474,20 @@ router.delete('/:id', async (req, res) => {
     }
 
     await recordAuditLog({
-      userId: req.body?.user_id || null,
-      action: 'REMOVE_ORGANIZATION_MEMBER',
+      userId: req.body?.user_id || req.body?.removed_by || req.query?.user_id || null,
+      action: 'REMOVE_OFFICER',
       entity: 'organization_members',
       entityId: id,
       metadata: {
         organization_id: memRow?.organization_id,
         student_id: memRow?.student_id,
-        description: `Removed "${memRow?.name || 'member'}" from ${memRow?.organization_name || 'organization'}`,
+        previous_position: memRow?.position,
+        description: `Removed officer "${memRow?.name || 'officer'}" (${memRow?.position || 'MEMBER'}) from ${memRow?.organization_name || 'organization'}`,
       },
       req,
     });
 
-    res.json({ message: 'Membership ended successfully', member: result.rows[0] });
+    res.json({ message: 'Officer removed successfully', member: result.rows[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -494,6 +499,8 @@ const APPLICATION_SELECT_QUERY = `
          oa.organization_id,
          oa.applicant_id,
          oa.message,
+         COALESCE(oa.cor_file_name, s.cor_file_name) AS cor_file_name,
+         (oa.cor_file_data IS NOT NULL OR s.cor_file_data IS NOT NULL) AS has_cor,
          oa.status,
          oa.reviewed_by,
          oa.review_remarks,
@@ -610,12 +617,14 @@ router.post('/applications', async (req, res) => {
     }
 
     const appMsg = message || reason || null;
+    const corFileName = req.body.cor_file_name || req.body.corFileName || null;
+    const corFileData = req.body.cor_file_data || req.body.corFileData || null;
 
     const insertRes = await db.query(
-      `INSERT INTO organization_applications (organization_id, applicant_id, message, status)
-       VALUES ($1, $2, $3, 'PENDING')
+      `INSERT INTO organization_applications (organization_id, applicant_id, message, cor_file_name, cor_file_data, status)
+       VALUES ($1, $2, $3, $4, $5, 'PENDING')
        RETURNING id`,
-      [orgIdNum, resolvedApplicantId, appMsg]
+      [orgIdNum, resolvedApplicantId, appMsg, corFileName, corFileData]
     );
 
     const fullRow = await db.query(`${APPLICATION_SELECT_QUERY} WHERE oa.id = $1`, [insertRes.rows[0].id]);
@@ -702,80 +711,46 @@ router.put('/applications/:id/review', async (req, res) => {
 
     const app = appResult.rows[0];
 
-    // Automatically enroll student into organization_members when application is approved
     let memberRecord = null;
     if (normalizedStatus === 'APPROVED') {
-      const assignedPos = position ? normalizePositionAndTitle(position, custom_title) : { position: 'MEMBER', custom_title: null };
+      const assignedPos = position ? normalizePositionAndTitle(position, custom_title) : { position: 'OTHER_OFFICER', custom_title: 'Committee Officer' };
+      const assignedCommittee = req.body.committee
+        ? String(req.body.committee).trim()
+        : (DEFAULT_POSITION_COMMITTEES[assignedPos.position] || null);
 
-      // If assigning a single-seat officer position, reassign previous active holder to General Member
       if (SINGLE_SEAT_ROLES.includes(assignedPos.position)) {
-        const prevHolders = await db.query(
-          `SELECT om.id, om.student_id, s.user_id
-             FROM organization_members om
-             JOIN students s ON s.id = om.student_id
-            WHERE om.organization_id = $1
-              AND om.position = $2
-              AND om.status = 'ACTIVE'
-              AND om.student_id != $3`,
+        await db.query(
+          `UPDATE organization_members
+              SET position = 'MEMBER',
+                  custom_title = NULL
+            WHERE organization_id = $1
+              AND position = $2
+              AND student_id != $3
+              AND status = 'ACTIVE'`,
           [app.organization_id, assignedPos.position, app.applicant_id]
         );
-
-        if (prevHolders.rows.length > 0) {
-          await db.query(
-            `UPDATE organization_members
-                SET position = 'MEMBER',
-                    custom_title = NULL
-              WHERE organization_id = $1
-                AND position = $2
-                AND student_id != $3
-                AND status = 'ACTIVE'`,
-            [app.organization_id, assignedPos.position, app.applicant_id]
-          );
-
-          for (const prev of prevHolders.rows) {
-            const checkOff = await db.query(
-              `SELECT COUNT(*)::int AS cnt
-                 FROM organization_members
-                WHERE student_id = $1 AND status = 'ACTIVE' AND position != 'MEMBER'`,
-              [prev.student_id]
-            );
-            if (checkOff.rows[0].cnt === 0) {
-              await db.query(
-                "UPDATE users SET role = 'STUDENT' WHERE id = $1 AND role = 'OFFICER'",
-                [prev.user_id]
-              );
-            }
-          }
-        }
       }
 
       const memRes = await db.query(
-        `INSERT INTO organization_members (organization_id, student_id, position, custom_title, status)
-         VALUES ($1, $2, $3, $4, 'ACTIVE')
+        `INSERT INTO organization_members (organization_id, student_id, position, custom_title, committee, status)
+         VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
          ON CONFLICT (organization_id, student_id)
-         DO UPDATE SET status = 'ACTIVE', position = EXCLUDED.position, custom_title = EXCLUDED.custom_title, left_at = NULL
+         DO UPDATE SET status = 'ACTIVE',
+                       position = EXCLUDED.position,
+                       custom_title = EXCLUDED.custom_title,
+                       committee = COALESCE(EXCLUDED.committee, organization_members.committee),
+                       left_at = NULL
          RETURNING id`,
-        [app.organization_id, app.applicant_id, assignedPos.position, assignedPos.custom_title]
+        [app.organization_id, app.applicant_id, assignedPos.position, assignedPos.custom_title, assignedCommittee]
       );
       const fullMem = await db.query(`${MEMBER_SELECT_QUERY} WHERE om.id = $1`, [memRes.rows[0].id]);
       memberRecord = fullMem.rows[0] || null;
 
-      // Automatically sync users.role with active officer status
       const stdRes = await db.query('SELECT user_id FROM students WHERE id = $1', [app.applicant_id]);
       if (stdRes.rows.length > 0) {
-        const userId = stdRes.rows[0].user_id;
-        const officerCountRes = await db.query(
-          `SELECT COUNT(*)::int AS cnt
-             FROM organization_members
-            WHERE student_id = $1 AND status = 'ACTIVE' AND position != 'MEMBER'`,
-          [app.applicant_id]
-        );
-        const isAnyOfficer = officerCountRes.rows[0].cnt > 0;
         await db.query(
-          `UPDATE users
-              SET role = CASE WHEN $2 THEN 'OFFICER'::user_role ELSE 'STUDENT'::user_role END
-            WHERE id = $1 AND role IN ('STUDENT', 'OFFICER')`,
-          [userId, isAnyOfficer]
+          `UPDATE users SET role = 'OFFICER'::user_role WHERE id = $1 AND role = 'STUDENT'`,
+          [stdRes.rows[0].user_id]
         );
       }
     }

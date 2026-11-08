@@ -4,7 +4,7 @@ import Modal from './Modal.jsx'
 
 /**
  * Standard confirmation dialog for important actions.
- * Provides consistent layout, icon badge, message copy, and actions
+ * Provides consistent layout, icon badge, message copy, status tone styling, and actions
  * aligned with the UNIDOS design system.
  */
 export default function ConfirmDialog({
@@ -21,12 +21,16 @@ export default function ConfirmDialog({
   onCancel,
 }) {
   const isDanger = tone === 'danger'
-  const displayIcon = icon ?? (isDanger ? 'alert-triangle' : 'alert-circle')
+  const isSuccess = tone === 'success'
+  const isWarning = tone === 'warning'
+  const displayIcon = icon ?? (isDanger ? 'alert-triangle' : isSuccess ? 'check-circle' : 'alert-circle')
+  const modalTone = isDanger ? 'danger' : isSuccess ? 'success' : isWarning ? 'warning' : ''
+  const buttonVariant = isSuccess || isWarning ? 'primary' : tone
 
   return (
-    <Modal className="confirm-dialog-modal" onClose={onCancel} open={open} size="sm" title={title}>
+    <Modal className="confirm-dialog-modal" onClose={onCancel} open={open} size="sm" title={title} tone={modalTone}>
       <div className="confirm-dialog-content">
-        <span aria-hidden="true" className={`confirm-dialog-icon confirm-dialog-icon--${isDanger ? 'danger' : 'primary'}`}>
+        <span aria-hidden="true" className={`confirm-dialog-icon confirm-dialog-icon--${isDanger ? 'danger' : isSuccess ? 'success' : isWarning ? 'warning' : 'primary'}`}>
           <Icon name={displayIcon} size={28} />
         </span>
         {message && <p className="confirm-dialog-message">{message}</p>}
@@ -34,7 +38,7 @@ export default function ConfirmDialog({
       </div>
       <div className="confirm-dialog-actions auth-dialog-actions">
         <Button onClick={onCancel} variant="secondary">{cancelLabel}</Button>
-        <Button disabled={confirmDisabled} onClick={onConfirm} variant={tone}>{confirmLabel}</Button>
+        <Button disabled={confirmDisabled} onClick={onConfirm} variant={buttonVariant}>{confirmLabel}</Button>
       </div>
     </Modal>
   )

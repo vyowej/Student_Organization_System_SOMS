@@ -29,6 +29,20 @@ export const organizationCategories = [
 export const studentEvents = []
 export const studentOrganizations = []
 
+export function isEventEnded(event) {
+  if (!event) return true
+  if (event.registrationClosed) return true
+  if (['COMPLETED', 'CANCELLED', 'ARCHIVED'].includes(event.status)) return true
+  const endSource = event.endDatetime || event.end_datetime || event.end_date
+  if (endSource) {
+    const parsedEnd = new Date(endSource)
+    if (!Number.isNaN(parsedEnd.getTime()) && parsedEnd.getTime() <= Date.now()) {
+      return true
+    }
+  }
+  return false
+}
+
 export function getOrganizationEvents(organization, officerEvents = []) {
   if (!organization) return []
   const fromOfficerEvents = officerEvents
@@ -41,6 +55,10 @@ export function getOrganizationEvents(organization, officerEvents = []) {
       id: ev.id,
       title: ev.title,
       date: ev.date,
+      endDatetime: ev.endDatetime || ev.end_date,
+      registrationClosed: ev.registrationClosed,
+      capacity: ev.capacity ?? ev.max_participants ?? 100,
+      registeredCount: ev.registeredCount ?? ev.registered_count ?? 0,
       time: ev.startTime && ev.endTime ? `${ev.startTime} - ${ev.endTime}` : ev.startTime || 'TBA',
       location: ev.location || 'TBA',
       status: ev.status,
@@ -58,7 +76,7 @@ export function getOrganizationEvents(organization, officerEvents = []) {
 }
 
 export function isEventAlmostFull(event) {
-  if (!event) return false
+  if (!event || isEventEnded(event)) return false
   const capacity = Number(event.capacity ?? event.max_participants ?? 0)
   const registered = Number(event.registeredCount ?? event.registered_count ?? 0)
   if (capacity <= 0) return false
@@ -73,7 +91,7 @@ export function getEventRegistrationState(event, registration) {
   if (event.status === 'COMPLETED' || event.status === 'ARCHIVED') {
     return 'EVENT COMPLETED'
   }
-  if (event.status === 'CANCELLED' || event.registrationStatus === 'CLOSED') {
+  if (isEventEnded(event) || event.status === 'CANCELLED' || event.registrationStatus === 'CLOSED') {
     return 'REGISTRATION CLOSED'
   }
   const capacity = Number(event.capacity ?? event.max_participants ?? 0)
@@ -101,12 +119,13 @@ function formatEventDisplayDate(dateString) {
 
 export function officerEventToStudentEvent(event) {
   if (!event) return null
-  const dateLabel = formatEventDisplayDate(event.date || event.start_date)
+  const dateLabel = formatEventDisplayDate(event.date || event.start_date || event.startDatetime)
   const startTime = event.startTime || ''
   const endTime = event.endTime || ''
   const timeRange = startTime && endTime ? `${startTime} - ${endTime}` : startTime || event.time || 'Schedule TBA'
   const capacity = Number(event.capacity ?? event.max_participants ?? 100)
   const registeredCount = Number(event.registeredCount ?? event.registered_count ?? 0)
+  const ended = isEventEnded(event)
 
   return {
     ...event,
@@ -118,9 +137,11 @@ export function officerEventToStudentEvent(event) {
     category: event.category || 'Academic',
     color: event.color || 'crimson',
     status: event.status || 'PUBLISHED',
-    registrationStatus: ['PUBLISHED', 'APPROVED'].includes(event.status) ? 'OPEN' : 'CLOSED',
+    endDatetime: event.endDatetime ?? event.end_datetime ?? event.end_date ?? null,
+    registrationClosed: ended,
+    registrationStatus: !ended && ['PUBLISHED', 'APPROVED'].includes(event.status) ? 'OPEN' : 'CLOSED',
     date: dateLabel,
-    rawDate: event.date || event.start_date,
+    rawDate: event.date || event.start_date || event.startDatetime,
     time: timeRange,
     location: event.location || event.venue || 'TBA',
     venue: event.location || event.venue || 'TBA',

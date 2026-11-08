@@ -8,6 +8,6 @@ export function useToast() {
   return context
 }
 
-export function undoAction(undo) {
-  return { action: { label: 'Undo', onClick: undo } }
+export function undoAction() {
+  return {}
 }

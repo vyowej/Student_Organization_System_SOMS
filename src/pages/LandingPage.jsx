@@ -3,47 +3,54 @@ import { Link, useNavigate } from 'react-router-dom'
 import Icon from '../components/ui/Icon.jsx'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import { AnimatedStatistic, EventCard, LeaderCard, OrganizationCard, Reveal } from '../components/public/LandingCards.jsx'
-
-
 import { usePortalData } from '../context/usePortalData.js'
 import { organizationCategories as defaultCategories } from '../data/studentEvents.js'
 
 const defaultNotifications = [
-  { type: 'Organizations', icon: 'organization', title: 'Organizations Directory', message: 'Browse recognized student organizations on campus.', time: 'live' },
-  { type: 'Events', icon: 'calendar', title: 'Campus Events', message: 'Check published events and register online.', time: 'live' },
+  { type: 'Organizations', icon: 'organization', title: 'Organizations Directory', message: 'Browse accredited organizations across WMSU colleges.', time: 'live' },
+  { type: 'Events', icon: 'calendar', title: 'Campus Events', message: 'Check upcoming activities and slot availability.', time: 'live' },
 ]
 
 const defaultLandingEvents = [
   {
     id: 'wmsu-orientation-2026',
-    title: 'University Student Orientation & Org Fair',
-    organizationName: 'Supreme Student Council',
+    title: 'University Organization Fair & General Assembly',
+    organizationName: 'University Student Council',
     category: 'Student Council',
-    date: 'November 15, 2026',
+    date: 'December 15, 2026',
+    endDatetime: '2027-12-15T17:00:00',
     time: '8:00 AM – 5:00 PM',
     location: 'WMSU Gymnasium',
+    capacity: 250,
+    registeredCount: 42,
     status: 'PUBLISHED',
     color: 'crimson',
   },
   {
     id: 'wmsu-hackathon-2026',
-    title: 'WMSU Innovators Hackathon',
-    organizationName: 'Computer Society',
+    title: 'WMSU Innovators & Builders Hackathon',
+    organizationName: 'Computer Science Society',
     category: 'Technology',
-    date: 'November 22, 2026',
+    date: 'December 20, 2026',
+    endDatetime: '2027-12-20T18:00:00',
     time: '9:00 AM – 6:00 PM',
-    location: 'College of Science and Mathematics',
+    location: 'College of Computing Studies',
+    capacity: 120,
+    registeredCount: 38,
     status: 'PUBLISHED',
     color: 'blue',
   },
   {
     id: 'leadership-summit-2026',
-    title: 'Campus Leadership & Civic Summit',
-    organizationName: 'Youth Leadership Forum',
+    title: 'Campus Officers & Advisers Governance Summit',
+    organizationName: 'Student Affairs & Services Division',
     category: 'Leadership',
-    date: 'December 2, 2026',
+    date: 'January 12, 2027',
+    endDatetime: '2027-12-22T17:00:00',
     time: '1:00 PM – 5:00 PM',
     location: 'University Social Hall',
+    capacity: 180,
+    registeredCount: 64,
     status: 'PUBLISHED',
     color: 'gold',
   },
@@ -52,9 +59,12 @@ const defaultLandingEvents = [
     title: 'Grand Cultural & Arts Showcase',
     organizationName: 'WMSU Cultural Ensemble',
     category: 'Cultural',
-    date: 'December 10, 2026',
+    date: 'January 24, 2027',
+    endDatetime: '2027-12-28T20:30:00',
     time: '4:00 PM – 8:30 PM',
     location: 'Open Grounds & Amphitheater',
+    capacity: 300,
+    registeredCount: 95,
     status: 'PUBLISHED',
     color: 'emerald',
   },
@@ -62,24 +72,24 @@ const defaultLandingEvents = [
 
 const defaultCommunityUpdates = [
   {
-    label: 'Campus Life',
-    title: 'Student organizations across all colleges are welcoming new members for this semester.',
-    link: '/student/organizations',
+    label: 'Campus Directory',
+    title: 'Accredited organizations across all WMSU colleges are active in the UNIDOS directory.',
+    link: '/organizations',
   },
   {
-    label: 'Student Affairs',
-    title: 'Accreditation and revalidation for campus organizations are currently ongoing.',
-    link: '/student/organizations',
+    label: 'Governance & Compliance',
+    title: 'Faculty advisers and officers coordinate proposals, compliance files, and reports in one workspace.',
+    link: '/organizations',
   },
   {
-    label: 'Get Involved',
-    title: 'Discover university-wide, college, and departmental organizations matching your passions.',
-    link: '/student/organizations',
+    label: 'Upcoming Activities',
+    title: 'Explore university-wide, college, and departmental events with live participant capacity tracking.',
+    link: '/events',
   },
   {
-    label: 'Leadership',
-    title: 'Connect with fellow student leaders and participate in community-driven initiatives.',
-    link: '/student/organizations',
+    label: 'Leadership Hierarchy',
+    title: 'Structured executive and committee roles empower accountable student leadership.',
+    link: '/organizations',
   },
 ]
 
@@ -108,9 +118,9 @@ function HeroSearch() {
     event.preventDefault()
     const trimmed = query.trim()
     if (trimmed) {
-      navigate(`/student/organizations?q=${encodeURIComponent(trimmed)}`)
+      navigate(`/organizations?q=${encodeURIComponent(trimmed)}`)
     } else {
-      navigate('/student/organizations')
+      navigate('/organizations')
     }
   }
 
@@ -133,7 +143,7 @@ function HeroSearch() {
           aria-label="Search organizations"
           autoComplete="off"
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search organizations..."
+          placeholder="Search organizations by name, acronym, or college..."
           type="search"
           value={query}
         />
@@ -147,7 +157,7 @@ function HeroSearch() {
 
 function LiveStatCards({ activeOrgs, publishedEvents, loading }) {
   const orgValue = `${activeOrgs}`
-  const orgLabel = 'Active Organizations'
+  const orgLabel = activeOrgs === 1 ? 'Active Organization' : 'Active Organizations'
   const evtValue = `${publishedEvents}`
   const evtLabel = `Published Event${publishedEvents !== 1 ? 's' : ''}`
 
@@ -187,8 +197,14 @@ function LiveStatCards({ activeOrgs, publishedEvents, loading }) {
 function MobileHeroStats({ activeOrganizations, publishedEvents }) {
   return (
     <div aria-label="Campus community at a glance" className="hero-mobile-stats">
-      <div><strong>{activeOrganizations}</strong><span>Active Organizations</span></div>
-      <div><strong>{publishedEvents}</strong><span>Published Events</span></div>
+      <div>
+        <strong>{activeOrganizations}</strong>
+        <span>{activeOrganizations === 1 ? 'Active Organization' : 'Active Organizations'}</span>
+      </div>
+      <div>
+        <strong>{publishedEvents}</strong>
+        <span>{publishedEvents === 1 ? 'Published Event' : 'Published Events'}</span>
+      </div>
     </div>
   )
 }
@@ -200,7 +216,8 @@ function LandingPage() {
     officerEvents = [],
     officerMembers = [],
     officerAnnouncements = [],
-    adminUsers = [],
+    academicColleges = [],
+    advisers = [],
     adminSettings,
   } = usePortalData()
 
@@ -241,22 +258,27 @@ function LandingPage() {
   )
 
   const displayEvents = useMemo(
-    () => (publishedEvents.length > 0 ? publishedEvents : defaultLandingEvents),
+    () => (publishedEvents.length > 0 ? publishedEvents.slice(0, 6) : defaultLandingEvents),
     [publishedEvents],
+  )
+
+  const activeOfficersList = useMemo(
+    () => officerMembers.filter((m) => m.status === 'ACTIVE'),
+    [officerMembers],
   )
 
   const studentLeaders = useMemo(
     () =>
-      officerMembers
-        .filter((m) => m.position && m.position !== 'MEMBER' && m.status === 'ACTIVE')
+      activeOfficersList
+        .filter((m) => m.position && m.rawPosition !== 'MEMBER')
         .slice(0, 6)
         .map((m, idx) => ({
           name: m.name,
-          position: m.officerPosition || m.role,
+          position: `${m.position}${m.committee ? ` · ${m.committee}` : ''}`,
           organization: m.organizationName,
           color: ['crimson', 'gold', 'emerald', 'blue'][idx % 4],
         })),
-    [officerMembers],
+    [activeOfficersList],
   )
 
   const communityUpdates = useMemo(() => {
@@ -264,7 +286,7 @@ function LandingPage() {
       return officerAnnouncements.slice(0, 4).map((ann) => ({
         label: ann.organizationName || 'Announcement',
         title: ann.title,
-        link: '/student/notifications',
+        link: ann.organizationId ? `/organizations/${ann.organizationId}` : '/organizations',
       }))
     }
     return defaultCommunityUpdates
@@ -276,10 +298,11 @@ function LandingPage() {
         .sort((a, b) => (b.memberCount || 0) - (a.memberCount || 0))
         .slice(0, 5)
         .map((org, idx) => ({
+          id: org.id,
           rank: idx + 1,
           name: org.name,
           detail: `${org.category} · ${org.college}`,
-          score: `${org.memberCount || 0} members`,
+          score: `${org.memberCount || 0} active officers`,
         })),
     [studentOrganizations],
   )
@@ -290,8 +313,8 @@ function LandingPage() {
       items.push({
         type: 'Organizations',
         icon: 'organization',
-        title: studentOrganizations[0].acronym || 'Organization',
-        message: `${studentOrganizations[0].name} is active on UNIDOS.`,
+        title: `${studentOrganizations.length} Active Organizations`,
+        message: `${studentOrganizations[0].name} and ${Math.max(studentOrganizations.length - 1, 0)} more on UNIDOS.`,
         time: 'live',
       })
     }
@@ -329,7 +352,9 @@ function LandingPage() {
     return filteredOrganizations
   }, [activeCategory, showAllOrgs, filteredOrganizations])
 
-  const studentCount = adminUsers.filter((u) => u.dbRole === 'STUDENT' || u.role === 'Student').length
+  const activeOrgCount = studentOrganizations.length
+  const collegeCount = academicColleges.length || 17
+  const adviserCount = advisers.length || activeOrgCount
 
   useEffect(() => {
     const stage = heroArtRef.current
@@ -412,31 +437,33 @@ function LandingPage() {
           <span className="hero-kicker"><i /> YOUR CAMPUS, YOUR COMMUNITY</span>
           <h1 id="hero-title">
             Discover Your
-            <span className="hero-title-accent">Campus Community</span>
+            <span className="hero-title-accent">Campus Organizations</span>
             <span className="hero-title-ending">with UNIDOS.</span>
           </h1>
-          <p className="hero-tagline">Join. Lead. Make an Impact.</p>
+          <p className="hero-tagline">Lead. Collaborate. Make an Impact.</p>
           <p className="hero-description">
-            UNIDOS brings WMSU students and organizations together as one campus community to
-            discover, participate, and stay connected to everything happening on campus.
+            UNIDOS connects accredited WMSU organizations, officers, and faculty advisers in one
+            unified hub for campus events, compliance governance, and leadership collaboration.
           </p>
 
           <HeroSearch />
 
           <div className="hero-actions">
-            <Link className="button button-primary" to="/student/organizations">
-              Explore Organizations <Icon name="arrow-right" size={14} />
+            <Link className="button button-primary" to="/organizations">
+              Explore Organization <Icon name="arrow-right" size={14} />
             </Link>
-            <Link className="button button-secondary" to="/student/events" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-              <Icon name="event" size={16} /> View Upcoming Events
+            <Link className="button button-secondary" to="/events" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <Icon name="event" size={16} /> Upcoming Events
             </Link>
           </div>
           <div className="hero-social-proof">
             <div className="mini-avatars" aria-hidden="true"><span>UN</span><span>ID</span><span>OS</span><span>+</span></div>
-            <span><strong>Find your people.</strong> Get involved at WMSU.</span>
+            <span>
+              <strong>{activeOrgCount} active {activeOrgCount === 1 ? 'organization' : 'organizations'}</strong> across {collegeCount} WMSU colleges.
+            </span>
           </div>
           <MobileHeroStats
-            activeOrganizations={studentOrganizations.length}
+            activeOrganizations={activeOrgCount}
             publishedEvents={publishedEvents.length}
           />
         </div>
@@ -449,17 +476,17 @@ function LandingPage() {
             <div className="hero-laptop-screen">
               <div className="mock-dashboard">
                 <div className="mock-dashboard-top"><WmsuLogo className="mock-logo" /><span>UNIDOS</span><i /></div>
-                <div className="mock-welcome"><small>STUDENT DASHBOARD</small><strong>Welcome back!</strong></div>
+                <div className="mock-welcome"><small>CAMPUS GOVERNANCE HUB</small><strong>Welcome back!</strong></div>
                 <div className="mock-metrics">
-                  <span><b>{studentOrganizations.length}</b><small>Organizations</small></span>
+                  <span><b>{activeOrgCount}</b><small>Active Orgs</small></span>
                   <span><b>{publishedEvents.length}</b><small>Events</small></span>
-                  <span><b>{officerMembers.length}</b><small>Members</small></span>
+                  <span><b>{adviserCount}</b><small>Advisers</small></span>
                 </div>
                 <div className="mock-dashboard-content">
-                  <div className="mock-org-list"><b>My organizations</b><i /><i /><i /></div>
+                  <div className="mock-org-list"><b>Accredited Orgs</b><i /><i /><i /></div>
                   <div className="mock-event-card">
                     <span>UPCOMING EVENT</span>
-                    <b>{publishedEvents[0]?.title || 'Campus Activity'}</b>
+                    <b>{publishedEvents[0]?.title || displayEvents[0]?.title || 'Campus Activity'}</b>
                     <i /><i />
                   </div>
                 </div>
@@ -474,9 +501,9 @@ function LandingPage() {
               <div className="mock-org-cover">
                 <span>{(studentOrganizations[0]?.acronym || 'UNIDOS').toUpperCase()}</span>
               </div>
-              <b className="mock-phone-title">{studentOrganizations[0]?.name || 'WMSU Student Organizations'}</b>
-              <span className="mock-phone-caption">LEARN · BUILD · CONNECT</span>
-              <div className="mock-phone-button">View organization</div>
+              <b className="mock-phone-title">{studentOrganizations[0]?.name || 'WMSU Organizations'}</b>
+              <span className="mock-phone-caption">LEAD · BUILD · CONNECT</span>
+              <div className="mock-phone-button">Explore Directory</div>
               <div className="mock-phone-line" /><div className="mock-phone-line short" />
             </div>
           </div>
@@ -497,55 +524,63 @@ function LandingPage() {
             <small>{secondaryNotif.time}</small>
           </div>
           <LiveStatCards
-            activeOrgs={studentOrganizations.length}
+            activeOrgs={activeOrgCount}
             loading={loading}
             publishedEvents={publishedEvents.length}
           />
         </div>
       </section>
 
-      {studentLeaders.length > 0 && (
-        <Reveal as="section" aria-labelledby="leaders-title" className="landing-section leaders-section reveal-group">
-          <SectionTitle
-            description="Meet the students who bring ideas to life and make our campus community stronger."
-            eyebrow="Student voices"
-            id="leaders-title"
-            title="Campus leaders"
-          />
-          <div className="leader-grid">
-            {studentLeaders.map((leader) => <LeaderCard key={`${leader.name}-${leader.organization}`} leader={leader} />)}
-          </div>
-        </Reveal>
-      )}
+      {/* Upcoming Events moved near the top of the Landing Page */}
+      <Reveal as="section" aria-labelledby="events-title" className="landing-section events-section events-section--featured reveal-group" id="events">
+        <SectionTitle
+          action={<Link className="text-link" to="/events">Explore all events <Icon name="arrow-right" size={13} /></Link>}
+          description="Stay ahead of scheduled activities, assemblies, and campus-wide programs at WMSU."
+          eyebrow="Happening Next on Campus"
+          id="events-title"
+          title="Upcoming events"
+        />
+        <div className="event-grid">
+          {displayEvents.map((event) => <EventCard event={event} key={event.id} />)}
+        </div>
+      </Reveal>
 
       <Reveal as="section" aria-label="WMSU community statistics" className="statistics-strip reveal-group">
-        <AnimatedStatistic label="Organizations" suffix="" value={studentOrganizations.length} />
-        <AnimatedStatistic label="Students" suffix="" value={studentCount} />
-        <AnimatedStatistic label="Events" suffix="" value={publishedEvents.length} />
-        <AnimatedStatistic label="Memberships" suffix="" value={officerMembers.length} />
+        <AnimatedStatistic label="Active Organizations" suffix="" value={activeOrgCount} />
+        <AnimatedStatistic label="Faculty Advisers" suffix="" value={adviserCount} />
+        <AnimatedStatistic label="Published Events" suffix="" value={publishedEvents.length} />
+        <AnimatedStatistic label="Active Officers" suffix="" value={activeOfficersList.length} />
       </Reveal>
 
       <Reveal as="section" aria-labelledby="organizations-title" className="landing-section organizations-section reveal-group" id="organizations">
         <SectionTitle
-          action={<Link className="text-link" to="/student/organizations">Explore all organizations <Icon name="arrow-right" size={13} /></Link>}
-          description="Whatever you are passionate about, there is a place for you here."
-          eyebrow="Find your people"
+          action={<Link className="text-link" to="/organizations">Open full directory ({activeOrgCount}) <Icon name="arrow-right" size={13} /></Link>}
+          description="Browse university-wide, college, and departmental organizations accredited under WMSU."
+          eyebrow="Accredited Directory"
           id="organizations-title"
-          title="Student organizations"
+          title="Campus organizations"
         />
-        <div aria-label="Filter organizations by category" className="category-filters" role="group">
-          {organizationCategories.map((category) => (
-            <button
-              aria-pressed={activeCategory === category}
-              className={`category-filter${activeCategory === category ? ' selected' : ''}`}
-              key={category}
-              onClick={() => { setActiveCategory(category); setShowAllOrgs(false); }}
-              type="button"
-            >
-              {category}
-            </button>
-          ))}
+        <div className="landing-org-toolbar">
+          <div aria-label="Filter organizations by category" className="category-filters" role="group">
+            {organizationCategories.map((category) => (
+              <button
+                aria-pressed={activeCategory === category}
+                className={`category-filter${activeCategory === category ? ' selected' : ''}`}
+                key={category}
+                onClick={() => { setActiveCategory(category); setShowAllOrgs(false); }}
+                type="button"
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+          <p aria-live="polite" className="landing-org-counter-pill">
+            Showing <strong>{displayedOrganizations.length}</strong> of <strong>{filteredOrganizations.length}</strong>{' '}
+            {filteredOrganizations.length === 1 ? 'organization' : 'organizations'}
+            {activeCategory !== 'All' ? ` in ${activeCategory}` : ''}
+          </p>
         </div>
+
         {displayedOrganizations.length > 0 ? (
           <div className="organization-grid" id="organization-results">
             {displayedOrganizations.map((organization) => (
@@ -555,11 +590,11 @@ function LandingPage() {
         ) : (
           <div style={{ textAlign: 'center', padding: '48px 16px', color: '#76717a' }}>
             <p style={{ fontSize: '16px', fontWeight: 600 }}>No organizations under &ldquo;{activeCategory}&rdquo; yet.</p>
-            <p style={{ fontSize: '14px', marginTop: '6px' }}>New student organizations under this category will appear here once registered.</p>
+            <p style={{ fontSize: '14px', marginTop: '6px' }}>New accredited organizations under this category will appear here automatically.</p>
           </div>
         )}
-        {activeCategory === 'All' && !showAllOrgs && filteredOrganizations.length > 12 && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '14px', marginTop: '32px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '14px', marginTop: '32px' }}>
+          {activeCategory === 'All' && !showAllOrgs && filteredOrganizations.length > 12 && (
             <button
               className="button button-secondary"
               onClick={() => setShowAllOrgs(true)}
@@ -567,32 +602,33 @@ function LandingPage() {
             >
               Show all {filteredOrganizations.length} organizations
             </button>
-            <Link className="text-link" to="/student/organizations">
-              Explore organizations directory <Icon name="arrow-right" size={13} />
-            </Link>
-          </div>
-        )}
-      </Reveal>
-
-      <Reveal as="section" aria-labelledby="events-title" className="landing-section events-section reveal-group" id="events">
-        <SectionTitle
-          action={<Link className="text-link" to="/student/events">Explore all events <Icon name="arrow-right" size={13} /></Link>}
-          description="Make plans, meet new people, and be part of what is happening at WMSU."
-          eyebrow="Mark your calendar"
-          id="events-title"
-          title="Upcoming events"
-        />
-        <div className="event-grid">
-          {displayEvents.map((event) => <EventCard event={event} key={event.id} />)}
+          )}
+          <Link className="button button-primary" to="/organizations">
+            Explore Organization Directory <Icon name="arrow-right" size={13} />
+          </Link>
         </div>
       </Reveal>
+
+      {studentLeaders.length > 0 && (
+        <Reveal as="section" aria-labelledby="leaders-title" className="landing-section leaders-section reveal-group">
+          <SectionTitle
+            description="Meet the executive officers and committee leads driving campus initiatives."
+            eyebrow="Organization Leadership"
+            id="leaders-title"
+            title="Campus officers"
+          />
+          <div className="leader-grid">
+            {studentLeaders.map((leader) => <LeaderCard key={`${leader.name}-${leader.organization}`} leader={leader} />)}
+          </div>
+        </Reveal>
+      )}
 
       <Reveal as="section" aria-labelledby="community-title" className="community-section reveal-group" id="community-feed">
         <div className="community-copy">
           <span className="landing-eyebrow">Around WMSU</span>
           <h2 id="community-title">The community is always moving.</h2>
-          <p>Keep up with what student organizations are sharing and discover a new way to get involved.</p>
-          <Link className="text-link community-feed-link" to="/student/notifications">Visit your community feed <Icon name="arrow-right" size={13} /></Link>
+          <p>Keep up with official updates shared by accredited organizations and campus leaders.</p>
+          <Link className="text-link community-feed-link" to="/organizations">Visit organizations directory <Icon name="arrow-right" size={13} /></Link>
         </div>
         <div className="community-updates">
           {communityUpdates.map((update, index) => (
@@ -607,8 +643,8 @@ function LandingPage() {
 
       <Reveal as="section" aria-labelledby="how-title" className="landing-section how-section reveal-group" id="about">
         <SectionTitle
-          description="Getting involved is simple. Start with what interests you and see where it takes you."
-          eyebrow="Your next chapter"
+          description="Structured digital workflows keep officers, faculty advisers, and administrators aligned."
+          eyebrow="Unified Governance"
           id="how-title"
           title="How UNIDOS works"
         />
@@ -618,24 +654,24 @@ function LandingPage() {
             <span aria-hidden="true" className="step-icon">
               <Icon name="search" size={20} />
             </span>
-            <h3>Discover</h3>
-            <p>Find organizations and campus activities that match your interests.</p>
+            <h3>Explore Directory</h3>
+            <p>Browse all {activeOrgCount} accredited university, college, and departmental organizations.</p>
           </article>
           <article className="how-step">
             <span aria-label="Step 2" className="step-number">02</span>
             <span aria-hidden="true" className="step-icon">
               <Icon name="plus" size={20} />
             </span>
-            <h3>Join</h3>
-            <p>Apply to organizations and become part of your campus community.</p>
+            <h3>Lead & Propose</h3>
+            <p>Officers manage committee hierarchies, upload compliance documents, and propose events.</p>
           </article>
           <article className="how-step">
             <span aria-label="Step 3" className="step-number">03</span>
             <span aria-hidden="true" className="step-icon">
               <Icon name="star" size={20} />
             </span>
-            <h3>Participate</h3>
-            <p>Attend events, connect with students, and make an impact.</p>
+            <h3>Review & Participate</h3>
+            <p>Advisers and admins endorse activities while live capacity controls manage registrations.</p>
           </article>
         </div>
       </Reveal>
@@ -644,17 +680,17 @@ function LandingPage() {
         <Reveal as="section" aria-labelledby="leaderboard-title" className="leaderboard-section reveal-group" id="leaderboard">
           <div className="leaderboard-intro">
             <span className="landing-eyebrow">Campus in action</span>
-            <h2 id="leaderboard-title">Celebrating student initiative.</h2>
-            <p>Organizations are making a difference through the activities and communities they build.</p>
+            <h2 id="leaderboard-title">Celebrating organization initiative.</h2>
+            <p>Organizations making a measurable impact through active committees and campus programs.</p>
           </div>
           <div className="leaderboard-list">
             {campusLeaderboard.map((item) => (
-              <div className="leaderboard-row" key={item.rank}>
+              <Link className="leaderboard-row" key={item.rank} style={{ textDecoration: 'none', color: 'inherit' }} to={`/organizations/${item.id}`}>
                 <span className="leaderboard-rank">{item.rank}</span>
                 <span className="leaderboard-mark">{item.name.slice(0, 2).toUpperCase()}</span>
                 <span className="leaderboard-name"><strong>{item.name}</strong><small>{item.detail}</small></span>
                 <span className="leaderboard-score">{item.score}</span>
-              </div>
+              </Link>
             ))}
           </div>
         </Reveal>
@@ -664,11 +700,11 @@ function LandingPage() {
         <div aria-hidden="true" className="cta-orbit cta-orbit-outer" />
         <div aria-hidden="true" className="cta-orbit cta-orbit-inner" />
         <span className="landing-eyebrow">Your campus is calling</span>
-        <h2 id="cta-title">Create Your WMSU Community Experience</h2>
-        <p>Discover organizations, join campus communities, and participate in activities that make an impact.</p>
+        <h2 id="cta-title">Lead Your WMSU Organization Experience</h2>
+        <p>Explore accredited organizations, register as an organization officer, and collaborate across WMSU.</p>
         <div className="cta-actions">
-          <Link className="button button-primary" to="/register">Get Started <Icon name="arrow-right" size={13} /></Link>
-          <Link className="button button-secondary" to="/student/organizations">Explore Organizations</Link>
+          <Link className="button button-primary" to="/organizations">Explore Organization <Icon name="arrow-right" size={13} /></Link>
+          <Link className="button button-secondary" to="/register">Register Officer Account</Link>
         </div>
       </Reveal>
 
@@ -680,39 +716,38 @@ function LandingPage() {
               <span className="public-brand-copy"><strong>UNIDOS</strong><span>STUDENT ORGANIZATION MANAGEMENT SYSTEM</span></span>
             </Link>
             <p className="footer-university">Western Mindanao State University</p>
-            <p>Connecting WMSU students with organizations, activities, and campus communities.</p>
+            <p>Unified governance platform for WMSU accredited organizations, officers, and faculty advisers.</p>
           </div>
           <details className="footer-column" open>
             <summary>Quick Links</summary>
             <nav aria-label="Quick links">
               <Link to="/">Home</Link>
-              <Link to="/student/organizations">Organizations</Link>
-              <Link to="/student/events">Events</Link>
-              <Link to="/#about">About</Link>
-              <Link to="/#community-feed">Community Feed</Link>
+              <Link to="/events">Upcoming Events</Link>
+              <Link to="/organizations">Organizations Directory</Link>
+              <Link to="/#about">How UNIDOS Works</Link>
               <Link to="/#leaderboard">Leaderboard</Link>
             </nav>
           </details>
           <details className="footer-column" open>
-            <summary>Student</summary>
-            <nav aria-label="Student links">
-              <Link to="/student/my-organizations">My Organizations</Link>
-              <Link to="/student/registrations">My Registrations</Link>
-              <Link to="/student/attendance">Attendance</Link>
-              <Link to="/student/notifications">Notifications</Link>
+            <summary>Portals</summary>
+            <nav aria-label="Portal links">
+              <Link to="/login">Officer Workspace</Link>
+              <Link to="/login">Faculty Adviser Portal</Link>
+              <Link to="/login">Admin Portal</Link>
+              <Link to="/register">Officer Onboarding</Link>
             </nav>
           </details>
           <details className="footer-column" open>
             <summary>Account</summary>
             <nav aria-label="Account links">
               <Link to="/login">Sign In</Link>
-              <Link to="/register">Create Account</Link>
+              <Link to="/register">Register Officer</Link>
             </nav>
           </details>
           <details className="footer-column footer-contact" open>
             <summary>Contact</summary>
             <span><Icon name="location" size={14} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '6px' }} /> Western Mindanao State University</span>
-            <span><Icon name="mail" size={14} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '6px' }} /> Student Affairs</span>
+            <span><Icon name="mail" size={14} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '6px' }} /> Student Affairs & Services Division</span>
           </details>
         </div>
         <div className="footer-bottom">

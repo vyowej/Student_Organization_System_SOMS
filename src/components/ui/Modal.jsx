@@ -36,7 +36,34 @@ function unlockBodyScroll() {
   }
 }
 
-export default function Modal({ open, title, onClose, children, size = 'md', className = '' }) {
+export function resolveModalTone(tone = '', status = '') {
+  const direct = String(tone || '').trim().toLowerCase()
+  if (['success', 'warning', 'danger', 'info'].includes(direct)) return direct
+
+  const norm = String(status || '').trim().toUpperCase().replace(/\s+/g, '_')
+  if (!norm) return ''
+  if (['APPROVED', 'PUBLISHED', 'VERIFIED', 'ACTIVE', 'ATTENDED', 'REGISTERED', 'COMPLETED'].includes(norm)) {
+    return 'success'
+  }
+  if (['PENDING', 'SUBMITTED', 'UNDER_REVIEW', 'PENDING_VERIFICATION', 'RETURNED', 'RETURNED_FOR_REVISION', 'DRAFT', 'INACTIVE', 'DEMOTE'].includes(norm)) {
+    return 'warning'
+  }
+  if (['REJECTED', 'CANCELLED', 'SUSPENDED', 'ARCHIVED', 'REMOVE', 'REMOVED', 'EVENT_FULL', 'REGISTRATION_CLOSED'].includes(norm)) {
+    return 'danger'
+  }
+  return ''
+}
+
+export default function Modal({
+  open,
+  title,
+  onClose,
+  children,
+  size = 'md',
+  tone = '',
+  status = '',
+  className = '',
+}) {
   const titleId = useId()
   const dialogRef = useRef(null)
   const onCloseRef = useRef(onClose)
@@ -94,6 +121,9 @@ export default function Modal({ open, title, onClose, children, size = 'md', cla
 
   if (!open) return null
 
+  const resolvedTone = resolveModalTone(tone, status)
+  const toneClass = resolvedTone ? `modal--tone-${resolvedTone}` : ''
+
   return createPortal(
     <div
       className="modal-backdrop"
@@ -104,7 +134,7 @@ export default function Modal({ open, title, onClose, children, size = 'md', cla
       <section
         aria-labelledby={titleId}
         aria-modal="true"
-        className={`modal modal--${size} ${className}`.trim()}
+        className={`modal modal--${size} ${toneClass} ${className}`.trim()}
         ref={dialogRef}
         role="dialog"
         tabIndex={-1}

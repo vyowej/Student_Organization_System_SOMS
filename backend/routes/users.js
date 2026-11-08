@@ -48,9 +48,11 @@ async function resolveOrEnsureProgramId(programIdInput, programLabelInput) {
 
   const label = String(programLabelInput || 'BSCS').trim();
   if (label) {
+    const parenMatch = label.match(/\(([^)]+)\)\s*$/);
+    const extractedCode = parenMatch ? parenMatch[1].trim() : label.split('—')[0].trim();
     const found = await db.query(
-      'SELECT id FROM programs WHERE lower(acronym) = lower($1) OR lower(name) = lower($1) LIMIT 1',
-      [label]
+      'SELECT id FROM programs WHERE lower(acronym) = lower($1) OR lower(name) = lower($1) OR lower(acronym) = lower($2) LIMIT 1',
+      [label, extractedCode]
     );
     if (found.rows.length > 0) return found.rows[0].id;
   }
@@ -115,10 +117,11 @@ async function buildUserProfile(target) {
   const userRes = await db.query(
     `SELECT u.id, u.email, u.first_name, u.middle_name, u.last_name, u.suffix, u.role, u.status, u.created_at, u.updated_at,
             s.id AS student_db_id, s.student_number, s.program_id, s.year_level,
+            s.cor_file_name, (s.cor_file_data IS NOT NULL) AS has_cor,
             p.name AS program_name, p.acronym AS program_acronym,
             d.id AS department_id, d.name AS department_name, d.acronym AS department_acronym,
             c.id AS student_college_id, c.name AS student_college_name, c.acronym AS student_college_acronym,
-            a.id AS adviser_db_id, a.employee_number, a.college_id AS adviser_college_id,
+            a.id AS adviser_db_id, a.employee_number, a.is_coordinator, a.college_id AS adviser_college_id,
             ac.name AS adviser_college_name, ac.acronym AS adviser_college_acronym
        FROM users u
   LEFT JOIN students s ON s.user_id = u.id
@@ -138,9 +141,16 @@ async function buildUserProfile(target) {
   if (userRes.rows.length === 0) return null;
   const row = userRes.rows[0];
 
-  const roles = [row.role];
-  if (row.role === 'OFFICER' && !roles.includes('STUDENT')) {
-    roles.unshift('STUDENT');
+  const isCoordinator = Boolean(
+    row.is_coordinator ||
+    String(row.email || '').trim().toLowerCase() === 'marjorie.rojas@wmsu.edu.ph'
+  );
+  const effectivePrimaryRole = row.role === 'STUDENT' ? 'OFFICER' : row.role;
+  const roles = [effectivePrimaryRole];
+  if (effectivePrimaryRole === 'ADMIN') {
+    roles.push('ADVISER', 'OFFICER');
+  } else if (effectivePrimaryRole === 'ADVISER' && isCoordinator && !roles.includes('ADMIN')) {
+    roles.push('ADMIN');
   }
 
   let organizationRoles = [];
@@ -149,12 +159,13 @@ async function buildUserProfile(target) {
   let organizationName = null;
   let position = null;
   let customTitle = null;
+  let committee = null;
   let allMemberships = [];
   let hasActiveOrg = false;
 
   if (row.student_db_id) {
     const memberRes = await db.query(
-      `SELECT om.id, om.organization_id, om.position, om.custom_title, om.status,
+      `SELECT om.id, om.organization_id, om.position, om.custom_title, om.committee, om.status,
               o.name AS organization_name, o.acronym AS organization_acronym
          FROM organization_members om
          JOIN organizations o ON o.id = om.organization_id
@@ -176,9 +187,10 @@ async function buildUserProfile(target) {
       organizationId: m.organization_id,
       organizationName: m.organization_name,
       organizationAcronym: m.organization_acronym,
-      position: m.custom_title || (m.position === 'MEMBER' ? 'Officer' : m.position),
+      position: m.custom_title || (m.position === 'MEMBER' ? 'Committee Officer' : m.position),
       customTitle: m.custom_title,
-      positions: [m.custom_title || (m.position === 'MEMBER' ? 'Officer' : m.position)],
+      committee: m.committee || null,
+      positions: [m.custom_title || (m.position === 'MEMBER' ? 'Committee Officer' : m.position)],
     }));
 
     allMemberships = memberRes.rows.map((m) => ({
@@ -187,6 +199,7 @@ async function buildUserProfile(target) {
       organizationAcronym: m.organization_acronym,
       position: m.position,
       customTitle: m.custom_title,
+      committee: m.committee || null,
       positions: [m.custom_title || m.position],
       status: m.status,
     }));
@@ -197,20 +210,13 @@ async function buildUserProfile(target) {
       organizationName = primaryMembership.organization_name;
       position = primaryMembership.position;
       customTitle = primaryMembership.custom_title;
+      committee = primaryMembership.committee || null;
     }
     organizationIds = memberRes.rows.map((m) => m.organization_id);
 
     hasActiveOrg = activeMemberships.length > 0 || organizationRoles.length > 0;
-    if (hasActiveOrg) {
-      if (!roles.includes('OFFICER')) roles.push('OFFICER');
-      if (!roles.includes('STUDENT')) roles.unshift('STUDENT');
-    } else {
-      if (!roles.includes('STUDENT') && row.role !== 'ADMIN' && row.role !== 'ADVISER') {
-        roles.unshift('STUDENT');
-      }
-      if (row.role === 'OFFICER' && !roles.includes('OFFICER')) {
-        roles.push('OFFICER');
-      }
+    if (hasActiveOrg && effectivePrimaryRole !== 'ADMIN' && effectivePrimaryRole !== 'ADVISER' && !roles.includes('OFFICER')) {
+      roles.push('OFFICER');
     }
   }
 
@@ -263,18 +269,18 @@ async function buildUserProfile(target) {
     lastName: row.last_name,
     displayName: `${row.last_name}, ${row.first_name}${row.middle_name ? ` ${row.middle_name}` : ''}${row.suffix ? ` ${row.suffix}` : ''}`,
     name: `${row.last_name}, ${row.first_name}${row.middle_name ? ` ${row.middle_name}` : ''}${row.suffix ? ` ${row.suffix}` : ''}`,
-    role: (hasActiveOrg && (row.role === 'OFFICER' || roles.includes('OFFICER')) && row.role !== 'ADMIN' && row.role !== 'ADVISER')
-      ? 'OFFICER'
-      : (row.role === 'OFFICER' && !hasActiveOrg)
-        ? 'STUDENT'
-        : row.role,
+    role: effectivePrimaryRole,
     roles,
+    isCoordinator,
+    isGlobalAdmin: effectivePrimaryRole === 'ADMIN',
     status: row.status,
     student_id: row.student_db_id || null,
     studentDbId: row.student_db_id || null,
     studentRecordId: row.student_db_id || null,
     studentId: row.student_number || null,
     student_number: row.student_number || null,
+    corFileName: row.cor_file_name || null,
+    hasCor: Boolean(row.cor_file_name || row.has_cor),
     adviser_id: row.adviser_db_id || null,
     adviserDbId: row.adviser_db_id || null,
     adviserRecordId: row.adviser_db_id || null,
@@ -298,6 +304,7 @@ async function buildUserProfile(target) {
     organizationName,
     position,
     customTitle,
+    committee,
     organizationRoles,
     memberships: allMemberships,
     advisedOrganizations,
@@ -315,18 +322,14 @@ router.get('/', async (req, res) => {
               CASE
                 WHEN u.role = 'ADMIN' THEN 'ADMIN'::user_role
                 WHEN u.role = 'ADVISER' THEN 'ADVISER'::user_role
-                WHEN EXISTS (
-                  SELECT 1 FROM organization_members om
-                   WHERE om.student_id = s.id AND om.status = 'ACTIVE'
-                ) THEN 'OFFICER'::user_role
-                ELSE u.role
+                ELSE 'OFFICER'::user_role
               END AS role,
               u.status, u.created_at, u.updated_at,
-              s.id AS student_db_id, s.student_number, s.program_id, s.year_level,
+              s.id AS student_db_id, s.student_number, s.program_id, s.year_level, s.cor_file_name,
               p.name AS program_name, p.acronym AS program_acronym,
               d.id AS department_id, d.name AS department_name, d.acronym AS department_acronym,
               c.id AS student_college_id, c.name AS student_college_name, c.acronym AS student_college_acronym,
-              a.id AS adviser_db_id, a.employee_number, a.college_id AS adviser_college_id,
+              a.id AS adviser_db_id, a.employee_number, a.is_coordinator, a.college_id AS adviser_college_id,
               ac.name AS adviser_college_name, ac.acronym AS adviser_college_acronym,
               COALESCE(
                 (SELECT string_agg(
@@ -379,7 +382,9 @@ router.get('/', async (req, res) => {
       studentDbId: r.student_db_id || null,
       studentId: r.student_number || null,
       student_number: r.student_number || null,
+      corFileName: r.cor_file_name || null,
       adviserDbId: r.adviser_db_id || null,
+      isCoordinator: Boolean(r.is_coordinator),
       employee_number: r.employee_number || null,
       programId: r.program_id || null,
       program: r.program_acronym || r.program_name || null,
@@ -437,6 +442,19 @@ router.post('/register', async (req, res) => {
       program,
       year_level,
       yearLevel,
+      cor_file_name,
+      corFileName,
+      cor_file_data,
+      corFileData,
+      require_cor,
+      organization_id,
+      organizationId,
+      position,
+      custom_title,
+      customTitle,
+      committee,
+      direct_enroll,
+      directEnroll,
       employee_number,
       employeeNumber,
       college_id,
@@ -453,12 +471,24 @@ router.post('/register', async (req, res) => {
     const lName = (last_name || lastName || 'User').trim();
     const mName = (middle_name || middleName || '').trim() || null;
     const sfx = (suffix || '').trim() || null;
-    const userRole = ['STUDENT', 'OFFICER', 'ADVISER', 'ADMIN'].includes(String(role || '').toUpperCase())
-      ? String(role).toUpperCase()
-      : 'STUDENT';
+    const rawRole = String(role || '').toUpperCase();
+    const userRole = ['OFFICER', 'ADVISER', 'ADMIN'].includes(rawRole)
+      ? rawRole
+      : 'OFFICER';
     const userStatus = ['ACTIVE', 'SUSPENDED', 'PENDING'].includes(String(status || '').toUpperCase())
       ? String(status).toUpperCase()
       : 'ACTIVE';
+
+    const stdNumber = String(student_number || studentId || '').trim();
+    if (stdNumber && !/^\d+$/.test(stdNumber)) {
+      return res.status(400).json({ error: 'Student ID must contain digits only.' });
+    }
+
+    const resolvedCorName = String(cor_file_name || corFileName || '').trim() || null;
+    const resolvedCorData = cor_file_data || corFileData || null;
+    if (require_cor && !resolvedCorName) {
+      return res.status(400).json({ error: 'Certificate of Registration (COR) upload is required.' });
+    }
 
     const saltRounds = 10;
     const password_hash = await bcrypt.hash(password, saltRounds);
@@ -472,22 +502,60 @@ router.post('/register', async (req, res) => {
 
     const createdUserId = userRes.rows[0].id;
 
-    // If student info was supplied (or role is STUDENT/OFFICER), create linked `students` record
-    const stdNumber = (student_number || studentId || '').trim();
-    if (stdNumber || userRole === 'STUDENT' || userRole === 'OFFICER') {
-      const resolvedStdNum = stdNumber || `STD-${createdUserId}`;
+    // If officer/student academic profile info was supplied, create linked `students` record
+    if (stdNumber || userRole === 'OFFICER') {
+      const resolvedStdNum = stdNumber || String(20260000 + createdUserId);
       const progId = await resolveOrEnsureProgramId(program_id, program);
       const validYear = parseYearLevelNumber(year_level ?? yearLevel ?? 1);
 
-      await db.query(
-        `INSERT INTO students (user_id, student_number, program_id, year_level)
-         VALUES ($1, $2, $3, $4)
+      const stdInsert = await db.query(
+        `INSERT INTO students (user_id, student_number, program_id, year_level, cor_file_name, cor_file_data)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (user_id) DO UPDATE
            SET student_number = EXCLUDED.student_number,
                program_id = EXCLUDED.program_id,
-               year_level = EXCLUDED.year_level`,
-        [createdUserId, resolvedStdNum, progId, validYear]
+               year_level = EXCLUDED.year_level,
+               cor_file_name = COALESCE(EXCLUDED.cor_file_name, students.cor_file_name),
+               cor_file_data = COALESCE(EXCLUDED.cor_file_data, students.cor_file_data)
+         RETURNING id`,
+        [createdUserId, resolvedStdNum, progId, validYear, resolvedCorName, resolvedCorData]
       );
+
+      const targetOrgId = Number(organization_id || organizationId || 0);
+      if (targetOrgId > 0 && stdInsert.rows[0]?.id) {
+        const studentDbId = stdInsert.rows[0].id;
+        if (direct_enroll || directEnroll) {
+          const validPos = ['PRESIDENT', 'VICE_PRESIDENT', 'SECRETARY', 'TREASURER', 'AUDITOR', 'PRO', 'OTHER_OFFICER', 'MEMBER'];
+          const rawPos = String(position || 'OTHER_OFFICER').trim().toUpperCase().replace(/[\s.-]+/g, '_');
+          const resolvedPos = rawPos === 'PIO' ? 'PRO' : (validPos.includes(rawPos) ? rawPos : 'OTHER_OFFICER');
+          const resolvedCustomTitle = (custom_title || customTitle || '').trim() || (resolvedPos === 'OTHER_OFFICER' && position && !validPos.includes(rawPos) ? String(position).trim() : null);
+          await db.query(
+            `INSERT INTO organization_members (organization_id, student_id, position, custom_title, committee, status)
+             VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
+             ON CONFLICT (organization_id, student_id)
+             DO UPDATE SET position = EXCLUDED.position,
+                           custom_title = EXCLUDED.custom_title,
+                           committee = EXCLUDED.committee,
+                           status = 'ACTIVE'`,
+            [targetOrgId, studentDbId, resolvedPos, resolvedCustomTitle, committee || 'General Operations Committee']
+          );
+        } else {
+          await db.query(
+            `INSERT INTO organization_applications (organization_id, applicant_id, message, cor_file_name, cor_file_data, status)
+             VALUES ($1, $2, $3, $4, $5, 'PENDING')
+             ON CONFLICT (organization_id, applicant_id) WHERE status = 'PENDING'
+             DO UPDATE SET cor_file_name = COALESCE(EXCLUDED.cor_file_name, organization_applications.cor_file_name),
+                           cor_file_data = COALESCE(EXCLUDED.cor_file_data, organization_applications.cor_file_data)`,
+            [
+              targetOrgId,
+              studentDbId,
+              `Officer onboarding application${position ? ` (${position}${committee ? ` — ${committee}` : ''})` : ''}.`,
+              resolvedCorName,
+              resolvedCorData,
+            ]
+          ).catch(() => null);
+        }
+      }
     }
 
     // If adviser info was supplied (or role is ADVISER), create linked `advisers` record
@@ -706,7 +774,10 @@ router.put('/:id', async (req, res) => {
     const current = existingRes.rows[0];
 
     const roleUpper = role ? String(role).toUpperCase() : current.role;
-    const validRole = ['STUDENT', 'OFFICER', 'ADVISER', 'ADMIN'].includes(roleUpper) ? roleUpper : current.role;
+    const normalizedRole = roleUpper === 'STUDENT' ? 'OFFICER' : roleUpper;
+    const validRole = ['OFFICER', 'ADVISER', 'ADMIN'].includes(normalizedRole)
+      ? normalizedRole
+      : (current.role === 'STUDENT' ? 'OFFICER' : current.role);
 
     // Map UI status 'INACTIVE' to 'PENDING' if passed, since user_status ENUM is ('ACTIVE', 'SUSPENDED', 'PENDING')
     let statusUpper = status ? String(status).toUpperCase() : current.status;
@@ -779,10 +850,14 @@ router.put('/:id', async (req, res) => {
     }
 
     if (student_number !== undefined || studentId !== undefined || program_id !== undefined || program !== undefined || year_level !== undefined || yearLevel !== undefined) {
+      const rawStdNum = (student_number || studentId || '').trim();
+      if (rawStdNum && !/^\d+$/.test(rawStdNum)) {
+        return res.status(400).json({ error: 'Student ID must contain digits only.' });
+      }
       const stdRes = await db.query('SELECT * FROM students WHERE user_id = $1', [id]);
       const progId = await resolveOrEnsureProgramId(program_id ?? stdRes.rows[0]?.program_id, program);
       const validYear = parseYearLevelNumber(year_level ?? yearLevel ?? stdRes.rows[0]?.year_level ?? 1);
-      const resolvedStdNum = (student_number || studentId || stdRes.rows[0]?.student_number || `STD-${id}`).trim();
+      const resolvedStdNum = (rawStdNum || stdRes.rows[0]?.student_number || String(20260000 + Number(id))).trim();
 
       await db.query(
         `INSERT INTO students (user_id, student_number, program_id, year_level)

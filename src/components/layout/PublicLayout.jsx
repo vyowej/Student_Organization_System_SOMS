@@ -1,7 +1,8 @@
 /**
- * Public Marketing & Landing Layout
+ * Public Marketing, Directory & Events Layout
  *
- * Wraps the public landing page with a sticky navigation bar, smooth hash
+ * Wraps the public landing page, organizations directory (`/organizations`),
+ * and campus events (`/events`) with a sticky navigation bar, smooth hash
  * scrolling, and IntersectionObserver-based active section highlighting.
  */
 import { useEffect, useRef, useState } from 'react'
@@ -12,8 +13,8 @@ import { dashboardByRole } from '../../data/navigation.js'
 
 const publicLinks = [
   { label: 'Home', to: '/' },
-  { label: 'Organizations', to: '/#organizations' },
-  { label: 'Events', to: '/#events' },
+  { label: 'Upcoming Events', to: '/#events' },
+  { label: 'Organizations', to: '/organizations' },
   { label: 'About', to: '/#about' },
 ]
 
@@ -35,15 +36,7 @@ export default function PublicLayout() {
   const [activeSection, setActiveSection] = useState('')
   const navbarRef = useRef(null)
 
-  const hasOfficerWorkspace = Boolean(
-    currentUser?.organizationWorkspaceId ||
-    currentUser?.organizationId ||
-    currentUser?.activeMemberships?.length ||
-    currentUser?.organizationRoles?.length
-  )
-  const userDashboard = currentUser?.role === 'OFFICER' && !hasOfficerWorkspace
-    ? '/student/dashboard'
-    : (dashboardByRole[currentUser?.role] || '/student/dashboard')
+  const userDashboard = dashboardByRole[currentUser?.role] || '/officer/dashboard'
   const pendingAnchorRef = useRef('')
   const locationKey = `${location.pathname}${location.hash}`
   const menuOpen = openMenuLocation === locationKey
@@ -79,7 +72,10 @@ export default function PublicLayout() {
   }, [])
 
   useEffect(() => {
-    if (location.pathname !== '/') return undefined
+    if (location.pathname !== '/') {
+      window.scrollTo({ top: 0, behavior: 'auto' })
+      return undefined
+    }
     let cancelled = false
     let frameOne = 0
     let frameTwo = 0
@@ -123,6 +119,10 @@ export default function PublicLayout() {
       else window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
+    if (!sectionId) {
+      navigate(item.to)
+      return
+    }
     pendingAnchorRef.current = sectionId
     if (location.pathname === '/' && location.hash === `#${sectionId}`) {
       const target = document.getElementById(sectionId)
@@ -138,10 +138,15 @@ export default function PublicLayout() {
   }
 
   useEffect(() => {
+    if (location.pathname !== '/') {
+      setActiveSection('')
+      return undefined
+    }
+
     function updateScrollState() {
       setIsScrolled(window.scrollY > 8)
       const navHeight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 72
-      const sections = [...document.querySelectorAll('#organizations, #events, #about')]
+      const sections = [...document.querySelectorAll('#events, #organizations, #about')]
       const activeSectionElement = sections
         .filter((section) => {
           const heading = section.querySelector('.landing-section-title h2, h1, h2')
@@ -162,7 +167,7 @@ export default function PublicLayout() {
     window.addEventListener('scroll', updateScrollState, { passive: true })
     window.addEventListener('resize', updateScrollState)
 
-    const sections = document.querySelectorAll('#organizations, #events, #about')
+    const sections = document.querySelectorAll('#events, #organizations, #about')
     if (!('IntersectionObserver' in window) || sections.length === 0) {
       return () => {
         window.removeEventListener('scroll', updateScrollState)
@@ -183,9 +188,13 @@ export default function PublicLayout() {
     }
   }, [location.hash, location.pathname])
 
+  const isDirectoryRoute =
+    location.pathname.startsWith('/organizations') ||
+    location.pathname.startsWith('/events')
+
   return (
     <div className="app-shell public-page">
-      <header className={`public-navbar${isScrolled ? ' is-scrolled' : ''}`} ref={navbarRef}>
+      <header className={`public-navbar${isScrolled || isDirectoryRoute ? ' is-scrolled' : ''}`} ref={navbarRef}>
         <Link aria-label="UNIDOS home" className="public-brand" to="/">
           <WmsuLogo className="brand-seal" />
           <span className="public-brand-copy">
@@ -209,7 +218,8 @@ export default function PublicLayout() {
           {publicLinks.map((item, index) => {
             const sectionId = item.to.split('#')[1]
             const isHome = !sectionId && index === 0 && location.pathname === '/' && !location.hash && !activeSection
-            const isActive = sectionId ? activeSection === sectionId : isHome
+            const isDirectoryMatch = !sectionId && item.to !== '/' && location.pathname.startsWith(item.to)
+            const isActive = sectionId ? activeSection === sectionId : (isHome || isDirectoryMatch)
 
             return (
               <Link
@@ -234,13 +244,19 @@ export default function PublicLayout() {
           ) : (
             <>
               <Link className="public-sign-in" onClick={() => setOpenMenuLocation(null)} to="/login">Sign in</Link>
-              <Link className="button button-primary public-get-started" onClick={() => setOpenMenuLocation(null)} to="/register">Get Started</Link>
+              <Link className="button button-primary public-get-started" onClick={() => setOpenMenuLocation(null)} to="/register">Register Officer</Link>
             </>
           )}
         </nav>
       </header>
-      <main className="public-main">
-        <Outlet />
+      <main className={`public-main${isDirectoryRoute ? ' public-main--directory' : ''}`}>
+        {isDirectoryRoute ? (
+          <div className="public-directory-shell">
+            <Outlet />
+          </div>
+        ) : (
+          <Outlet />
+        )}
       </main>
     </div>
   )

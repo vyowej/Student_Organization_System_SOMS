@@ -2,7 +2,7 @@
  * Portal Top Navigation Bar
  *
  * Displays the UNIDOS brand, active portal role label, user display name,
- * Officer-to-Student portal switcher, unread notification badge, profile link,
+ * Coordinator / Admin portal switchers, unread notification badge, profile link,
  * and logout confirmation modal.
  */
 import { useEffect, useRef, useState } from 'react'
@@ -12,7 +12,6 @@ import Button from '../ui/Button.jsx'
 import Icon from '../ui/Icon.jsx'
 import Modal from '../ui/Modal.jsx'
 import WmsuLogo from '../ui/WmsuLogo.jsx'
-import { useToast } from '../ui/useToast.js'
 import { formatDisplayName } from '../../data/displayName.js'
 
 function Brand() {
@@ -188,13 +187,9 @@ function NotificationPopover({
               </div>
             )}
             <Link className="notification-popover-footer" onClick={() => setOpenAtPath(null)} to={notificationLink}>
-              {role === 'Student'
-                ? 'See all notifications'
-                : role === 'Organization Adviser'
-                  ? 'Open Approval Center'
-                  : role === 'Student Affairs Admin'
-                    ? 'Open Approval Center'
-                    : 'View announcements'}
+              {role === 'Organization Adviser' || role === 'Student Affairs Admin'
+                ? 'Open Approval Center'
+                : 'View announcements'}
             </Link>
           </section>
         </>
@@ -215,36 +210,18 @@ export default function Navbar({
   isMenuOpen,
 }) {
   const { currentUser, logout, setActiveRole } = useAuth()
-  const { clearLastAction } = useToast()
   const navigate = useNavigate()
   const [logoutOpen, setLogoutOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const roleLabel = role === 'Student'
-    ? 'UNIDOS Student Portal'
-    : role === 'Organization Officer'
-      ? 'UNIDOS Organization Officer'
-      : role === 'Organization Adviser'
-        ? 'UNIDOS Adviser Portal'
-        : 'UNIDOS Admin'
-  const hasOfficerWorkspace = Boolean(
-    currentUser?.organizationWorkspaceId ||
-    currentUser?.organizationId ||
-    currentUser?.activeMemberships?.length ||
-    currentUser?.organizationRoles?.length
-  )
-  const canReturnToStudentPortal = role === 'Organization Officer'
-    && currentUser?.roles?.includes('STUDENT')
-  const canSwitchToOfficerPortal = role === 'Student'
-    && currentUser?.roles?.includes('OFFICER')
-    && hasOfficerWorkspace
 
-  function returnToStudentPortal() {
-    if (setActiveRole('STUDENT')) navigate('/student/dashboard', { replace: true })
-  }
+  const roleLabel = role === 'Organization Officer'
+    ? 'UNIDOS Organization Officer'
+    : role === 'Organization Adviser'
+      ? (currentUser?.isCoordinator ? 'UNIDOS Adviser & Coordinator' : 'UNIDOS Adviser Portal')
+      : 'UNIDOS Global Admin'
 
-  function switchToOfficerPortal() {
-    if (setActiveRole('OFFICER')) navigate('/officer/dashboard', { replace: true })
-  }
+  const isGlobalAdmin = Boolean(currentUser?.isGlobalAdmin || currentUser?.role === 'ADMIN')
+  const isCoordinator = Boolean(currentUser?.isCoordinator)
 
   function closeLogoutDialog() {
     setLogoutOpen(false)
@@ -254,7 +231,6 @@ export default function Navbar({
   function confirmLogout() {
     setIsLoggingOut(true)
     window.requestAnimationFrame(() => {
-      clearLastAction()
       logout()
       setLogoutOpen(false)
       navigate('/login', { replace: true })
@@ -279,14 +255,61 @@ export default function Navbar({
       </div>
       <div className="topbar-actions">
         <span className="topbar-user-name">{formatDisplayName(currentUser)}</span>
-        {canReturnToStudentPortal && (
-          <button className="portal-switcher" onClick={returnToStudentPortal} type="button">
-            Student portal
+        <Link className="portal-switcher" to="/organizations">
+          Directory
+        </Link>
+        {isGlobalAdmin && role !== 'Student Affairs Admin' && (
+          <button
+            className="portal-switcher"
+            onClick={() => {
+              setActiveRole('ADMIN')
+              navigate('/admin/dashboard')
+            }}
+            type="button"
+          >
+            Admin Portal
           </button>
         )}
-        {canSwitchToOfficerPortal && (
-          <button className="portal-switcher" onClick={switchToOfficerPortal} type="button">
-            Officer portal
+        {isGlobalAdmin && role !== 'Organization Adviser' && (
+          <button
+            className="portal-switcher"
+            onClick={() => {
+              setActiveRole('ADVISER')
+              navigate('/adviser/dashboard')
+            }}
+            type="button"
+          >
+            Adviser View
+          </button>
+        )}
+        {isGlobalAdmin && role !== 'Organization Officer' && (
+          <button
+            className="portal-switcher"
+            onClick={() => {
+              setActiveRole('OFFICER')
+              navigate('/officer/dashboard')
+            }}
+            type="button"
+          >
+            Officer View
+          </button>
+        )}
+        {isCoordinator && !isGlobalAdmin && role === 'Organization Adviser' && (
+          <button
+            className="portal-switcher"
+            onClick={() => navigate('/admin/users')}
+            type="button"
+          >
+            Manage Advisers
+          </button>
+        )}
+        {isCoordinator && !isGlobalAdmin && role === 'Student Affairs Admin' && (
+          <button
+            className="portal-switcher"
+            onClick={() => navigate('/adviser/dashboard')}
+            type="button"
+          >
+            Adviser Portal
           </button>
         )}
         <NotificationPopover

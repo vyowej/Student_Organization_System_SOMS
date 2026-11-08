@@ -79,7 +79,9 @@ CREATE TABLE students (
     user_id        INTEGER     NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     student_number VARCHAR(50) NOT NULL UNIQUE,
     program_id     INTEGER     NOT NULL REFERENCES programs(id),
-    year_level     INTEGER     NOT NULL CHECK (year_level BETWEEN 1 AND 6)
+    year_level     INTEGER     NOT NULL CHECK (year_level BETWEEN 1 AND 6),
+    cor_file_name  VARCHAR(255),
+    cor_file_data  TEXT
 );
 
 -- Faculty adviser profiles linked 1-to-1 with users and affiliated with a college
@@ -88,6 +90,7 @@ CREATE TABLE advisers (
     user_id         INTEGER     NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     employee_number VARCHAR(50) UNIQUE,
     title           VARCHAR(50),
+    is_coordinator  BOOLEAN     NOT NULL DEFAULT false,
     college_id      INTEGER REFERENCES colleges(id) ON DELETE SET NULL
 );
 
@@ -199,7 +202,8 @@ CREATE TABLE organization_members (
     organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     student_id      INTEGER NOT NULL REFERENCES students(id)      ON DELETE CASCADE,
     position        member_position NOT NULL DEFAULT 'MEMBER',
-    custom_title    VARCHAR(100),                   
+    custom_title    VARCHAR(100),
+    committee       VARCHAR(120),
     status          member_status   NOT NULL DEFAULT 'ACTIVE',
     joined_at       TIMESTAMPTZ     NOT NULL DEFAULT now(),
     left_at         TIMESTAMPTZ,                    
@@ -212,6 +216,8 @@ CREATE TABLE organization_applications (
     organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     applicant_id    INTEGER NOT NULL REFERENCES students(id)      ON DELETE CASCADE,
     message         TEXT,
+    cor_file_name   VARCHAR(255),
+    cor_file_data   TEXT,
     status          application_status NOT NULL DEFAULT 'PENDING',
     reviewed_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
     reviewed_at     TIMESTAMPTZ,
@@ -227,25 +233,29 @@ CREATE UNIQUE INDEX uq_one_pending_application
 -- 5. EVENTS & ATTENDANCE MANAGEMENT
 -- ============================================================
 CREATE TABLE events (
-    id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    title           VARCHAR(200) NOT NULL,
-    description     TEXT,
-    location        VARCHAR(200),
-    start_date      TIMESTAMPTZ  NOT NULL,
-    end_date        TIMESTAMPTZ  NOT NULL,
+    id                   INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    organization_id      INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    title                VARCHAR(200) NOT NULL,
+    description          TEXT,
+    category             VARCHAR(100),
+    location             VARCHAR(200),
+    start_date           TIMESTAMPTZ  NOT NULL,
+    end_date             TIMESTAMPTZ  NOT NULL,
     -- ============================================================
     -- [GOOGLE DRIVE API PLACEHOLDER — EVENT ATTACHMENTS & MATERIALS]
     -- Insert Google Drive API shared folder URL / file ID here for event documents.
     -- ============================================================
-    drive_folder_id TEXT,                              -- Google Drive Folder ID
-    status          event_status NOT NULL DEFAULT 'DRAFT',
-    max_participants INTEGER,
-    created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    approved_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    approved_at     TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    drive_folder_id      TEXT,                              -- Google Drive Folder ID
+    compliance_file_name VARCHAR(255),
+    compliance_file_data TEXT,
+    supporting_documents JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status               event_status NOT NULL DEFAULT 'DRAFT',
+    max_participants     INTEGER,
+    created_by           INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    approved_by          INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    approved_at          TIMESTAMPTZ,
+    created_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CHECK (end_date >= start_date)
 );
 
@@ -784,8 +794,7 @@ ON CONFLICT (lower(name), COALESCE(college_id, 0), COALESCE(department_id, 0)) D
        eligible_level = EXCLUDED.eligible_level,
        min_year_level = EXCLUDED.min_year_level,
        max_year_level = EXCLUDED.max_year_level,
-       eligibility_notes = EXCLUDED.eligibility_notes,
-       status = 'ACTIVE';
+       eligibility_notes = EXCLUDED.eligibility_notes;
 
 -- ============================================================
 -- 10.4.1 FACULTY ADVISERS SEED REGISTRY (64 Verified Advisers)

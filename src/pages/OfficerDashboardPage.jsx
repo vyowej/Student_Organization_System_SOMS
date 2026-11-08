@@ -17,8 +17,8 @@ import { officerEventStatuses } from '../data/navigation.js'
 import { formatDisplayName, formatGreetingName, getTimeGreeting } from '../data/displayName.js'
 
 const metricItems = [
-  { key: 'members', label: 'Total Members', tone: 'crimson' },
-  { key: 'requests', label: 'Pending Membership Requests', tone: 'blue' },
+  { key: 'members', label: 'Total Officers', tone: 'crimson' },
+  { key: 'requests', label: 'Pending Officer Applications', tone: 'blue' },
   { key: 'events', label: 'Upcoming Events', tone: 'gold' },
   { key: 'submissions', label: 'Pending Submissions', tone: 'green' },
 ]
@@ -64,7 +64,7 @@ export default function OfficerDashboardPage() {
   const {
     adminOrganizations = [],
     adviserDocuments = [],
-    approveOfficerMembershipRequest = async () => false,
+    approveOfficerMembershipRequest = async () => ({ ok: false }),
     captureUndo = () => () => {},
     officerEvents = [],
     officerMemberCount = 0,
@@ -116,9 +116,13 @@ export default function OfficerDashboardPage() {
     if (!requestToApprove) return
     const request = requestToApprove
     const undo = captureUndo()
-    const ok = await approveOfficerMembershipRequest(request.id)
-    if (!ok) return
-    showToast(`${formatDisplayName(request)} is now an active member.`, 'success', undoAction(undo))
+    const res = await approveOfficerMembershipRequest(request.id)
+    const ok = typeof res === 'object' ? Boolean(res?.ok) : Boolean(res)
+    if (!ok) {
+      showToast(res?.error || 'Unable to approve application.', 'error')
+      return
+    }
+    showToast(`${formatDisplayName(request)} is now an active officer.`, 'success', undoAction(undo))
     setRequestToApprove(null)
   }
 
@@ -146,7 +150,7 @@ export default function OfficerDashboardPage() {
         label="Your organization"
         logo={organization?.logo}
         showCover={false}
-        subtitle="Manage your organization, members, activities, and submissions."
+        subtitle="Manage your organization, officer hierarchy, activities, and submissions."
         title={organization?.name ?? 'Your Organization'}
       />
 
@@ -179,7 +183,7 @@ export default function OfficerDashboardPage() {
             <div aria-label="Quick actions" className="fb-composer-actions fb-composer-actions-4">
               <Link to="/officer/announcements"><Icon name="announcement" size={16} /> Post Announcement</Link>
               <Link to="/officer/events/create"><Icon name="event" size={16} /> Create Event</Link>
-              <Link to="/officer/members"><Icon name="members" size={16} /> Manage Members</Link>
+              <Link to="/officer/members"><Icon name="members" size={16} /> Officer Council</Link>
               <Link to="/officer/documents"><Icon name="document" size={16} /> Upload Document</Link>
             </div>
           </Card>
@@ -187,8 +191,8 @@ export default function OfficerDashboardPage() {
           <Card className="fb-card officer-requests-panel">
             <div className="fb-card-heading">
               <div>
-                <span className="officer-panel-eyebrow">MEMBERSHIP</span>
-                <h2>Recent Membership Requests</h2>
+                <span className="officer-panel-eyebrow">OFFICER RECRUITMENT</span>
+                <h2>Recent Officer Applications</h2>
               </div>
               <div className="officer-panel-heading-actions">
                 <Badge tone={pendingRequests.length ? 'warning' : 'success'}>
@@ -220,7 +224,7 @@ export default function OfficerDashboardPage() {
                 </article>
               ))}
               {pendingRequests.length === 0 && (
-                <p className="officer-inline-empty">All membership applications have been reviewed.</p>
+                <p className="officer-inline-empty">All officer applications have been reviewed.</p>
               )}
             </div>
           </Card>
@@ -282,7 +286,7 @@ export default function OfficerDashboardPage() {
         </div>
       </div>
 
-      <Modal onClose={() => setSelectedRequest(null)} open={Boolean(selectedRequest)} size="md" title="Membership Application">
+      <Modal onClose={() => setSelectedRequest(null)} open={Boolean(selectedRequest)} size="md" title="Officer Application" tone="info">
         {selectedRequest && (
           <div className="officer-request-detail">
             <p><strong>{formatDisplayName(selectedRequest)}</strong></p>
@@ -296,15 +300,15 @@ export default function OfficerDashboardPage() {
         <div className="officer-modal-actions"><Button onClick={() => setSelectedRequest(null)} variant="secondary">Close</Button></div>
       </Modal>
 
-      <Modal onClose={() => setRequestToApprove(null)} open={Boolean(requestToApprove)} size="sm" title="Approve Membership?">
-        <p>{requestToApprove && formatDisplayName(requestToApprove)} will become an active member of {organization?.name ?? 'this organization'}.</p>
+      <Modal onClose={() => setRequestToApprove(null)} open={Boolean(requestToApprove)} size="sm" title="Approve Officer Application?" tone="success">
+        <p>{requestToApprove && formatDisplayName(requestToApprove)} will become an active officer of {organization?.name ?? 'this organization'}.</p>
         <div className="officer-modal-actions">
           <Button onClick={() => setRequestToApprove(null)} variant="secondary">Cancel</Button>
           <Button onClick={approve} variant="primary">Approve</Button>
         </div>
       </Modal>
 
-      <Modal onClose={() => { setRequestToReject(null); setRejectionReason('') }} open={Boolean(requestToReject)} size="sm" title="Reject Membership Application?">
+      <Modal onClose={() => { setRequestToReject(null); setRejectionReason('') }} open={Boolean(requestToReject)} size="sm" title="Reject Officer Application?" tone="danger">
         <p>Reject {requestToReject && formatDisplayName(requestToReject)}&apos;s application to {organization?.name ?? 'this organization'}?</p>
         <label className="officer-modal-field">
           <span>Optional reason</span>

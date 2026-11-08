@@ -9613,13 +9613,33 @@
 
 .admin-modal-decision label,
 .admin-modal-label,
-.admin-settings-form label,
-.admin-settings-form .admin-field-label {
+.admin-settings-form label:not(.admin-field-label) {
   display: grid;
   gap: 7px;
   color: #49434a;
   font-size: 13px;
   font-weight: 600;
+}
+
+label.admin-field-label,
+.admin-settings-form .admin-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  color: #49434a;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.required-asterisk {
+  display: inline;
+  margin-left: 2px;
+  color: #dc2626;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .admin-modal-decision textarea,
@@ -10149,6 +10169,10 @@
   stroke: #dc2626;
 }
 
+.admin-standing-pending {
+  stroke: #2563eb;
+}
+
 .admin-standing-total {
   fill: #28252a;
   font-size: 26px;
@@ -10215,6 +10239,10 @@
 
 .admin-standing-swatch.admin-standing-suspended {
   background: #dc2626;
+}
+
+.admin-standing-swatch.admin-standing-pending {
+  background: #2563eb;
 }
 
 .admin-standing-legend-name {
@@ -12914,3 +12942,303 @@
   }
 }
 
+/* ==========================================================================
+   Searchable Course / Program Combobox (SearchableSelect)
+   ========================================================================== */
+.searchable-select {
+  position: relative;
+  width: 100%;
+}
+
+.searchable-select-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.searchable-select-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 64px 10px 14px !important;
+  border: 1px solid var(--border, #dfd8dc);
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1f1b22;
+  font-size: 14px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.searchable-select-input:focus {
+  outline: none;
+  border-color: var(--crimson, #8f1538);
+  box-shadow: 0 0 0 3px rgba(143, 21, 56, 0.12);
+}
+
+.searchable-select-clear {
+  position: absolute;
+  right: 34px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: #f2edf0;
+  color: #5d5560;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.searchable-select-clear:hover {
+  background: #e5dde2;
+  color: #1f1b22;
+}
+
+.searchable-select-chevron {
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6e6772;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.searchable-select-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 120;
+  max-height: 250px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid #dfd6dc;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(34, 21, 28, 0.16);
+}
+
+.searchable-select-option {
+  display: grid;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.searchable-select-option.is-highlighted,
+.searchable-select-option:hover {
+  background: #fbf2f5;
+}
+
+.searchable-select-option.is-selected {
+  background: #f7e6ec;
+  font-weight: 700;
+}
+
+.searchable-select-option-label {
+  color: #241e27;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.searchable-select-option-sub {
+  color: #776f7b;
+  font-size: 11px;
+}
+
+.searchable-select-empty {
+  padding: 12px;
+  color: #776f7b;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ==========================================================================
+   Distinct Status-Colored Modals & Confirm Dialogs
+   ========================================================================== */
+.modal.modal--tone-success {
+  border-top: 5px solid #16a34a !important;
+  box-shadow: 0 24px 54px rgba(22, 163, 74, 0.16);
+}
+
+.modal.modal--tone-success > .modal-header {
+  background: linear-gradient(90deg, #ecfdf5 0%, #f7fef9 100%);
+  border-bottom-color: #bbf7d0;
+}
+
+.modal.modal--tone-success > .modal-header h2 {
+  color: #14532d;
+}
+
+.modal.modal--tone-warning {
+  border-top: 5px solid #d97706 !important;
+  box-shadow: 0 24px 54px rgba(217, 119, 6, 0.16);
+}
+
+.modal.modal--tone-warning > .modal-header {
+  background: linear-gradient(90deg, #fffbeb 0%, #fffdf5 100%);
+  border-bottom-color: #fde68a;
+}
+
+.modal.modal--tone-warning > .modal-header h2 {
+  color: #78350f;
+}
+
+.modal.modal--tone-danger {
+  border-top: 5px solid #dc2626 !important;
+  box-shadow: 0 24px 54px rgba(220, 38, 38, 0.16);
+}
+
+.modal.modal--tone-danger > .modal-header {
+  background: linear-gradient(90deg, #fef2f2 0%, #fff8f8 100%);
+  border-bottom-color: #fecaca;
+}
+
+.modal.modal--tone-danger > .modal-header h2 {
+  color: #7f1d1d;
+}
+
+.modal.modal--tone-info {
+  border-top: 5px solid #2563eb !important;
+  box-shadow: 0 24px 54px rgba(37, 99, 235, 0.15);
+}
+
+.modal.modal--tone-info > .modal-header {
+  background: linear-gradient(90deg, #eff6ff 0%, #f8fbff 100%);
+  border-bottom-color: #bfdbfe;
+}
+
+.modal.modal--tone-info > .modal-header h2 {
+  color: #1e3a8a;
+}
+
+.confirm-dialog-icon--success {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+}
+
+.confirm-dialog-icon--warning {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+}
+
+.status-callout {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.status-callout--warning {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #78350f;
+}
+
+/* ==========================================================================
+   Compliance Document & COR File Badges
+   ========================================================================== */
+.compliance-upload-badge,
+.file-upload-selected {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 12.5px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+/* ==========================================================================
+   Public Directory Shell, Featured Events Section & Analytics Month Dropdown
+   ========================================================================== */
+.public-directory-shell {
+  max-width: var(--layout-content-width, 1440px);
+  margin: 0 auto;
+  padding: 36px clamp(18px, 4vw, 48px) 84px;
+}
+
+.events-section--featured {
+  background: linear-gradient(180deg, #fffafb 0%, #ffffff 100%);
+  border-top: 1px solid #f1e6ea;
+  border-bottom: 1px solid #f1e6ea;
+  padding-top: clamp(44px, 5vw, 68px) !important;
+  padding-bottom: clamp(44px, 5vw, 68px) !important;
+}
+
+.landing-org-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.landing-org-toolbar .landing-category-select {
+  margin-bottom: 0;
+}
+
+.landing-org-counter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #ead8df;
+  background: #fdf6f8;
+  color: #5b4b53;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.landing-org-counter-pill strong {
+  color: var(--crimson, #8f1538);
+  font-weight: 800;
+}
+
+.admin-analytics-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-month-dropdown,
+.admin-month-interval-select {
+  min-height: 40px;
+  padding: 0 34px 0 12px;
+  border: 1px solid #dbd3d8;
+  border-radius: 10px;
+  background-color: #ffffff;
+  color: #262129;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-month-dropdown:focus,
+.admin-month-interval-select:focus {
+  outline: none;
+  border-color: var(--crimson, #8f1538);
+  box-shadow: 0 0 0 3px rgba(143, 21, 56, 0.12);
+}

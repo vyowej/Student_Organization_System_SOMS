@@ -5,15 +5,26 @@ import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Modal from '../components/ui/Modal.jsx'
+import SearchableSelect from '../components/ui/SearchableSelect.jsx'
 import ProfileCover from '../components/layout/ProfileCover.jsx'
-import { undoAction, useToast } from '../components/ui/useToast.js'
+import { useToast } from '../components/ui/useToast.js'
 import Icon from '../components/ui/Icon.jsx'
+import { usePortalData } from '../context/usePortalData.js'
+import { useAuth } from '../context/useAuth.js'
 import { getOrganizationEvents, studentOrganizations } from '../data/studentEvents.js'
+import {
+  OFFICER_HIERARCHY,
+  ORGANIZATION_COMMITTEES,
+  YEAR_LEVEL_OPTIONS,
+  getHierarchyEntry,
+  readFileAsDataUrl,
+  sanitizeNumericStudentId,
+} from '../data/officerHierarchy.js'
 
 const statusLabels = {
-  NOT_MEMBER: 'NOT A MEMBER',
+  NOT_MEMBER: 'NOT ENROLLED',
   PENDING: 'PENDING REVIEW',
-  ACTIVE: 'ACTIVE MEMBER',
+  ACTIVE: 'ACTIVE OFFICER',
   REJECTED: 'APPLICATION REJECTED',
   SUSPENDED: 'SUSPENDED',
   INACTIVE: 'INACTIVE',
@@ -61,21 +72,35 @@ function parseEventDate(dateStr = '') {
 
 export default function StudentOrganizationDetailsPage() {
   const { id } = useParams()
-  const {
-    adminOrganizations = [],
-    studentOrganizations: contextStudentOrganizations = [],
-    officerEvents = [],
-    officerAnnouncements = [],
-    adviserDocuments = [],
-    captureUndo,
-    getMembershipForOrganization,
-    submitMembershipApplication,
-  } = useOutletContext()
+  const outletCtx = useOutletContext() || {}
+  const portalData = usePortalData()
+  const { currentUser } = useAuth()
   const { showToast } = useToast()
+
+  const adminOrganizations = outletCtx.adminOrganizations || portalData?.adminOrganizations || []
+  const contextStudentOrganizations = outletCtx.studentOrganizations || portalData?.studentOrganizations || []
+  const officerEvents = outletCtx.officerEvents || portalData?.officerEvents || []
+  const officerAnnouncements = outletCtx.officerAnnouncements || portalData?.officerAnnouncements || []
+  const adviserDocuments = outletCtx.adviserDocuments || portalData?.adviserDocuments || []
+  const academicPrograms = outletCtx.academicPrograms || portalData?.academicPrograms || []
+  const getMembershipForOrganization = outletCtx.getMembershipForOrganization || portalData?.getMembershipForOrganization
+  const submitMembershipApplication = outletCtx.submitMembershipApplication || portalData?.submitMembershipApplication
 
   const [activeTab, setActiveTab] = useState('overview')
   const [applicationOpen, setApplicationOpen] = useState(false)
-  const [desiredRole, setDesiredRole] = useState('MEMBER')
+  const [desiredRole, setDesiredRole] = useState('OTHER_OFFICER')
+  const [desiredCommittee, setDesiredCommittee] = useState('Programs & Events Committee')
+  const [applicantForm, setApplicantForm] = useState({
+    firstName: currentUser?.firstName || '',
+    lastName: currentUser?.lastName || '',
+    email: currentUser?.email || '',
+    studentNumber: sanitizeNumericStudentId(currentUser?.studentNumber || ''),
+    yearLevel: currentUser?.yearLevel || '1st Year',
+    program: currentUser?.program || '',
+    corFileName: currentUser?.corFileName || '',
+    corFileData: null,
+  })
+  const [submitting, setSubmitting] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState(null)
 
   const managedOrganization = adminOrganizations.find((item) => String(item.id) === String(id))
@@ -90,14 +115,14 @@ export default function StudentOrganizationDetailsPage() {
     return (
       <div className="student-page">
         <div className="student-org-top-nav">
-          <Link className="student-org-back-link" to="/student/organizations">
+          <Link className="student-org-back-link" to="/organizations">
             <Icon name="arrow-left" size={14} /> Back to Organizations
           </Link>
         </div>
         <Card className="organization-not-found" style={{ marginTop: '20px' }}>
           <h2>Organization Not Found</h2>
           <p>We could not find that organization in the current directory.</p>
-          <Link className="button button-primary" to="/student/organizations">Browse All Organizations</Link>
+          <Link className="button button-primary" to="/organizations">Browse All Organizations</Link>
         </Card>
       </div>
     )
@@ -107,6 +132,8 @@ export default function StudentOrganizationDetailsPage() {
   const visibleOfficers = (organization.officers ?? []).map((o) => ({
     name: o.name,
     position: o.role || o.position,
+    committee: o.committee || getHierarchyEntry(o.rawPosition || o.position).defaultCommittee,
+    tierLabel: getHierarchyEntry(o.rawPosition || o.position).tierLabel,
   }))
   const orgDocuments = organization.documents?.length
     ? organization.documents
@@ -127,18 +154,60 @@ export default function StudentOrganizationDetailsPage() {
     (o) => o.rawPosition === 'PRESIDENT' || o.position === 'President' || o.role === 'President'
   )
 
-  async function confirmApplication() {
+  async function handleCorUpload(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      setApplicantForm((prev) => ({
+        ...prev,
+        corFileName: file.name,
+        corFileData: dataUrl,
+      }))
+    } catch {
+      showToast('Unable to read selected COR file.', 'error')
+    }
+  }
+
+  async function confirmApplication(event) {
+    event.preventDefault()
     if (desiredRole === 'PRESIDENT' && existingPresident) {
-      showToast(`Error: ${organization.name} already has an active President (${existingPresident.name}).`, 'error')
+      showToast(`${organization.name} already has an active President (${existingPresident.name}).`, 'error')
       return
     }
-    const undo = captureUndo()
-    const result = await submitMembershipApplication(organization, { desiredRole })
-    setApplicationOpen(false)
+    const cleanId = sanitizeNumericStudentId(applicantForm.studentNumber)
+    if (!currentUser && (!cleanId || !/^\d+$/.test(cleanId))) {
+      showToast('Please enter a valid numeric Student ID (digits only).', 'error')
+      return
+    }
+    if (!currentUser && !applicantForm.program) {
+      showToast('Please select your Course / Program.', 'error')
+      return
+    }
+    if (!applicantForm.corFileName && !currentUser?.corFileName) {
+      showToast('Please upload your Certificate of Registration (COR).', 'error')
+      return
+    }
+
+    setSubmitting(true)
+    const roleLabel = `${getHierarchyEntry(desiredRole).title} (${desiredCommittee})`
+    const result = await submitMembershipApplication(organization, {
+      desiredRole: roleLabel,
+      firstName: applicantForm.firstName,
+      lastName: applicantForm.lastName,
+      email: applicantForm.email,
+      studentNumber: cleanId,
+      yearLevel: applicantForm.yearLevel,
+      program: applicantForm.program,
+      corFileName: applicantForm.corFileName || currentUser?.corFileName,
+      corFileData: applicantForm.corFileData,
+    })
+    setSubmitting(false)
     if (result?.ok) {
-      showToast('Membership application submitted successfully.', 'success', undoAction(undo))
+      setApplicationOpen(false)
+      showToast('Officer onboarding application submitted successfully.', 'success')
     } else {
-      showToast(result?.error || 'Unable to submit membership application.', 'error')
+      showToast(result?.error || 'Unable to submit application.', 'error')
     }
   }
 
@@ -147,7 +216,7 @@ export default function StudentOrganizationDetailsPage() {
     { key: 'about', label: 'About', active: activeTab === 'about', onClick: () => setActiveTab('about') },
     { key: 'announcements', label: 'Announcements', count: publishedAnnouncements.length, active: activeTab === 'announcements', onClick: () => setActiveTab('announcements') },
     { key: 'events', label: 'Events', count: events.length, active: activeTab === 'events', onClick: () => setActiveTab('events') },
-    { key: 'officers', label: 'Officers', count: visibleOfficers.length, active: activeTab === 'officers', onClick: () => setActiveTab('officers') },
+    { key: 'officers', label: 'Officer Hierarchy', count: visibleOfficers.length, active: activeTab === 'officers', onClick: () => setActiveTab('officers') },
     { key: 'documents', label: 'Documents', count: orgDocuments.length, active: activeTab === 'documents', onClick: () => setActiveTab('documents') },
   ]
 
@@ -155,7 +224,7 @@ export default function StudentOrganizationDetailsPage() {
     <div className="student-org-actions">
       {status === 'ACTIVE' && (
         <span className="student-member-badge-active">
-          <Icon name="check" size={14} /> Active Member
+          <Icon name="check" size={14} /> Active Officer
         </span>
       )}
       {status === 'PENDING' && (
@@ -164,14 +233,14 @@ export default function StudentOrganizationDetailsPage() {
         </span>
       )}
       {status === 'SUSPENDED' && (
-        <Badge tone="danger">Membership Suspended</Badge>
+        <Badge tone="danger">Suspended</Badge>
       )}
       {canApply && (
         <Button
           className="button button-primary"
           onClick={() => setApplicationOpen(true)}
         >
-          <Icon name="plus" size={14} /> {status === 'REJECTED' ? 'Apply Again' : 'Join Organization'}
+          <Icon name="plus" size={14} /> {status === 'REJECTED' ? 'Apply Again' : 'Apply as Officer'}
         </Button>
       )}
     </div>
@@ -180,8 +249,8 @@ export default function StudentOrganizationDetailsPage() {
   return (
     <div className="student-organization-details fb-page">
       <div className="student-org-top-nav">
-        <Link className="student-org-back-link" to="/student/organizations">
-          <Icon name="back" size={14} /> Organizations
+        <Link className="student-org-back-link" to="/organizations">
+          <Icon name="back" size={14} /> Organizations Directory
         </Link>
         <span className="student-org-breadcrumb-sep">/</span>
         <span className="student-org-breadcrumb-current">{organization.name}</span>
@@ -202,7 +271,7 @@ export default function StudentOrganizationDetailsPage() {
         showCover={false}
         subtitle={
           <>
-            {activeMembersCount} active members <i aria-hidden="true">·</i> Faculty Adviser: <strong>{organization.adviser}</strong>
+            {activeMembersCount} active officers <i aria-hidden="true">·</i> Faculty Adviser: <strong>{organization.adviser}</strong>
           </>
         }
         tabs={tabs}
@@ -224,7 +293,7 @@ export default function StudentOrganizationDetailsPage() {
               </li>
               <li>
                 <span aria-hidden="true"><Icon name="members" /></span>
-                <div>Active Members: <strong>{activeMembersCount} students</strong></div>
+                <div>Active Officers: <strong>{activeMembersCount}</strong></div>
               </li>
               <li>
                 <span aria-hidden="true"><Icon name="adviser" /></span>
@@ -252,7 +321,7 @@ export default function StudentOrganizationDetailsPage() {
 
           <Card className="fb-card">
             <div className="fb-card-heading">
-              <h2>Executive Officers</h2>
+              <h2>Executive Hierarchy</h2>
               {visibleOfficers.length > 6 && (
                 <button className="fb-link-button" onClick={() => setActiveTab('officers')} type="button">
                   See all ({visibleOfficers.length})
@@ -315,35 +384,9 @@ export default function StudentOrganizationDetailsPage() {
                 <Icon name="clock" size={20} />
               </div>
               <div className="student-membership-callout-copy">
-                <strong>Application Pending Review</strong>
-                <p>Your membership application has been submitted and is currently being evaluated by the organization officers.</p>
+                <strong>Officer Application Pending Review</strong>
+                <p>Your officer onboarding request and COR have been submitted for review by the organization leadership and adviser.</p>
               </div>
-            </div>
-          )}
-
-          {status === 'REJECTED' && (
-            <div className="student-membership-callout status-rejected">
-              <div className="student-membership-callout-icon" aria-hidden="true">
-                <Icon name="alert" size={20} />
-              </div>
-              <div className="student-membership-callout-copy">
-                <strong>Application Not Approved</strong>
-                <p>Your previous application was not accepted. You may submit a new application during the open recruitment period.</p>
-              </div>
-              <Button onClick={() => setApplicationOpen(true)}>Apply Again</Button>
-            </div>
-          )}
-
-          {canApply && status === 'NOT_MEMBER' && (
-            <div className="student-membership-callout status-join">
-              <div className="student-membership-callout-icon" aria-hidden="true">
-                <Icon name="star" size={20} />
-              </div>
-              <div className="student-membership-callout-copy">
-                <strong>Become a Member</strong>
-                <p>Join {organization.name} to connect with peers, attend hands-on workshops, and participate in campus activities.</p>
-              </div>
-              <Button onClick={() => setApplicationOpen(true)}>Join Organization</Button>
             </div>
           )}
 
@@ -374,7 +417,7 @@ export default function StudentOrganizationDetailsPage() {
                         </div>
                         <h3 className="student-announcement-title">{announcement.title}</h3>
                         <p className="student-announcement-body">
-                          {announcement.content ?? announcement.description ?? 'Official update shared with organization members.'}
+                          {announcement.content ?? announcement.description ?? 'Official update shared by organization officers.'}
                         </p>
                       </article>
                     ))}
@@ -398,7 +441,7 @@ export default function StudentOrganizationDetailsPage() {
                     {events.map((event) => {
                       const { month, day } = parseEventDate(event.date)
                       return (
-                        <Link className="student-event-card" key={event.id} to={`/student/events/${event.id}`}>
+                        <Link className="student-event-card" key={event.id} to={`/events/${event.id}`}>
                           <div className="student-event-cal">
                             <span className="student-event-cal-month">{month}</span>
                             <span className="student-event-cal-day">{day}</span>
@@ -419,7 +462,7 @@ export default function StudentOrganizationDetailsPage() {
                     })}
                   </div>
                 ) : (
-                  <EmptyState description="Check back soon for upcoming campus activities and workshops from this organization." title="No upcoming events" />
+                  <EmptyState description="Check back soon for upcoming campus activities and programs from this organization." title="No upcoming events" />
                 )}
               </Card>
             </>
@@ -440,7 +483,7 @@ export default function StudentOrganizationDetailsPage() {
                 </li>
                 <li>
                   <span aria-hidden="true"><Icon name="members" /></span>
-                  <div>Active Membership: <strong>{activeMembersCount} registered members</strong></div>
+                  <div>Active Officers & Committee Roster: <strong>{activeMembersCount}</strong></div>
                 </li>
                 <li>
                   <span aria-hidden="true"><Icon name="adviser" /></span>
@@ -471,7 +514,7 @@ export default function StudentOrganizationDetailsPage() {
                       </div>
                       <h3 className="student-announcement-title">{announcement.title}</h3>
                       <p className="student-announcement-body">
-                        {announcement.content ?? announcement.description ?? 'Official update shared with organization members.'}
+                        {announcement.content ?? announcement.description ?? 'Official update shared by organization officers.'}
                       </p>
                     </article>
                   ))}
@@ -492,7 +535,7 @@ export default function StudentOrganizationDetailsPage() {
                   {events.map((event) => {
                     const { month, day } = parseEventDate(event.date)
                     return (
-                      <Link className="student-event-card" key={event.id} to={`/student/events/${event.id}`}>
+                      <Link className="student-event-card" key={event.id} to={`/events/${event.id}`}>
                         <div className="student-event-cal">
                           <span className="student-event-cal-month">{month}</span>
                           <span className="student-event-cal-day">{day}</span>
@@ -521,7 +564,7 @@ export default function StudentOrganizationDetailsPage() {
           {activeTab === 'officers' && (
             <Card className="fb-card">
               <div className="fb-card-heading">
-                <h2>Organization Leadership ({visibleOfficers.length})</h2>
+                <h2>Officer Hierarchy & Committees ({visibleOfficers.length})</h2>
               </div>
               {visibleOfficers.length ? (
                 <div className="student-officers-full-grid">
@@ -531,7 +574,7 @@ export default function StudentOrganizationDetailsPage() {
                         {getInitials(officer.name)}
                       </span>
                       <strong>{officer.name}</strong>
-                      <small>Executive Officer</small>
+                      <small>{officer.committee}</small>
                       <Badge style={{ marginTop: '8px' }} tone="crimson">{officer.position}</Badge>
                     </div>
                   ))}
@@ -554,7 +597,7 @@ export default function StudentOrganizationDetailsPage() {
                       <span aria-hidden="true" className="student-doc-icon"><Icon name="document" size={16} /></span>
                       <div className="student-doc-info">
                         <strong>{doc}</strong>
-                        <small>Public Student Document · Verified by Student Affairs</small>
+                        <small>Public Document · Verified by Student Affairs</small>
                       </div>
                       <button
                         className="student-doc-action"
@@ -578,63 +621,149 @@ export default function StudentOrganizationDetailsPage() {
         onClose={() => setApplicationOpen(false)}
         open={applicationOpen}
         size="md"
-        title={`Join ${organization.name}?`}
+        title={`Apply as Officer — ${organization.name}`}
       >
-        <div style={{ display: 'grid', gap: '14px', padding: '6px 0' }}>
+        <form onSubmit={confirmApplication} style={{ display: 'grid', gap: '14px', padding: '4px 0' }}>
           <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5 }}>
-            Submit your membership application to <strong>{organization.name}</strong>?
+            Select your desired officer position &amp; assigned committee in <strong>{organization.name}</strong>, and attach your Certificate of Registration (COR).
           </p>
-          <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-            Desired Position / Role
-            <select
-              className="input"
-              value={desiredRole}
-              onChange={(e) => setDesiredRole(e.target.value)}
-              style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid var(--border)' }}
-            >
-              <option value="MEMBER">General Member</option>
-              <option value="PRESIDENT" disabled={Boolean(existingPresident)}>
-                President {existingPresident ? `(Occupied: ${existingPresident.name})` : ''}
-              </option>
-              <option value="VICE_PRESIDENT">Vice President</option>
-              <option value="SECRETARY">Secretary</option>
-              <option value="TREASURER">Treasurer</option>
-              <option value="AUDITOR">Auditor</option>
-              <option value="PRO">Public Relations Officer (PRO)</option>
-            </select>
-          </label>
-          {desiredRole === 'PRESIDENT' && existingPresident && (
-            <div
-              style={{
-                background: '#fef2f2',
-                border: '1px solid #f87171',
-                color: '#991b1b',
-                padding: '10px 14px',
-                borderRadius: '8px',
-                fontSize: '13px',
-              }}
-            >
-              <strong>Error: President position occupied</strong>
-              <p style={{ margin: '4px 0 0' }}>
-                {organization.name} already has an active President (<b>{existingPresident.name}</b>). You cannot apply as President for this organization.
-              </p>
+
+          {!currentUser && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+              <label className="inline-required-label" style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+                <span>First Name <span className="required-asterisk">*</span></span>
+                <input
+                  className="input"
+                  onChange={(e) => setApplicantForm((p) => ({ ...p, firstName: e.target.value }))}
+                  required
+                  type="text"
+                  value={applicantForm.firstName}
+                />
+              </label>
+              <label className="inline-required-label" style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+                <span>Last Name <span className="required-asterisk">*</span></span>
+                <input
+                  className="input"
+                  onChange={(e) => setApplicantForm((p) => ({ ...p, lastName: e.target.value }))}
+                  required
+                  type="text"
+                  value={applicantForm.lastName}
+                />
+              </label>
+              <label className="inline-required-label" style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+                <span>Student ID (Numbers Only) <span className="required-asterisk">*</span></span>
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  onChange={(e) => setApplicantForm((p) => ({ ...p, studentNumber: sanitizeNumericStudentId(e.target.value) }))}
+                  pattern="[0-9]*"
+                  placeholder="e.g. 202401482"
+                  required
+                  type="text"
+                  value={applicantForm.studentNumber}
+                />
+              </label>
+              <label className="inline-required-label" style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+                <span>WMSU Email <span className="required-asterisk">*</span></span>
+                <input
+                  className="input"
+                  onChange={(e) => setApplicantForm((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="name@wmsu.edu.ph"
+                  required
+                  type="email"
+                  value={applicantForm.email}
+                />
+              </label>
+              <label className="inline-required-label" style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+                <span>Year Level <span className="required-asterisk">*</span></span>
+                <select
+                  className="input"
+                  onChange={(e) => setApplicantForm((p) => ({ ...p, yearLevel: e.target.value }))}
+                  value={applicantForm.yearLevel}
+                >
+                  {YEAR_LEVEL_OPTIONS.map((yr) => <option key={yr} value={yr}>{yr}</option>)}
+                </select>
+              </label>
+              <div style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+                <span>Course / Program <span className="required-asterisk">*</span></span>
+                <SearchableSelect
+                  onChange={(val) => setApplicantForm((p) => ({ ...p, program: val }))}
+                  options={academicPrograms}
+                  placeholder="Search course / program…"
+                  required
+                  value={applicantForm.program}
+                />
+              </div>
             </div>
           )}
-          <div style={{ padding: '12px 14px', borderRadius: '8px', background: 'var(--canvas)', border: '1px solid var(--border)', fontSize: '13px' }}>
-            <span style={{ color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>Membership Terms:</span>
-            Your student profile information will be shared with the organization officers and adviser for review.
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+            <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+              <span>Desired Officer Role <span className="required-asterisk">*</span></span>
+              <select
+                className="input"
+                onChange={(e) => {
+                  const code = e.target.value
+                  setDesiredRole(code)
+                  setDesiredCommittee(getHierarchyEntry(code).defaultCommittee)
+                }}
+                value={desiredRole}
+              >
+                {OFFICER_HIERARCHY.map((entry) => (
+                  <option
+                    disabled={entry.code === 'PRESIDENT' && Boolean(existingPresident)}
+                    key={entry.code}
+                    value={entry.code}
+                  >
+                    {entry.title} {entry.code === 'PRESIDENT' && existingPresident ? `(Occupied: ${existingPresident.name})` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+              <span>Assigned Committee <span className="required-asterisk">*</span></span>
+              <select
+                className="input"
+                onChange={(e) => setDesiredCommittee(e.target.value)}
+                value={desiredCommittee}
+              >
+                {ORGANIZATION_COMMITTEES.map((comm) => (
+                  <option key={comm} value={comm}>{comm}</option>
+                ))}
+              </select>
+            </label>
           </div>
+
+          <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
+            <span>Certificate of Registration (COR) <span className="required-asterisk">*</span></span>
+            <input
+              accept=".pdf,.jpg,.jpeg,.png"
+              className="input"
+              onChange={handleCorUpload}
+              required={!applicantForm.corFileName && !currentUser?.corFileName}
+              type="file"
+            />
+            {(applicantForm.corFileName || currentUser?.corFileName) && (
+              <small style={{ color: '#15803d', fontWeight: 600 }}>
+                Attached COR: {applicantForm.corFileName || currentUser?.corFileName}
+              </small>
+            )}
+          </label>
+
           <div className="organization-application-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
-            <Button onClick={() => setApplicationOpen(false)} variant="secondary">Cancel</Button>
-            <Button disabled={desiredRole === 'PRESIDENT' && Boolean(existingPresident)} onClick={confirmApplication}>Submit Application</Button>
+            <Button onClick={() => setApplicationOpen(false)} type="button" variant="secondary">Cancel</Button>
+            <Button disabled={submitting || (desiredRole === 'PRESIDENT' && Boolean(existingPresident))} type="submit">
+              {submitting ? 'Submitting…' : 'Submit Officer Application'}
+            </Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       <Modal
         onClose={() => setSelectedDoc(null)}
         open={Boolean(selectedDoc)}
         size="lg"
+        status="APPROVED"
         title={selectedDoc ?? 'Document Preview'}
       >
         <div className="student-doc-preview-body">
@@ -648,11 +777,11 @@ export default function StudentOrganizationDetailsPage() {
             </div>
             <div className="student-doc-preview-item">
               <dt>Classification</dt>
-              <dd>Public Record</dd>
+              <dd>Verified Public Record</dd>
             </div>
             <div className="student-doc-preview-item">
               <dt>Status</dt>
-              <dd>Accredited & On File</dd>
+              <dd>Accredited &amp; Approved</dd>
             </div>
           </dl>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import RequireRole, { PublicOnly } from './components/auth/RequireRole.jsx'
-import { AdminLayout, AdviserLayout, OfficerLayout, StudentLayout } from './components/layout/PortalLayout.jsx'
+import { AdminLayout, AdviserLayout, OfficerLayout } from './components/layout/PortalLayout.jsx'
 import PublicLayout from './components/layout/PublicLayout.jsx'
 import EventDetailsPage from './pages/EventDetailsPage.jsx'
 import AdviserApprovalsPage from './pages/AdviserApprovalsPage.jsx'
@@ -23,16 +23,9 @@ import OfficerReportsPage from './pages/OfficerReportsPage.jsx'
 import OfficerSettingsPage from './pages/OfficerSettingsPage.jsx'
 import PublicPage from './pages/PublicPage.jsx'
 import AccessDeniedPage from './pages/AccessDeniedPage.jsx'
-import StudentDashboardPage from './pages/StudentDashboardPage.jsx'
-import StudentAttendancePage from './pages/StudentAttendancePage.jsx'
-import StudentEventPassPage from './pages/StudentEventPassPage.jsx'
 import StudentEventsPage from './pages/StudentEventsPage.jsx'
-import StudentMyOrganizationsPage from './pages/StudentMyOrganizationsPage.jsx'
 import StudentOrganizationDetailsPage from './pages/StudentOrganizationDetailsPage.jsx'
 import StudentOrganizationsPage from './pages/StudentOrganizationsPage.jsx'
-import StudentRegistrationsPage from './pages/StudentRegistrationsPage.jsx'
-import StudentNotificationsPage from './pages/StudentNotificationsPage.jsx'
-import StudentProfilePage from './pages/StudentProfilePage.jsx'
 import { adminPages } from './data/navigation.js'
 import { PortalDataProvider } from './context/PortalDataContext.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
@@ -41,22 +34,16 @@ import './App.css'
 
 const pageTitles = {
   '/': 'Student Organization Management System',
+  '/organizations': 'Organizations Directory',
+  '/events': 'Campus Events',
   '/login': 'Sign In',
-  '/register': 'Create Account',
+  '/register': 'Officer Account Registration',
   '/forgot-password': 'Reset Password',
   '/access-denied': 'Access Denied',
-  '/student/dashboard': 'Student Dashboard',
-  '/student/organizations': 'Organizations',
-  '/student/my-organizations': 'My Organizations',
-  '/student/events': 'Events',
-  '/student/registrations': 'My Registrations',
-  '/student/attendance': 'Attendance',
-  '/student/notifications': 'Notifications',
-  '/student/profile': 'My Profile',
   '/officer/dashboard': 'Officer Dashboard',
   '/officer/organization': 'Organization Profile',
-  '/officer/members': 'Organization Members',
-  '/officer/membership-requests': 'Membership Requests',
+  '/officer/members': 'Officers & Committees',
+  '/officer/membership-requests': 'Officer Applications',
   '/officer/events': 'Organization Events',
   '/officer/events/create': 'Create Event Proposal',
   '/officer/attendance': 'Event Attendance',
@@ -76,9 +63,8 @@ function DocumentTitle() {
   const { pathname } = useLocation()
   let pageTitle = pageTitles[pathname]
 
-  if (!pageTitle && /^\/student\/events\/[^/]+$/.test(pathname)) pageTitle = 'Event Details'
-  if (!pageTitle && /^\/student\/organizations\/[^/]+$/.test(pathname)) pageTitle = 'Organization Profile'
-  if (!pageTitle && /^\/student\/registrations\/[^/]+\/pass$/.test(pathname)) pageTitle = 'Event Pass'
+  if (!pageTitle && /^\/events\/[^/]+$/.test(pathname)) pageTitle = 'Event Details'
+  if (!pageTitle && /^\/organizations\/[^/]+$/.test(pathname)) pageTitle = 'Organization Profile'
   if (!pageTitle && /^\/adviser\/organizations\/[^/]+$/.test(pathname)) pageTitle = 'Organization Details'
 
   if (!pageTitle) {
@@ -102,29 +88,22 @@ function App() {
           <Routes>
             <Route element={<PublicLayout />}>
               <Route index element={<PublicPage page="home" />} />
+              <Route path="organizations" element={<StudentOrganizationsPage />} />
+              <Route path="organizations/:id" element={<StudentOrganizationDetailsPage />} />
+              <Route path="events" element={<StudentEventsPage />} />
+              <Route path="events/:id" element={<EventDetailsPage />} />
               <Route path="login" element={<PublicOnly><PublicPage page="login" /></PublicOnly>} />
               <Route path="register" element={<PublicPage page="register" />} />
               <Route path="forgot-password" element={<PublicPage page="forgot-password" />} />
               <Route path="access-denied" element={<AccessDeniedPage />} />
             </Route>
 
-            <Route element={<RequireRole role="STUDENT" />}>
-              <Route path="student" element={<StudentLayout />}>
-                <Route index element={<Navigate to="dashboard" replace />} />
-                <Route path="dashboard" element={<StudentDashboardPage />} />
-                <Route path="organizations" element={<StudentOrganizationsPage />} />
-                <Route path="organizations/:id" element={<StudentOrganizationDetailsPage />} />
-                <Route path="my-organizations" element={<StudentMyOrganizationsPage />} />
-                <Route path="events" element={<StudentEventsPage />} />
-                <Route path="events/:id" element={<EventDetailsPage />} />
-                <Route path="registrations" element={<StudentRegistrationsPage />} />
-                <Route path="registrations/:registrationId/pass" element={<StudentEventPassPage />} />
-                <Route path="attendance" element={<StudentAttendancePage />} />
-                <Route path="notifications" element={<StudentNotificationsPage />} />
-                <Route path="profile" element={<StudentProfilePage />} />
-              </Route>
-            </Route>
+            {/* Legacy student portal URLs redirect cleanly to public directory / events */}
+            <Route path="student/organizations" element={<Navigate to="/organizations" replace />} />
+            <Route path="student/events" element={<Navigate to="/events" replace />} />
+            <Route path="student/*" element={<Navigate to="/organizations" replace />} />
 
+            {/* Organization Officer portal routes */}
             <Route element={<RequireRole role="OFFICER" />}>
               <Route path="officer" element={<OfficerLayout />}>
                 <Route index element={<Navigate to="dashboard" replace />} />
@@ -141,6 +120,7 @@ function App() {
                 <Route path="reports" element={<OfficerReportsPage />} />
               </Route>
             </Route>
+
             {/* Faculty Adviser portal routes */}
             <Route element={<RequireRole role="ADVISER" />}>
               <Route path="adviser" element={<AdviserLayout />}>
@@ -153,10 +133,12 @@ function App() {
                 <Route path="reports" element={<AdviserReportsPage />} />
               </Route>
             </Route>
-            {/* Student Affairs Admin portal routes */}
+
+            {/* Student Affairs Admin portal routes (Global Access) */}
             <Route element={<RequireRole role="ADMIN" />}>
               <Route path="admin" element={<AdminLayout />}>
                 <Route index element={<Navigate to="dashboard" replace />} />
+                <Route path="students" element={<Navigate to="/admin/users" replace />} />
                 {adminPages.map((page) => <Route key={page.path} path={page.path} element={<AdminPortalPage key={page.path} />} />)}
               </Route>
             </Route>

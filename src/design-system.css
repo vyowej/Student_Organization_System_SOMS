@@ -4888,3 +4888,18 @@ html {
   color: #ffffff !important;
   background: rgba(255, 255, 255, 0.25) !important;
 }
+
+
+/* Dynamic organization counters in hero & floating badges - prevent "99 Org" clipping */
+.mock-metrics > div {
+  min-width: 0;
+}
+
+.mock-metrics small,
+.hero-float-card small,
+.float-organizations strong,
+.float-organizations small {
+  white-space: nowrap;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}

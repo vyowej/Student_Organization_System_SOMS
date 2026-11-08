@@ -3,9 +3,11 @@
  *
  * Manages the active user session by authenticating directly against the
  * Express + PostgreSQL backend (`/api/users/login`, `/api/users/register`,
- * `/api/users/:id`). All mock user accounts and fake credentials have been removed.
+ * `/api/users/:id`). Supports ADMIN (global access), ADVISER (including Coordinator),
+ * and OFFICER roles (Student entity/role removed from system scope).
  */
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
+import { getHierarchyEntry, normalizeYearLevelOption } from '../data/officerHierarchy.js'
 
 const AuthContext = createContext(null)
 
@@ -13,27 +15,19 @@ const SESSION_STORAGE_KEY = 'unidos-auth-user-id-v2'
 
 function formatPositionLabel(position, customTitle) {
   if (customTitle) return customTitle
-  const map = {
-    PRESIDENT: 'President',
-    VICE_PRESIDENT: 'Vice President',
-    SECRETARY: 'Secretary',
-    TREASURER: 'Treasurer',
-    AUDITOR: 'Auditor',
-    PUBLIC_RELATIONS_OFFICER: 'PIO',
-    PUBLIC_INFORMATION_OFFICER: 'PIO',
-    PRO: 'PIO',
-    PIO: 'PIO',
-    MEMBER: 'General Member',
-    OTHER: 'Committee Head',
-    OTHER_OFFICER: 'Committee Head',
-  }
-  const posUpper = String(position || '').toUpperCase().replace(/[\s.-]+/g, '_')
-  return map[position] || map[posUpper] || position || 'General Member'
+  return getHierarchyEntry(position).title
 }
 
 function mapUserRow(row) {
   if (!row) return null
-  const primaryRole = row.role || 'STUDENT'
+  const rawPrimaryRole = row.role === 'STUDENT' ? 'OFFICER' : (row.role || 'OFFICER')
+  const isGlobalAdmin = Boolean(row.isGlobalAdmin || rawPrimaryRole === 'ADMIN')
+  const isCoordinator = Boolean(
+    row.isCoordinator ||
+    row.is_coordinator ||
+    String(row.email || '').trim().toLowerCase() === 'marjorie.rojas@wmsu.edu.ph'
+  )
+
   const memberships = Array.isArray(row.memberships) ? row.memberships : []
   const advisedOrganizations = Array.isArray(row.advised_organizations)
     ? row.advised_organizations
@@ -44,8 +38,24 @@ function mapUserRow(row) {
   const activeMemberships = memberships.filter(
     (m) => !m.status || m.status === 'ACTIVE'
   )
-  const rawRoles = Array.isArray(row.roles) ? row.roles : [primaryRole]
+  const rawRoles = Array.isArray(row.roles)
+    ? row.roles.map((r) => (r === 'STUDENT' ? 'OFFICER' : r))
+    : [rawPrimaryRole]
   const roles = new Set(rawRoles)
+  roles.delete('STUDENT')
+
+  if (isGlobalAdmin) {
+    roles.add('ADMIN')
+    roles.add('ADVISER')
+    roles.add('OFFICER')
+  } else if (isCoordinator) {
+    roles.add('ADVISER')
+    roles.add('ADMIN')
+  } else if (rawPrimaryRole === 'ADVISER') {
+    roles.add('ADVISER')
+  } else {
+    roles.add('OFFICER')
+  }
 
   const defaultOrgId =
     row.organizationId ||
@@ -57,32 +67,11 @@ function mapUserRow(row) {
     advisedOrganizations[0]?.organizationId ||
     null
 
-  const hasActiveOrg =
-    activeMemberships.length > 0 ||
-    (Array.isArray(row.organizationRoles) && row.organizationRoles.length > 0) ||
-    Boolean(defaultOrgId)
-
-  // Every student organization officer or student account has the STUDENT capability
-  if (primaryRole === 'OFFICER' || row.role === 'OFFICER' || row.student_id || row.studentDbId || row.studentRecordId || row.student_number || row.studentNumber) {
-    roles.add('STUDENT')
-  }
-
-  if (primaryRole === 'OFFICER' || row.role === 'OFFICER' || hasActiveOrg) {
-    roles.add('STUDENT')
-    roles.add('OFFICER')
-  } else if (primaryRole !== 'OFFICER' && row.role !== 'OFFICER') {
-    roles.delete('OFFICER')
-  }
-
-  // An officer account without an active organization workspace can enter the student portal,
-  // but not the organization portal. Their active working role is STUDENT until an organization is active.
-  const resolvedRole = (hasActiveOrg && (primaryRole === 'OFFICER' || row.role === 'OFFICER') && primaryRole !== 'ADMIN' && primaryRole !== 'ADVISER')
-    ? 'OFFICER'
-    : ((primaryRole === 'OFFICER' || row.role === 'OFFICER') && !hasActiveOrg)
-      ? 'STUDENT'
-      : (row.role === 'STUDENT' || primaryRole === 'STUDENT')
-        ? 'STUDENT'
-        : primaryRole
+  const resolvedRole = isGlobalAdmin
+    ? 'ADMIN'
+    : rawPrimaryRole === 'ADVISER'
+      ? 'ADVISER'
+      : 'OFFICER'
 
   const organizationRoles = Array.isArray(row.organizationRoles) && row.organizationRoles.length > 0
     ? row.organizationRoles
@@ -91,6 +80,7 @@ function mapUserRow(row) {
         organizationName: m.organization_name || m.organizationName,
         acronym: m.acronym || m.organizationAcronym,
         position: formatPositionLabel(m.position, m.custom_title || m.customTitle),
+        committee: m.committee || getHierarchyEntry(m.position).defaultCommittee,
       }))
 
   const resolvedDbId = row.user_id ?? row.id ?? row.userId
@@ -100,7 +90,7 @@ function mapUserRow(row) {
     row.studentNumber ||
     row.employeeNumber ||
     row.employee_number ||
-    (resolvedDbId ? `USER-${resolvedDbId}` : 'USER')
+    (resolvedDbId ? `${resolvedDbId}` : '')
 
   return {
     id: resolvedDbId,
@@ -110,6 +100,9 @@ function mapUserRow(row) {
     studentDbId: row.studentDbId ?? row.student_db_id ?? row.student_id ?? null,
     adviserRecordId: row.adviserRecordId ?? row.adviserDbId ?? row.adviser_db_id ?? row.adviser_id ?? null,
     adviserDbId: row.adviserDbId ?? row.adviser_db_id ?? row.adviser_id ?? null,
+    isGlobalAdmin,
+    isCoordinator,
+    corFileName: row.corFileName || row.cor_file_name || null,
     studentId: resolvedStudentNumber,
     studentNumber: resolvedStudentNumber,
     firstName: row.firstName || row.first_name || '',
@@ -122,7 +115,11 @@ function mapUserRow(row) {
     role: resolvedRole,
     roles: Array.from(roles),
     status: row.status || 'ACTIVE',
-    yearLevel: row.yearLevel || (row.year_level ? `${row.year_level}${row.year_level === 1 ? 'st' : row.year_level === 2 ? 'nd' : row.year_level === 3 ? 'rd' : 'th'} Year` : ''),
+    yearLevel: row.yearLevel
+      ? normalizeYearLevelOption(row.yearLevel)
+      : row.year_level
+        ? normalizeYearLevelOption(row.year_level)
+        : '',
     yearLevelNumber: row.yearLevelNumber || row.year_level || null,
     programId: row.programId || row.program_id || null,
     program: row.program || row.program_name || row.program_acronym || '',
@@ -217,19 +214,21 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-
   const registerStudent = useCallback(async (registrationPayload) => {
     try {
       const response = await fetch('/api/users/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(registrationPayload),
+        body: JSON.stringify({
+          ...registrationPayload,
+          role: 'OFFICER',
+        }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         return {
           ok: false,
-          error: payload.error || 'Unable to register student account.',
+          error: payload.error || 'Unable to register officer account.',
         }
       }
       const mapped = mapUserRow(payload)
@@ -259,28 +258,18 @@ export function AuthProvider({ children }) {
   }, [currentUser?.id])
 
   const setActiveRole = useCallback((nextRole, organizationId) => {
-    if (!currentUser) return false
+    if (!currentUser || nextRole === 'STUDENT') return false
     const allowed = currentUser.roles || [currentUser.role]
-    if (!allowed.includes(nextRole)) return false
-    if (nextRole === 'OFFICER') {
-      const targetOrg = organizationId || currentUser.organizationId || currentUser.organizationRoles?.[0]?.organizationId
-      if (!targetOrg) return false
-      setCurrentUser((prev) => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          role: 'OFFICER',
-          organizationId: targetOrg,
-        }
-      })
-      return true
-    }
+    if (!currentUser.isGlobalAdmin && !allowed.includes(nextRole)) return false
     setCurrentUser((prev) => {
       if (!prev) return prev
       return {
         ...prev,
         role: nextRole,
-        organizationId: organizationId !== undefined ? organizationId : prev.organizationId,
+        organizationId:
+          organizationId !== undefined
+            ? organizationId
+            : (prev.organizationId || prev.organizationRoles?.[0]?.organizationId || null),
       }
     })
     return true
@@ -292,6 +281,7 @@ export function AuthProvider({ children }) {
     login,
     logout,
     registerStudent,
+    registerOfficer: registerStudent,
     refreshCurrentUser,
     switchRole: setActiveRole,
     setActiveRole,
