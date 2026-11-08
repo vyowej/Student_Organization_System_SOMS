@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Icon from '../components/ui/Icon.jsx'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
-import { AnimatedStatistic, EventCard, LeaderCard, OrganizationCard, Reveal } from '../components/public/LandingCards.jsx'
+import { EventCard, LeaderCard, OrganizationCard, Reveal } from '../components/public/LandingCards.jsx'
 import { usePortalData } from '../context/usePortalData.js'
 import { organizationCategories as defaultCategories } from '../data/studentEvents.js'
 
@@ -543,13 +543,6 @@ function LandingPage() {
         <div className="event-grid">
           {displayEvents.map((event) => <EventCard event={event} key={event.id} />)}
         </div>
-      </Reveal>
-
-      <Reveal as="section" aria-label="WMSU community statistics" className="statistics-strip reveal-group">
-        <AnimatedStatistic label="Active Organizations" suffix="" value={activeOrgCount} />
-        <AnimatedStatistic label="Faculty Advisers" suffix="" value={adviserCount} />
-        <AnimatedStatistic label="Published Events" suffix="" value={publishedEvents.length} />
-        <AnimatedStatistic label="Active Officers" suffix="" value={activeOfficersList.length} />
       </Reveal>
 
       <Reveal as="section" aria-labelledby="organizations-title" className="landing-section organizations-section reveal-group" id="organizations">
