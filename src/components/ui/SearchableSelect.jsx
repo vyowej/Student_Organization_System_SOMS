@@ -168,7 +168,7 @@ export default function SearchableSelect({
             ×
           </button>
         )}
-        <span aria-hidden="true" className="searchable-select-chevron">▾</span>
+        <svg aria-hidden="true" className="searchable-select-chevron" height="16" viewBox="0 0 24 24" width="16"><path d="m6 9 6 6 6-6" /></svg>
       </div>
 
       {open && !disabled && (

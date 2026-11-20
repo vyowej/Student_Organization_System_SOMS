@@ -14,14 +14,17 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
-import Modal from '../components/ui/Modal.jsx'
+import Modal, { resolveModalTone } from '../components/ui/Modal.jsx'
 import Table from '../components/ui/Table.jsx'
 import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import { useToast } from '../components/ui/useToast.js'
 import { adminDefaultSettings } from '../data/navigation.js'
 import { formatDisplayName, isValidEmail } from '../data/displayName.js'
+import { downloadFileFromEndpoint } from '../data/fileDownload.js'
+import AcademicStructureCard from '../components/admin/AcademicStructureCard.jsx'
 import AuditLogTracker from '../components/admin/AuditLogTracker.jsx'
+import ChangePasswordModal from '../components/auth/ChangePasswordModal.jsx'
 
 const decisionOptions = ['APPROVED', 'RETURNED', 'REJECTED']
 const roleOptions = ['Organization Officer', 'Faculty Adviser', 'Student Affairs Admin']
@@ -67,9 +70,9 @@ function Metric({ label, value, detail }) {
   )
 }
 
-function FilterBar({ search, setSearch, children }) {
+function FilterBar({ search, setSearch, className = '', children }) {
   return (
-    <div className="admin-filter-bar">
+    <div className={`admin-filter-bar${className ? ` ${className}` : ''}`}>
       <label className="admin-filter-field admin-filter-search">
         <span>Search</span>
         <input
@@ -84,6 +87,12 @@ function FilterBar({ search, setSearch, children }) {
   )
 }
 
+function sanitizeSpreadsheetCell(value) {
+  const str = String(value ?? '')
+  // Prefix formula-trigger characters so exported spreadsheets never evaluate formulas
+  return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str
+}
+
 function downloadCsv(filename, rows) {
   if (!rows.length) return false
   const headings = Array.from(
@@ -92,10 +101,10 @@ function downloadCsv(filename, rows) {
       return set
     }, new Set())
   )
-  const escape = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`
-  const content = [headings, ...rows.map((row) => headings.map((h) => row[h] ?? ''))]
+  const escape = (value) => `"${sanitizeSpreadsheetCell(value).replaceAll('"', '""')}"`
+  const content = `\uFEFF${[headings, ...rows.map((row) => headings.map((h) => row[h] ?? ''))]
     .map((row) => row.map(escape).join(','))
-    .join('\r\n')
+    .join('\r\n')}`
   const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }))
   const anchor = document.createElement('a')
   anchor.href = url
@@ -108,7 +117,7 @@ function downloadCsv(filename, rows) {
 function downloadExcel(filename, rows) {
   if (!rows.length) return false
   const escape = (value) =>
-    String(value ?? '')
+    sanitizeSpreadsheetCell(value)
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;')
@@ -131,30 +140,189 @@ function downloadExcel(filename, rows) {
   return true
 }
 
-function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLabels = {} }) {
+function RecordModal(props) {
+  if (!props.item) return null
+  const { item } = props
+  const modalKey = `${item.entityType ?? item.type ?? item.kind ?? ''}:${item.id ?? item.orgId ?? item.eventId ?? item.documentId ?? item.name ?? item.title ?? ''}`
+  return <RecordModalContent key={modalKey} {...props} />
+}
+
+const RECORD_MODAL_EXCLUDED_KEYS = new Set([
+  'id',
+  'orgId',
+  'organizationId',
+  'eventId',
+  'applicationId',
+  'documentId',
+  'adviserId',
+  'adviserUserId',
+  'userId',
+  'studentDbId',
+  'studentRecordId',
+  'createdBy',
+  'approvedBy',
+  'dbUserId',
+  'programId',
+  'adviserRecordId',
+  'rawRole',
+  'rawPosition',
+  'notificationPreferences',
+  'notifications',
+  'proposedOfficers',
+  'documents',
+  'supportingDocuments',
+  'eventIds',
+  'announcements',
+  'officers',
+  'rawStatus',
+  'entityKind',
+  'canReview',
+  'hasComplianceFile',
+  'hasFileData',
+  'hasCor',
+  'fileUrl',
+  'publicDocuments',
+  'officialEmail',
+  'contactNumber',
+  'socialMedia',
+  'registrationClosed',
+  'isPublished',
+  'startDatetime',
+  'endDatetime',
+  'createdAt',
+  'appliedAt',
+  'reviewedAt',
+  'complianceFileData',
+  'corFileData',
+  'logo',
+  '__event',
+  '__application',
+  '__document',
+  '__approval',
+])
+
+const RECORD_MODAL_LABELS = {
+  title: 'Title',
+  name: 'Name',
+  acronym: 'Acronym',
+  organizationName: 'Organization',
+  organizationAcronym: 'Org Acronym',
+  type: 'Record Type',
+  eventType: 'Event Type',
+  docType: 'Document Type',
+  status: 'Status',
+  category: 'Category',
+  scope: 'Scope',
+  college: 'College',
+  collegeName: 'College',
+  department: 'Department',
+  departmentName: 'Department',
+  submittedBy: 'Submitted By',
+  createdByName: 'Created By',
+  submittedDate: 'Submitted Date',
+  applicationDate: 'Application Date',
+  decisionDate: 'Decision Date',
+  adviserDecisionDate: 'Adviser Decision Date',
+  adminApprovedAt: 'Admin Approved Date',
+  date: 'Event Date',
+  time: 'Schedule Time',
+  startTime: 'Start Time',
+  endTime: 'End Time',
+  location: 'Venue / Location',
+  venue: 'Venue',
+  capacity: 'Participant Limit',
+  maxParticipants: 'Participant Limit',
+  registrations: 'Registrations',
+  registeredCount: 'Registered Participants',
+  attendedCount: 'Verified Attendees',
+  attendance: 'Attendance Count',
+  adviserName: 'Faculty Adviser',
+  adviserEmail: 'Adviser Email',
+  desiredRole: 'Desired Role',
+  program: 'Course / Program',
+  yearLevel: 'Year Level',
+  studentId: 'Student ID',
+  email: 'Email',
+  corFileName: 'COR Document',
+  complianceFileName: 'Compliance Document',
+  decisionReason: 'Decision Notes',
+  revisionNote: 'Revision Feedback',
+  reviewRemarks: 'Review Remarks',
+  processedBy: 'Reviewed By',
+  description: 'Description',
+  reason: 'Reason',
+  message: 'Message',
+}
+
+function buildRecordModalFields(item) {
+  const seenLabels = new Set()
+  return Object.entries(item)
+    .filter(([key, value]) => {
+      if (RECORD_MODAL_EXCLUDED_KEYS.has(key) || key.startsWith('__')) return false
+      if (value === null || value === undefined || value === '' || typeof value === 'object') return false
+      if (key === 'venue' && value === item.location) return false
+      if (key === 'maxParticipants' && item.capacity !== undefined) return false
+      if (key === 'registeredCount' && item.registrations !== undefined) return false
+      if (key === 'attendance' && item.attendedCount !== undefined) return false
+      if (key === 'eventType' && value === item.category) return false
+      if (key === 'startTime' && item.time) return false
+      if (key === 'endTime' && item.time) return false
+      return true
+    })
+    .reduce((acc, [key, value]) => {
+      const label =
+        RECORD_MODAL_LABELS[key] ||
+        key.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase()).trim()
+      if (seenLabels.has(label)) return acc
+      seenLabels.add(label)
+      const displayValue = typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)
+      acc.push([key, label, displayValue])
+      return acc
+    }, [])
+}
+
+function RecordModalContent({ item, onClose, onDecision, canDecide = false, decisionLabels = {} }) {
   const [decision, setDecision] = useState('')
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
+
   if (!item) return null
 
-  const complianceFile = item.complianceFileName || item.supportingDocuments?.[0] || null
-  const fields = Object.entries(item).filter(
-    ([key, value]) =>
-      ![
-        'id',
-        'proposedOfficers',
-        'documents',
-        'supportingDocuments',
-        'eventIds',
-        'announcements',
-        'officers',
-        '__event',
-        '__application',
-        '__document',
-        '__approval',
-      ].includes(key) && (typeof value !== 'object' || value === null)
-  )
+  const effectiveStatus = decision || item.status
+  const modalTone = resolveModalTone('', effectiveStatus)
+
+  const complianceFile = item.complianceFileName || item.supportingDocuments?.[0] || item.fileName || null
+  const fields = buildRecordModalFields(item)
+
+  const fileEndpointConfig = item.hasComplianceFile && (item.eventId || item.id)
+    ? {
+        endpoint: `/api/events/${item.eventId || item.id}/compliance-file`,
+        dataField: 'compliance_file_data',
+        nameField: 'compliance_file_name',
+        fallbackName: complianceFile || 'compliance-document',
+        label: 'Download Compliance File',
+      }
+    : (item.hasFileData || (item.fileUrl && /^https?:\/\//i.test(item.fileUrl))) && (item.documentId || item.id)
+      ? {
+          endpoint: `/api/documents/${item.documentId || item.id}/file`,
+          dataField: 'file_data',
+          nameField: 'file_name',
+          fallbackUrlField: 'drive_view_link',
+          fallbackName: item.fileName || item.title || 'document',
+          label: 'Download Attachment',
+        }
+      : item.hasCor && (item.userId || item.dbUserId || item.applicationId || item.id)
+        ? {
+            endpoint: item.applicationId
+              ? `/api/members/applications/${item.applicationId}/cor`
+              : `/api/users/${item.dbUserId || item.id}/cor`,
+            dataField: 'cor_file_data',
+            nameField: 'cor_file_name',
+            fallbackName: item.corFileName || 'COR-document',
+            label: 'Download COR',
+          }
+        : null
 
   function submit() {
     if (!decision) {
@@ -178,7 +346,16 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
     onClose()
   }
 
-  const decisionVerb = (decisionLabels[decision] ?? String(decision).replace('_', ' ')).toLowerCase()
+  const DEFAULT_DECISION_VERBS = {
+    APPROVED: 'approve',
+    REJECTED: 'reject',
+    RETURNED: 'return',
+  }
+  const decisionVerb = (
+    decisionLabels[decision] ??
+    DEFAULT_DECISION_VERBS[decision] ??
+    String(decision).replace('_', ' ')
+  ).toLowerCase()
   const confirmTone =
     decision === 'APPROVED' ? 'success' : decision === 'RETURNED' ? 'warning' : 'danger'
 
@@ -197,33 +374,54 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
         onClose={onClose}
         open={!confirming}
         size="lg"
-        status={decision || item.status}
+        status={effectiveStatus}
         title={item.title ?? item.name ?? 'Record details'}
       >
-        {complianceFile && (
-          <div className="compliance-upload-badge" style={{ marginBottom: '14px' }}>
-            <Icon name="file" size={16} />
-            <span>
-              Uploaded Compliance Document: <strong>{complianceFile}</strong>
-            </span>
+        {effectiveStatus && (
+          <div className={`status-callout status-callout--row ${modalTone ? `status-callout--${modalTone}` : ''}`}>
+            <strong>{decision ? 'Selected decision' : 'Current status'}</strong>
+            <Status value={effectiveStatus} />
+          </div>
+        )}
+        {(complianceFile || fileEndpointConfig) && (
+          <div className="compliance-upload-badge" style={{ marginBottom: '14px', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Icon name="file" size={16} />
+              <span>
+                {item.hasCor && !complianceFile ? 'Student COR on File:' : 'Attached Document:'}{' '}
+                <strong>{complianceFile || item.corFileName || 'Stored file'}</strong>
+              </span>
+            </div>
+            {fileEndpointConfig && (
+              <Button
+                onClick={async () => {
+                  const res = await downloadFileFromEndpoint(fileEndpointConfig)
+                  if (!res.ok) setError(res.error || 'Unable to retrieve stored file.')
+                }}
+                size="sm"
+                variant="secondary"
+              >
+                {fileEndpointConfig.label}
+              </Button>
+            )}
           </div>
         )}
         <dl className="admin-detail-list">
-          {fields.map(([key, value]) => (
+          {fields.map(([key, label, displayValue]) => (
             <div key={key}>
-              <dt>{key.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`)}</dt>
-              <dd>{String(value)}</dd>
+              <dt>{label}</dt>
+              <dd>{displayValue}</dd>
             </div>
           ))}
           {Object.entries(item)
-            .filter(([key, value]) => Array.isArray(value) && !['documents', 'proposedOfficers'].includes(key))
+            .filter(([key, value]) => Array.isArray(value) && !RECORD_MODAL_EXCLUDED_KEYS.has(key) && !['documents', 'proposedOfficers', 'supportingDocuments', 'eventIds', 'announcements', 'officers', 'publicDocuments'].includes(key))
             .map(([key, values]) => (
               <div key={key}>
-                <dt>{key}</dt>
+                <dt>{RECORD_MODAL_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase()).trim()}</dt>
                 <dd>{values.length ? values.join(', ') : 'None recorded'}</dd>
               </div>
             ))}
-          {Array.isArray(item.documents) && (
+          {Array.isArray(item.documents) && item.documents.length > 0 && (
             <div>
               <dt>Supporting documents</dt>
               <dd>{item.documents.join(', ')}</dd>
@@ -239,7 +437,7 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
         {canDecide && (
           <div className="admin-modal-decision">
             <label>
-              Decision
+              <span>Decision</span>
               <select onChange={(event) => setDecision(event.target.value)} value={decision}>
                 <option value="">Choose a decision</option>
                 {decisionOptions.map((option) => (
@@ -249,11 +447,13 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
                 ))}
               </select>
             </label>
-            {['RETURNED', 'REJECTED'].includes(decision) && (
+            {decision && (
               <label>
                 <span>
-                  {decision === 'RETURNED' ? 'Revision comments' : 'Reason'}{' '}
-                  <span aria-hidden="true" className="required-asterisk">*</span>
+                  {decision === 'RETURNED' ? 'Revision comments' : decision === 'REJECTED' ? 'Reason' : 'Remarks (optional)'}{' '}
+                  {['RETURNED', 'REJECTED'].includes(decision) && (
+                    <span aria-hidden="true" className="required-asterisk">*</span>
+                  )}
                 </span>
                 <textarea onChange={(event) => setComment(event.target.value)} value={comment} />
               </label>
@@ -267,54 +467,227 @@ function RecordModal({ item, onClose, onDecision, canDecide = false, decisionLab
   )
 }
 
-function OrganizationEditModal({ organization, onClose, onSave, categories = [] }) {
+function OrganizationEditModal(props) {
+  if (!props.organization) return null
+  const modalKey = String(props.organization.id ?? props.organization.name ?? 'org')
+  return <OrganizationEditModalContent key={modalKey} {...props} />
+}
+
+function OrganizationEditModalContent({
+  organization,
+  onClose,
+  onSave,
+  categories = [],
+  advisers = [],
+  colleges = [],
+  departments = [],
+}) {
   const [form, setForm] = useState(null)
+
   if (!organization) return null
   const categoryOptions =
     Array.isArray(categories) && categories.length > 0
       ? categories
       : adminDefaultSettings.organizationCategories
   const values = form ?? {
-    name: organization.name,
-    acronym: organization.acronym,
-    category: organization.category,
-    adviser: organization.adviser,
+    name: organization.name ?? '',
+    acronym: organization.acronym ?? '',
+    category: organization.category ?? categoryOptions[0] ?? 'Academic',
+    adviserId: organization.adviserId ? String(organization.adviserId) : '',
+    scope: organization.scope ?? 'UNIVERSITY',
+    collegeId: organization.collegeId ? String(organization.collegeId) : '',
+    departmentId: organization.departmentId ? String(organization.departmentId) : '',
+    eligibleLevel: organization.eligibleLevel ?? 'UNDERGRADUATE',
+    minYearLevel: organization.minYearLevel ? String(organization.minYearLevel) : '',
+    maxYearLevel: organization.maxYearLevel ? String(organization.maxYearLevel) : '',
+    eligibilityNotes: organization.eligibilityNotes ?? '',
+    description: organization.description ?? '',
   }
   const editCategories = [...new Set([...categoryOptions, values.category].filter(Boolean))]
+  const filteredDepartments = values.collegeId
+    ? departments.filter((dept) => String(dept.college_id) === String(values.collegeId))
+    : departments
+
   return (
     <Modal onClose={onClose} open size="md" status={organization.status} title={`Edit ${organization.name}`}>
       <div className="admin-settings-form">
-        {Object.entries(values).map(([key, value]) => {
-          if (key === 'category') {
-            return (
-              <label key={key}>
-                Category
-                <select
-                  onChange={(event) =>
-                    setForm((current) => ({ ...values, ...current, category: event.target.value }))
-                  }
-                  value={value}
-                >
-                  {editCategories.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </label>
-            )
-          }
-          return (
-            <label key={key}>
-              {key.charAt(0).toUpperCase() + key.slice(1)}
-              <input
-                onChange={(event) =>
-                  setForm((current) => ({ ...values, ...current, [key]: event.target.value }))
-                }
-                value={value}
-              />
-            </label>
-          )
-        })}
-        <Button onClick={() => onSave(values)}>Save organization</Button>
+        <label>
+          <span>Name</span>
+          <input
+            onChange={(event) =>
+              setForm((current) => ({ ...values, ...current, name: event.target.value }))
+            }
+            required
+            value={values.name}
+          />
+        </label>
+        <label>
+          <span>Acronym</span>
+          <input
+            onChange={(event) =>
+              setForm((current) => ({ ...values, ...current, acronym: event.target.value }))
+            }
+            placeholder="Optional acronym (e.g. SITE)"
+            value={values.acronym}
+          />
+        </label>
+        <label>
+          <span>Category</span>
+          <select
+            onChange={(event) =>
+              setForm((current) => ({ ...values, ...current, category: event.target.value }))
+            }
+            value={values.category}
+          >
+            {editCategories.map((cat) => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Scope</span>
+          <select
+            onChange={(event) => {
+              const nextScope = event.target.value
+              setForm((current) => ({
+                ...values,
+                ...current,
+                scope: nextScope,
+                collegeId: nextScope === 'UNIVERSITY' ? '' : values.collegeId,
+                departmentId: nextScope !== 'DEPARTMENT' ? '' : values.departmentId,
+              }))
+            }}
+            value={values.scope}
+          >
+            <option value="UNIVERSITY">University-Wide</option>
+            <option value="COLLEGE">College-Specific</option>
+            <option value="DEPARTMENT">Department-Specific</option>
+          </select>
+        </label>
+        {values.scope !== 'UNIVERSITY' && (
+          <label>
+            <span>College</span>
+            <select
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...values,
+                  ...current,
+                  collegeId: event.target.value,
+                  departmentId: '',
+                }))
+              }
+              value={values.collegeId}
+            >
+              <option value="">Select college</option>
+              {colleges.map((col) => (
+                <option key={col.id} value={String(col.id)}>
+                  {col.acronym ? `${col.acronym} — ${col.name}` : col.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {values.scope === 'DEPARTMENT' && (
+          <label>
+            <span>Department</span>
+            <select
+              onChange={(event) =>
+                setForm((current) => ({ ...values, ...current, departmentId: event.target.value }))
+              }
+              value={values.departmentId}
+            >
+              <option value="">Select department</option>
+              {filteredDepartments.map((dept) => (
+                <option key={dept.id} value={String(dept.id)}>
+                  {dept.acronym ? `${dept.acronym} — ${dept.name}` : dept.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label>
+          <span>Faculty Adviser</span>
+          <select
+            onChange={(event) =>
+              setForm((current) => ({ ...values, ...current, adviserId: event.target.value }))
+            }
+            value={values.adviserId}
+          >
+            <option value="">Unassigned</option>
+            {advisers.map((adv) => (
+              <option key={adv.adviser_id ?? adv.id} value={String(adv.adviser_id ?? adv.id)}>
+                {adv.name || `${adv.first_name || ''} ${adv.last_name || ''}`.trim()}
+                {adv.college_acronym ? ` (${adv.college_acronym})` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Eligible Student Level</span>
+          <select
+            onChange={(event) =>
+              setForm((current) => ({ ...values, ...current, eligibleLevel: event.target.value }))
+            }
+            value={values.eligibleLevel}
+          >
+            <option value="UNDERGRADUATE">Undergraduate</option>
+            <option value="GRADUATE">Graduate</option>
+          </select>
+        </label>
+        <div className="admin-eligibility-year-row">
+          <label>
+            <span>Min Year Level</span>
+            <select
+              onChange={(event) =>
+                setForm((current) => ({ ...values, ...current, minYearLevel: event.target.value }))
+              }
+              value={values.minYearLevel}
+            >
+              <option value="">Any</option>
+              {[1, 2, 3, 4, 5, 6].map((yr) => (
+                <option key={yr} value={String(yr)}>Year {yr}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Max Year Level</span>
+            <select
+              onChange={(event) =>
+                setForm((current) => ({ ...values, ...current, maxYearLevel: event.target.value }))
+              }
+              value={values.maxYearLevel}
+            >
+              <option value="">Any</option>
+              {[1, 2, 3, 4, 5, 6].map((yr) => (
+                <option key={yr} value={String(yr)}>Year {yr}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label>
+          <span>Eligibility Notes</span>
+          <input
+            onChange={(event) =>
+              setForm((current) => ({ ...values, ...current, eligibilityNotes: event.target.value }))
+            }
+            placeholder="e.g. Open to all bona fide CCS students"
+            value={values.eligibilityNotes}
+          />
+        </label>
+        <label>
+          <span>Description</span>
+          <textarea
+            onChange={(event) =>
+              setForm((current) => ({ ...values, ...current, description: event.target.value }))
+            }
+            rows={3}
+            value={values.description}
+          />
+        </label>
+        <div className="admin-modal-actions">
+          <Button onClick={onClose} type="button" variant="secondary">Cancel</Button>
+          <Button onClick={() => onSave(values)} type="button" variant="primary">Save organization</Button>
+        </div>
       </div>
     </Modal>
   )
@@ -449,7 +822,7 @@ function OrganizationCreateModal({
           <input
             id="create-org-name"
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Society of Information Technology Enthusiasts"
+            placeholder="e.g. Society of IT Enthusiasts (SITE)"
             required
             type="text"
             value={name}
@@ -469,7 +842,7 @@ function OrganizationCreateModal({
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+        <div className="admin-modal-two-col">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label className="admin-field-label" htmlFor="create-org-category">
               <span>Category</span>
@@ -575,21 +948,11 @@ function OrganizationCreateModal({
           </select>
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            gap: '12px',
-            marginTop: '20px',
-            paddingTop: '16px',
-            borderTop: '1px solid #eee8ec',
-          }}
-        >
-          <Button disabled={submitting} onClick={onClose} style={{ minWidth: '100px' }} type="button" variant="secondary">
+        <div className="admin-modal-actions">
+          <Button disabled={submitting} onClick={onClose} type="button" variant="secondary">
             Cancel
           </Button>
-          <Button disabled={submitting} style={{ minWidth: '110px' }} type="submit" variant="primary">
+          <Button disabled={submitting} type="submit" variant="primary">
             {submitting ? 'Submitting...' : 'Submit'}
           </Button>
         </div>
@@ -648,14 +1011,14 @@ function PrepareAdviserModal({ open, onClose, onCreate, departments = [], organi
   return (
     <Modal onClose={onClose} open={open} size="md" title="Prepare Faculty Adviser Account">
       <form className="admin-settings-form" onSubmit={handleSubmit}>
-        <p style={{ margin: 0, fontSize: '13px', color: '#5c5560' }}>
+        <p className="modal-lead-copy">
           Pre-generate a Faculty Adviser account for an organization so credentials are ready beforehand.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <div>
+        <div className="admin-modal-two-col">
+          <div className="modal-field-compact">
             <label className="admin-field-label" htmlFor="admin-adv-first">
               <span>First Name</span>
-              <span className="required-asterisk">*</span>
+              <span aria-hidden="true" className="required-asterisk">*</span>
             </label>
             <input
               id="admin-adv-first"
@@ -665,10 +1028,10 @@ function PrepareAdviserModal({ open, onClose, onCreate, departments = [], organi
               value={form.firstName}
             />
           </div>
-          <div>
+          <div className="modal-field-compact">
             <label className="admin-field-label" htmlFor="admin-adv-last">
               <span>Last Name</span>
-              <span className="required-asterisk">*</span>
+              <span aria-hidden="true" className="required-asterisk">*</span>
             </label>
             <input
               id="admin-adv-last"
@@ -680,11 +1043,11 @@ function PrepareAdviserModal({ open, onClose, onCreate, departments = [], organi
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '12px' }}>
-          <div>
+        <div className="admin-modal-two-col">
+          <div className="modal-field-compact">
             <label className="admin-field-label" htmlFor="admin-adv-email">
               <span>WMSU Email</span>
-              <span className="required-asterisk">*</span>
+              <span aria-hidden="true" className="required-asterisk">*</span>
             </label>
             <input
               id="admin-adv-email"
@@ -695,7 +1058,7 @@ function PrepareAdviserModal({ open, onClose, onCreate, departments = [], organi
               value={form.email}
             />
           </div>
-          <div>
+          <div className="modal-field-compact">
             <label className="admin-field-label" htmlFor="admin-adv-emp">
               <span>Employee Number</span>
             </label>
@@ -709,8 +1072,8 @@ function PrepareAdviserModal({ open, onClose, onCreate, departments = [], organi
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <div>
+        <div className="admin-modal-two-col">
+          <div className="modal-field-compact">
             <label className="admin-field-label" htmlFor="admin-adv-dept">
               <span>Department (optional)</span>
             </label>
@@ -725,10 +1088,10 @@ function PrepareAdviserModal({ open, onClose, onCreate, departments = [], organi
               ))}
             </select>
           </div>
-          <div>
+          <div className="modal-field-compact">
             <label className="admin-field-label" htmlFor="admin-adv-pwd">
               <span>Initial Password</span>
-              <span className="required-asterisk">*</span>
+              <span aria-hidden="true" className="required-asterisk">*</span>
             </label>
             <input
               id="admin-adv-pwd"
@@ -740,7 +1103,7 @@ function PrepareAdviserModal({ open, onClose, onCreate, departments = [], organi
           </div>
         </div>
 
-        <div>
+        <div className="modal-field-compact modal-field-full">
           <label className="admin-field-label" htmlFor="admin-adv-org">
             <span>Assign to Organization (optional)</span>
           </label>
@@ -850,6 +1213,7 @@ function MonthIntervalDropdown({ value, onChange, intervals, ariaLabel = 'Select
           </option>
         ))}
       </select>
+      <svg aria-hidden="true" className="filter-select-caret" height="16" viewBox="0 0 24 24" width="16"><path d="m6 9 6 6 6-6" /></svg>
     </div>
   )
 }
@@ -928,15 +1292,60 @@ function AnalyticsChart({ title, rows, type, lineColor = '#8f1538', filter }) {
 
   const barPalette = [
     { start: '#8f1538', end: '#b8294e' },
-    { start: '#d4653b', end: '#e2825b' },
-    { start: '#2563eb', end: '#4f83f2' },
-    { start: '#10b981', end: '#34d399' },
-    { start: '#8b5cf6', end: '#a78bfa' },
-    { start: '#d97706', end: '#f59e0b' },
+    { start: '#c08346', end: '#d9a166' },
+    { start: '#4a0b1f', end: '#721836' },
+    { start: '#18794e', end: '#2e9868' },
+    { start: '#b84b32', end: '#d66e56' },
+    { start: '#765029', end: '#9c7143' },
   ]
 
   const maxVal = Math.max(...rows.map((r) => r.value), 0)
   const totalVal = rows.reduce((sum, r) => sum + (r.value || 0), 0)
+
+  if (type === 'horizontal-bars') {
+    const sortedRows = [...rows].sort((a, b) => (b.value || 0) - (a.value || 0))
+    const hMax = Math.max(...sortedRows.map((r) => r.value || 0), 1)
+    return (
+      <Card className="admin-section-card admin-analytics-card">
+        <div className="admin-chart-header">
+          <h2>{title}</h2>
+          {filter}
+        </div>
+        <div className="admin-analytics-chart admin-hbar-wrap">
+          <ul aria-label={title} className="admin-hbar-list">
+            {sortedRows.map((row, idx) => {
+              const pct = Math.round(((row.value || 0) / hMax) * 100)
+              const share = totalVal > 0 ? Math.round(((row.value || 0) / totalVal) * 100) : 0
+              const palette = barPalette[idx % barPalette.length]
+              return (
+                <li
+                  className={`admin-hbar-row${hoveredIndex === idx ? ' is-hovered' : ''}`}
+                  key={row.label}
+                  onMouseEnter={() => setHoveredIndex(idx)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                >
+                  <div className="admin-hbar-label" title={row.label}>{row.label}</div>
+                  <div className="admin-hbar-track">
+                    <div
+                      className="admin-hbar-fill"
+                      style={{
+                        width: `${row.value > 0 ? Math.max(pct, 4) : 0}%`,
+                        background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
+                      }}
+                    />
+                  </div>
+                  <div className="admin-hbar-meta">
+                    <strong>{row.value}</strong>
+                    <span>{share}%</span>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      </Card>
+    )
+  }
 
   let ticks = [0, 1, 2]
   if (maxVal <= 2) {
@@ -1172,31 +1581,41 @@ function AnalyticsChart({ title, rows, type, lineColor = '#8f1538', filter }) {
           className="admin-analytics-chart-labels"
           style={{ gridTemplateColumns: `repeat(${Math.max(rows.length, 1)}, minmax(0, 1fr))` }}
         >
-          {rows.map((row, index) => (
-            <div
-              className={`admin-analytics-chart-label ${hoveredIndex === index ? 'is-hovered' : ''}`}
-              key={row.label}
-              onMouseEnter={() => setHoveredIndex(index)}
-            >
-              <span
-                className="admin-chart-label-text"
-                style={{ fontSize: rows.length > 10 ? '9.5px' : '10.5px' }}
-                title={row.label}
+          {rows.map((row, index) => {
+            const monthMatch = String(row.label || '').match(/^([A-Za-z]{3})\s+(\d{2})$/)
+            return (
+              <div
+                className={`admin-analytics-chart-label ${hoveredIndex === index ? 'is-hovered' : ''}`}
+                key={row.label}
+                onMouseEnter={() => setHoveredIndex(index)}
               >
-                {row.label}
-              </span>
-              <span
-                className={`admin-chart-value-pill ${row.value > 0 ? 'has-value' : ''}`}
-                style={{
-                  minWidth: rows.length > 10 ? '18px' : '22px',
-                  height: rows.length > 10 ? '18px' : '20px',
-                  fontSize: rows.length > 10 ? '10px' : '11px',
-                }}
-              >
-                {row.value}
-              </span>
-            </div>
-          ))}
+                <span
+                  className="admin-chart-label-text"
+                  style={{ fontSize: rows.length > 10 ? '10px' : '10.5px' }}
+                  title={row.label}
+                >
+                  {monthMatch ? (
+                    <>
+                      <span className="admin-chart-label-main">{monthMatch[1]}</span>
+                      <span className="admin-chart-label-sub">{monthMatch[2]}</span>
+                    </>
+                  ) : (
+                    row.label
+                  )}
+                </span>
+                <span
+                  className={`admin-chart-value-pill ${row.value > 0 ? 'has-value' : ''}`}
+                  style={{
+                    minWidth: rows.length > 10 ? '18px' : '22px',
+                    height: rows.length > 10 ? '18px' : '20px',
+                    fontSize: rows.length > 10 ? '10px' : '11px',
+                  }}
+                >
+                  {row.value}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </div>
     </Card>
@@ -1224,8 +1643,8 @@ function OrganizationStandingChart({ rows, total, organizations = [] }) {
   const pendingCount = organizations.filter((o) => o.status === 'PENDING').length
   const inactiveCount = organizations.filter((o) => o.status === 'INACTIVE').length
   const suspendedCount = organizations.filter((o) => o.status === 'SUSPENDED').length
-  const accreditedCount = organizations.filter(
-    (o) => (o.accreditationStatus || (o.status === 'ACTIVE' ? 'ACCREDITED' : 'PENDING')) === 'ACCREDITED'
+  const accreditedCount = organizations.filter((o) =>
+    ['ACCREDITED', 'ACTIVE'].includes(String(o.accreditationStatus || o.status || '').toUpperCase())
   ).length
   const accreditationPercent = organizations.length
     ? Math.round((accreditedCount / organizations.length) * 100)
@@ -1367,10 +1786,10 @@ function OrganizationStandingChart({ rows, total, organizations = [] }) {
                   strokeDashoffset={segment.offset}
                 />
               ))}
-              <text className="admin-standing-total" textAnchor="middle" x="70" y="67">
+              <text className="admin-standing-total" dominantBaseline="central" textAnchor="middle" x="70" y="60">
                 {hoveredStatus ? (rows.find((r) => r.label === hoveredStatus)?.value ?? total) : total}
               </text>
-              <text className="admin-standing-caption" textAnchor="middle" x="70" y="84">
+              <text className="admin-standing-caption" dominantBaseline="central" textAnchor="middle" x="70" y="84">
                 {hoveredStatus ? humanize(hoveredStatus) : 'organizations'}
               </text>
             </svg>
@@ -1483,24 +1902,30 @@ function OrganizationStandingChart({ rows, total, organizations = [] }) {
 function AdminDashboard({ data }) {
   const [selected, setSelected] = useState(null)
   const pendingApplications = data.organizationApplications.filter((item) => item.status === 'PENDING').length
-  const pendingEvents = data.officerEvents.filter((item) =>
-    ['SUBMITTED', 'UNDER_REVIEW', 'PENDING', 'APPROVED'].includes(item.status) && !item.isPublished && item.status !== 'PUBLISHED'
-  ).length
+  const pendingEventProposals = data.officerEvents.filter(
+    (item) => ['SUBMITTED', 'UNDER_REVIEW', 'PENDING', 'APPROVED'].includes(item.status) && !item.adminApprovedAt
+  )
+  const pendingEvents = pendingEventProposals.length
   const activeAccounts = data.adminUsers.filter((item) => item.status === 'ACTIVE').length
+  const pendingReportRows = data.adviserReports
+    .filter((item) => item.status === 'PENDING_VERIFICATION')
+    .map((item) => ({ ...item, title: item.eventTitle, type: 'Accomplishment report' }))
+  const pendingReportDocIds = new Set(pendingReportRows.map((item) => String(item.documentId ?? item.id)))
 
   const pending = [
     ...data.organizationApplications
       .filter((item) => item.status === 'PENDING')
       .map((item) => ({ ...item, type: 'Organization application', title: item.name, organizationName: item.name })),
-    ...data.officerEvents
-      .filter((item) => ['SUBMITTED', 'UNDER_REVIEW', 'PENDING', 'APPROVED'].includes(item.status) && !item.adminApprovedAt)
-      .map((item) => ({ ...item, type: 'Event proposal' })),
+    ...pendingEventProposals.map((item) => ({ ...item, type: 'Event proposal' })),
     ...data.adviserDocuments
-      .filter((item) => ['PENDING', 'SUBMITTED', 'UNDER_REVIEW'].includes(item.status) || (item.adminReviewRequired && item.status === 'APPROVED'))
+      .filter(
+        (item) =>
+          !pendingReportDocIds.has(String(item.documentId ?? item.id)) &&
+          (['PENDING', 'SUBMITTED', 'UNDER_REVIEW'].includes(item.status) ||
+            (item.adminReviewRequired && item.status === 'APPROVED'))
+      )
       .map((item) => ({ ...item, type: 'Document' })),
-    ...data.adviserReports
-      .filter((item) => item.status === 'PENDING_VERIFICATION')
-      .map((item) => ({ ...item, title: item.eventTitle, type: 'Accomplishment report' })),
+    ...pendingReportRows,
   ]
   const upcomingEvents = data.officerEvents
     .filter((item) => ['APPROVED', 'PUBLISHED', 'ONGOING'].includes(item.status))
@@ -1525,7 +1950,7 @@ function AdminDashboard({ data }) {
             value={activeAccounts.toLocaleString()}
           />
           <Metric label="Pending Organization Applications" value={pendingApplications} />
-          <Metric label="Events Awaiting Review / Publish" value={pendingEvents} />
+          <Metric label="Events Awaiting Review" value={pendingEvents} />
         </div>
       </PageHeader>
 
@@ -1552,6 +1977,7 @@ function AdminDashboard({ data }) {
                 ),
               },
             ]}
+            getRowKey={(row, idx) => `${row.type}-${row.id ?? idx}`}
             rows={pending}
             useDataTable
           />
@@ -1636,8 +2062,12 @@ export default function AdminPortalPage() {
   const [showPrepareAdviserModal, setShowPrepareAdviserModal] = useState(false)
   const [preparingMissing, setPreparingMissing] = useState(false)
   const [userChange, setUserChange] = useState(null)
+  const [passwordResetTarget, setPasswordResetTarget] = useState(null)
+  const [newPasswordInput, setNewPasswordInput] = useState('')
+  const [resettingPassword, setResettingPassword] = useState(false)
   const [publishTarget, setPublishTarget] = useState(null)
   const [saveSettingsOpen, setSaveSettingsOpen] = useState(false)
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
 
   // Clean 1-month interval dropdown states for Analytics
   const [analyticsMonthInterval, setAnalyticsMonthInterval] = useState('ALL_12M')
@@ -1766,16 +2196,61 @@ export default function AdminPortalPage() {
   }
 
   const filteredApplications = data.organizationApplications.filter((item) => matches(item))
-  const adviserChangeRequests = (data.adviserChangeRequests || []).map((req) => ({
-    id: req.request_id,
-    requestId: req.request_id,
-    title: `${req.organization_name || 'Organization'} — Adviser Change Request`,
+  const adviserChangeRequests = (data.adviserChangeRequests || []).map((req) => {
+    const resolvedRequestId = req.request_id ?? req.id
+    return {
+      id: resolvedRequestId,
+      requestId: resolvedRequestId,
+      title: `${req.organization_name || 'Organization'} — Adviser Change Request`,
+      name: req.organization_name || 'Organization',
+      organizationName: req.organization_name || 'Organization',
+      type: 'Adviser change request',
+      submittedBy: req.requester_first_name
+        ? `${req.requester_last_name}, ${req.requester_first_name}`
+        : 'Organization Officer',
+      submittedDate: req.created_at
+        ? new Date(req.created_at).toLocaleDateString('en-US', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+          })
+        : '',
+      reason: req.reason,
+      status: req.status || 'PENDING',
+      entityKind: 'adviser_change',
+      canReview: req.status === 'PENDING',
+    }
+  })
+
+  async function decideAdviserChange(item, decision, comment) {
+    const mappedStatus = decision === 'APPROVED' ? 'APPROVED' : 'REJECTED'
+    const ok = await data.reviewAdviserChangeRequest(item.requestId ?? item.id, mappedStatus, comment)
+    if (ok) showToast(`Adviser change request ${mappedStatus.toLowerCase()}.`, 'success')
+    return ok
+  }
+
+  async function decideOrgRequest(item, decision, comment) {
+    const mappedStatus = decision === 'APPROVED' ? 'APPROVED' : 'REJECTED'
+    const ok = await data.reviewOrganizationRequest(item.requestId || item.id, mappedStatus, comment)
+    if (ok) {
+      showToast(
+        mappedStatus === 'APPROVED'
+          ? `${item.organizationName} deactivation approved (status updated to INACTIVE).`
+          : `Deactivation request for ${item.organizationName} rejected.`,
+        'success'
+      )
+    }
+    return ok
+  }
+
+  const orgDeactivationRequests = (data.organizationRequests || []).map((req) => ({
+    id: `ORG-REQ-${req.id}`,
+    requestId: req.id,
+    title: `${req.organization_name || 'Organization'} — Deactivation Request`,
     name: req.organization_name || 'Organization',
     organizationName: req.organization_name || 'Organization',
-    type: 'Adviser change request',
-    submittedBy: req.requester_first_name
-      ? `${req.requester_last_name}, ${req.requester_first_name}`
-      : 'Organization Officer',
+    type: 'Organization deactivation request',
+    submittedBy: req.requester_name || 'Organization Officer',
     submittedDate: req.created_at
       ? new Date(req.created_at).toLocaleDateString('en-US', {
           month: 'long',
@@ -1784,17 +2259,11 @@ export default function AdminPortalPage() {
         })
       : '',
     reason: req.reason,
+    reviewRemarks: req.review_remarks || '',
     status: req.status || 'PENDING',
-    entityKind: 'adviser_change',
+    entityKind: 'org_request',
     canReview: req.status === 'PENDING',
   }))
-
-  async function decideAdviserChange(item, decision, comment) {
-    const mappedStatus = decision === 'APPROVED' ? 'APPROVED' : 'REJECTED'
-    const ok = await data.reviewAdviserChangeRequest(item.id, mappedStatus, comment)
-    if (ok) showToast(`Adviser change request ${mappedStatus.toLowerCase()}.`, 'success')
-    return ok
-  }
 
   async function decideApplication(item, decision, comment) {
     const ok = await data.reviewOrganizationApplication(item.id, decision, comment)
@@ -1817,6 +2286,7 @@ export default function AdminPortalPage() {
   if (pathname.endsWith('/dashboard')) return <AdminDashboard data={data} />
 
   if (pathname.endsWith('/users')) {
+    const pendingResetRequests = (data.passwordResetRequests || []).filter((r) => r.status === 'PENDING')
     const rows = data.adminUsers
       .filter((item) => item.role !== 'Student')
       .filter((item) => roleFilter === 'All' || item.role === roleFilter)
@@ -1827,7 +2297,7 @@ export default function AdminPortalPage() {
         <PageHeader
           actions={
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              <Button disabled={preparingMissing} onClick={handleEnsureAllAdvisers} variant="outline">
+              <Button disabled={preparingMissing} onClick={handleEnsureAllAdvisers} variant="secondary">
                 {preparingMissing ? 'Checking…' : 'Ensure All Org Advisers'}
               </Button>
               <Button onClick={() => setShowPrepareAdviserModal(true)} variant="primary">
@@ -1835,6 +2305,10 @@ export default function AdminPortalPage() {
               </Button>
             </div>
           }
+          breadcrumbs={[
+            { label: 'Admin Dashboard', to: '/admin/dashboard' },
+            { label: 'Users & Advisers' },
+          ]}
           description="Manage global Admin, Prepared Faculty Adviser, Coordinator, and Organization Officer accounts."
           eyebrow="UNIDOS ADMINISTRATION"
           title="Users & Adviser Accounts"
@@ -1856,77 +2330,177 @@ export default function AdminPortalPage() {
             value={statusFilter}
           />
         </FilterBar>
+        {pendingResetRequests.length > 0 && (
+          <Card className="admin-section-card" style={{ marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '16px' }}>Pending Password Reset Requests ({pendingResetRequests.length})</h2>
+                <p style={{ margin: '2px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+                  Tickets submitted from the Forgot Password page awaiting administrator reset.
+                </p>
+              </div>
+              <Badge tone="warning">ACTION REQUIRED</Badge>
+            </div>
+            <div style={{ display: 'grid', gap: '10px' }}>
+              {pendingResetRequests.map((ticket) => (
+                <div
+                  key={ticket.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '12px',
+                    flexWrap: 'wrap',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(143, 21, 56, 0.14)',
+                    background: 'rgba(143, 21, 56, 0.03)',
+                  }}
+                >
+                  <div>
+                    <strong>#PRR-{ticket.id} · {ticket.user_name || ticket.email}</strong>
+                    <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                      {ticket.email} ({ticket.role || 'USER'}) · Submitted {new Date(ticket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  </div>
+                  <div className="admin-row-actions">
+                    <Button
+                      onClick={() => {
+                        const matched = data.adminUsers.find((u) => String(u.id) === String(ticket.user_id)) || {
+                          id: ticket.user_id,
+                          email: ticket.email,
+                          name: ticket.user_name || ticket.email,
+                        }
+                        setPasswordResetTarget({ user: matched, requestId: ticket.id })
+                        setNewPasswordInput('')
+                      }}
+                      size="sm"
+                      variant="primary"
+                    >
+                      Set New Password
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        const ok = await data.rejectPasswordResetRequest(ticket.id, 'Dismissed by administrator')
+                        showToast(ok ? `Ticket #PRR-${ticket.id} closed.` : 'Unable to close ticket.', ok ? 'info' : 'error')
+                      }}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
         <Card className="admin-section-card">
           {rows.length ? (
-            <Table
-              columns={[
-                { key: 'name', label: 'Name', render: (value, row) => formatDisplayName(row) || value },
-                { key: 'userId', label: 'ID' },
-                { key: 'email', label: 'Email' },
-                {
-                  key: 'role',
-                  label: 'Role',
-                  render: (value, row) => (
-                    <select
-                      aria-label={`Role for ${formatDisplayName(row)}`}
-                      disabled={row.id === 'admin-root'}
-                      onChange={(event) => setUserChange({ user: row, changes: { role: event.target.value } })}
-                      value={roleOptions.includes(value) ? value : 'Organization Officer'}
-                    >
-                      {roleOptions.map((role) => (
-                        <option key={role}>{role}</option>
-                      ))}
-                    </select>
-                  ),
-                },
-                {
-                  key: 'status',
-                  label: 'Status',
-                  render: (value, row) => (
-                    <select
-                      aria-label={`Status for ${formatDisplayName(row)}`}
-                      disabled={row.id === 'admin-root'}
-                      onChange={(event) => setUserChange({ user: row, changes: { status: event.target.value } })}
-                      value={value}
-                    >
-                      {['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((status) => (
-                        <option key={status} value={status}>{humanize(status)}</option>
-                      ))}
-                    </select>
-                  ),
-                },
-                {
-                  key: 'organization',
-                  label: 'Assigned Organization',
-                  render: (value, row) => {
-                    if (value && value !== '—' && value !== 'Unassigned') return value
-                    const advised = data.adminOrganizations.filter(
-                      (org) =>
-                        (row.email && org.adviserEmail && org.adviserEmail.toLowerCase() === row.email.toLowerCase()) ||
-                        (row.id && String(org.adviserUserId) === String(row.id))
-                    )
-                    if (advised.length > 0) {
-                      return advised.map((o) => `${o.acronym || o.name} (Adviser)`).join(', ')
-                    }
-                    const activeMemberships = (data.studentMemberships || []).filter(
-                      (m) =>
-                        m.status === 'ACTIVE' &&
-                        ((row.userId && String(m.studentId).toLowerCase() === String(row.userId).toLowerCase()) ||
-                          (row.id && String(m.userId) === String(row.id)))
-                    )
-                    if (activeMemberships.length > 0) {
-                      return activeMemberships
-                        .map((m) => `${m.organizationName || m.organizationId} (${m.position || 'Officer'})`)
-                        .join(', ')
-                    }
-                    return value || 'Global / Unassigned'
+            <div className="admin-users-table-wrap">
+              <Table
+                columns={[
+                  {
+                    key: 'name',
+                    label: 'Account',
+                    render: (value, row) => (
+                      <div className="admin-user-account-cell">
+                        <strong>{formatDisplayName(row) || value}</strong>
+                        <div className="admin-user-submeta">
+                          {row.userId && <span className="admin-user-id">{row.userId}</span>}
+                          {row.userId && row.email ? ' · ' : ''}
+                          {row.email && <span className="admin-user-email">{row.email}</span>}
+                        </div>
+                      </div>
+                    ),
+                    getOrderValue: (value, row) => formatDisplayName(row) || value || '',
                   },
-                },
-                { key: 'lastActivity', label: 'Last Activity' },
-              ]}
-              rows={rows}
-              useDataTable
-            />
+                  {
+                    key: 'role',
+                    label: 'Role',
+                    render: (value, row) => (
+                      <select
+                        aria-label={`Role for ${formatDisplayName(row)}`}
+                        className="admin-table-role-select"
+                        disabled={row.id === 'admin-root'}
+                        onChange={(event) => setUserChange({ user: row, changes: { role: event.target.value } })}
+                        value={roleOptions.includes(value) ? value : 'Organization Officer'}
+                      >
+                        {roleOptions.map((role) => (
+                          <option key={role}>{role}</option>
+                        ))}
+                      </select>
+                    ),
+                  },
+                  {
+                    key: 'status',
+                    label: 'Status',
+                    render: (value, row) => (
+                      <select
+                        aria-label={`Status for ${formatDisplayName(row)}`}
+                        className="admin-table-status-select"
+                        disabled={row.id === 'admin-root'}
+                        onChange={(event) => setUserChange({ user: row, changes: { status: event.target.value } })}
+                        value={value}
+                      >
+                        {['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((status) => (
+                          <option key={status} value={status}>{humanize(status)}</option>
+                        ))}
+                      </select>
+                    ),
+                  },
+                  {
+                    key: 'organization',
+                    label: 'Assigned Organization',
+                    render: (value, row) => {
+                      if (value && value !== '—' && value !== 'Unassigned') return value
+                      const advised = data.adminOrganizations.filter(
+                        (org) =>
+                          (row.email && org.adviserEmail && org.adviserEmail.toLowerCase() === row.email.toLowerCase()) ||
+                          (row.id && String(org.adviserUserId) === String(row.id))
+                      )
+                      if (advised.length > 0) {
+                        return advised.map((o) => `${o.acronym || o.name} (Adviser)`).join(', ')
+                      }
+                      const activeMemberships = (data.studentMemberships || []).filter(
+                        (m) =>
+                          m.status === 'ACTIVE' &&
+                          ((row.userId && String(m.studentId).toLowerCase() === String(row.userId).toLowerCase()) ||
+                            (row.id && String(m.userId) === String(row.id)))
+                      )
+                      if (activeMemberships.length > 0) {
+                        return activeMemberships
+                          .map((m) => `${m.organizationName || m.organizationId} (${m.position || 'Officer'})`)
+                          .join(', ')
+                      }
+                      return value || 'Global / Unassigned'
+                    },
+                  },
+                  { key: 'lastActivity', label: 'Last Activity' },
+                  {
+                    key: 'actions',
+                    label: 'Actions',
+                    render: (_, row) => (
+                      <div className="admin-row-actions">
+                        <Button onClick={() => setSelected(row)} size="sm" variant="secondary">View</Button>
+                        <Button
+                          onClick={() => {
+                            setPasswordResetTarget({ user: row, requestId: null })
+                            setNewPasswordInput('')
+                          }}
+                          size="sm"
+                          variant="secondary"
+                        >
+                          Reset Password
+                        </Button>
+                      </div>
+                    ),
+                  },
+                ]}
+                rows={rows}
+                useDataTable
+              />
+            </div>
           ) : (
             <EmptyState title="No matching user accounts" />
           )}
@@ -1971,6 +2545,71 @@ export default function AdminPortalPage() {
             </>
           )}
         </Modal>
+
+        <Modal
+          onClose={() => {
+            if (!resettingPassword) {
+              setPasswordResetTarget(null)
+              setNewPasswordInput('')
+            }
+          }}
+          open={Boolean(passwordResetTarget)}
+          size="sm"
+          title="Reset User Password"
+        >
+          {passwordResetTarget && (
+            <form
+              className="admin-settings-form"
+              onSubmit={async (event) => {
+                event.preventDefault()
+                if (newPasswordInput.trim().length < 6) {
+                  showToast('Password must be at least 6 characters long.', 'error')
+                  return
+                }
+                setResettingPassword(true)
+                const res = await data.resetAdminUserPassword(
+                  passwordResetTarget.user.id,
+                  newPasswordInput.trim(),
+                  passwordResetTarget.requestId
+                )
+                setResettingPassword(false)
+                if (!res?.ok) {
+                  showToast(res?.error || 'Unable to reset user password.', 'error')
+                  return
+                }
+                showToast(res.message || 'User password updated in database.', 'success')
+                setPasswordResetTarget(null)
+                setNewPasswordInput('')
+              }}
+            >
+              <p>
+                Set a new password for <strong>{formatDisplayName(passwordResetTarget.user) || passwordResetTarget.user.email}</strong>{' '}
+                ({passwordResetTarget.user.email}).
+                {passwordResetTarget.requestId ? ` This also resolves ticket #PRR-${passwordResetTarget.requestId}.` : ''}
+              </p>
+              <label>
+                <span>New Temporary Password (min. 6 chars)</span>
+                <input
+                  autoFocus
+                  minLength={6}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  placeholder="Enter new password"
+                  required
+                  type="text"
+                  value={newPasswordInput}
+                />
+              </label>
+              <div className="modal-actions">
+                <Button disabled={resettingPassword} onClick={() => setPasswordResetTarget(null)} type="button" variant="secondary">
+                  Cancel
+                </Button>
+                <Button disabled={resettingPassword} type="submit" variant="primary">
+                  {resettingPassword ? 'Updating…' : 'Save New Password'}
+                </Button>
+              </div>
+            </form>
+          )}
+        </Modal>
       </div>
     )
   }
@@ -1979,6 +2618,10 @@ export default function AdminPortalPage() {
     return (
       <div className="admin-page">
         <PageHeader
+          breadcrumbs={[
+            { label: 'Admin Dashboard', to: '/admin/dashboard' },
+            { label: 'Organizations' },
+          ]}
           description="Global oversight of accreditation, prepared advisers, and institutional standing for all campus organizations."
           eyebrow="UNIDOS ADMINISTRATION"
           title="Organizations"
@@ -2009,7 +2652,7 @@ export default function AdminPortalPage() {
                 { key: 'adviser', label: 'Prepared Adviser' },
                 { key: 'memberCount', label: 'Officers' },
                 { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
-                { key: 'accreditationStatus', label: 'Accreditation' },
+                { key: 'accreditationStatus', label: 'Accreditation', render: (value) => <Status value={value} /> },
                 {
                   key: 'actions',
                   label: 'Actions',
@@ -2080,16 +2723,23 @@ export default function AdminPortalPage() {
         </Modal>
 
         <OrganizationEditModal
+          advisers={data.advisers}
           categories={data.adminSettings?.organizationCategories ?? adminDefaultSettings.organizationCategories}
+          colleges={data.academicColleges}
+          departments={data.academicDepartments}
           key={organizationEdit?.id ?? 'closed'}
           onClose={() => setOrganizationEdit(null)}
           onSave={async (changes) => {
+            if (!changes?.name?.trim()) {
+              showToast('Organization name is required before saving.', 'error')
+              return
+            }
             const ok = organizationEdit && (await data.updateAdminOrganization(organizationEdit.id, changes))
             if (ok) {
               showToast('Organization details updated.', 'success')
               setOrganizationEdit(null)
             } else {
-              showToast('Complete all organization fields before saving.', 'error')
+              showToast('Failed to update organization details.', 'error')
             }
           }}
           organization={organizationEdit}
@@ -2135,6 +2785,10 @@ export default function AdminPortalPage() {
     return (
       <div className="admin-page">
         <PageHeader
+          breadcrumbs={[
+            { label: 'Admin Dashboard', to: '/admin/dashboard' },
+            { label: 'Organization Applications' },
+          ]}
           description="Review recognition submissions and accreditation documents."
           eyebrow="UNIDOS ADMINISTRATION"
           title="Organization Applications"
@@ -2196,6 +2850,10 @@ export default function AdminPortalPage() {
     return (
       <div className="admin-page">
         <PageHeader
+          breadcrumbs={[
+            { label: 'Admin Dashboard', to: '/admin/dashboard' },
+            { label: 'Campus Events' },
+          ]}
           description="Global Admin access over all campus events, compliance files, participant caps, and publication."
           eyebrow="UNIDOS ADMINISTRATION"
           title="Campus Events"
@@ -2235,7 +2893,7 @@ export default function AdminPortalPage() {
                 {
                   key: 'capacity',
                   label: 'Participants',
-                  render: (val, row) => `${row.registrations ?? row.registeredCount ?? 0} / ${val ?? 100}`,
+                  render: (val, row) => `${row.registrations ?? row.registeredCount ?? 0} / ${val ?? 'No limit'}`,
                 },
                 { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
                 {
@@ -2302,6 +2960,7 @@ export default function AdminPortalPage() {
         canReview: item.status !== 'APPROVED',
       })),
       ...adviserChangeRequests,
+      ...orgDeactivationRequests,
       ...orgEvents
         .filter((item) => item.status !== 'DRAFT')
         .map((item) => ({
@@ -2322,22 +2981,29 @@ export default function AdminPortalPage() {
     return (
       <div className="admin-page">
         <PageHeader
+          breadcrumbs={[
+            { label: 'Admin Dashboard', to: '/admin/dashboard' },
+            { label: 'Approval Center' },
+          ]}
           description="Global approval queue for cross-campus organization applications, adviser change requests, event proposals, and compliance documents."
           eyebrow="UNIDOS ADMINISTRATION"
           title="Approval Center"
         />
         <FilterBar search={search} setSearch={setSearch}>
-          <select
-            aria-label="Filter approvals by status"
-            onChange={(event) => setStatusFilter(event.target.value)}
-            value={statusFilter}
-          >
-            {['All', 'PENDING', 'SUBMITTED', 'APPROVED', 'RETURNED', 'REJECTED'].map((value) => (
-              <option key={value} value={value}>
-                {value === 'All' ? value : value.replace('_', ' ')}
-              </option>
-            ))}
-          </select>
+          <label className="admin-filter-field">
+            <span>Status</span>
+            <select
+              aria-label="Filter approvals by status"
+              onChange={(event) => setStatusFilter(event.target.value)}
+              value={statusFilter}
+            >
+              {['All', 'PENDING', 'SUBMITTED', 'APPROVED', 'RETURNED', 'REJECTED'].map((value) => (
+                <option key={value} value={value}>
+                  {value === 'All' ? value : value.replace('_', ' ')}
+                </option>
+              ))}
+            </select>
+          </label>
         </FilterBar>
         <Card className="admin-section-card">
           {approvals.length ? (
@@ -2365,6 +3031,7 @@ export default function AdminPortalPage() {
                   ),
                 },
               ]}
+              getRowKey={(row, idx) => `${row.entityKind || row.type}-${row.id ?? idx}`}
               rows={approvals}
               useDataTable
             />
@@ -2374,6 +3041,11 @@ export default function AdminPortalPage() {
         </Card>
         <RecordModal
           canDecide={Boolean(selected?.__approval)}
+          decisionLabels={{
+            APPROVED: 'Approve',
+            RETURNED: 'Return for revision',
+            REJECTED: 'Reject',
+          }}
           item={selected}
           onClose={() => setSelected(null)}
           onDecision={(decision, comment) =>
@@ -2381,11 +3053,13 @@ export default function AdminPortalPage() {
               ? decideApplication(selected, decision, comment)
               : selected?.__approval === 'adviser_change'
                 ? decideAdviserChange(selected, decision, comment)
-                : selected?.__approval === 'event'
-                  ? decideEvent(selected, decision, comment)
-                  : selected?.__approval === 'document'
-                    ? decideDocument(selected, decision, comment)
-                    : false
+                : selected?.__approval === 'org_request'
+                  ? decideOrgRequest(selected, decision, comment)
+                  : selected?.__approval === 'event'
+                    ? decideEvent(selected, decision, comment)
+                    : selected?.__approval === 'document'
+                      ? decideDocument(selected, decision, comment)
+                      : false
           }
         />
       </div>
@@ -2399,21 +3073,28 @@ export default function AdminPortalPage() {
     return (
       <div className="admin-page">
         <PageHeader
+          breadcrumbs={[
+            { label: 'Admin Dashboard', to: '/admin/dashboard' },
+            { label: 'Documents' },
+          ]}
           description="Global Admin review access across all organization compliance documents and reports."
           eyebrow="UNIDOS ADMINISTRATION"
           title="Documents"
         />
         <FilterBar search={search} setSearch={setSearch}>
-          <select
-            aria-label="Filter document status"
-            onChange={(event) => setStatusFilter(event.target.value)}
-            value={statusFilter}
-          >
-            <option>All</option>
-            {['PENDING', 'APPROVED', 'RETURNED', 'REJECTED'].map((value) => (
-              <option key={value}>{value}</option>
-            ))}
-          </select>
+          <label className="admin-filter-field">
+            <span>Status</span>
+            <select
+              aria-label="Filter document status"
+              onChange={(event) => setStatusFilter(event.target.value)}
+              value={statusFilter}
+            >
+              <option>All</option>
+              {['PENDING', 'APPROVED', 'RETURNED', 'REJECTED'].map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </label>
         </FilterBar>
         <Card className="admin-section-card">
           {rows.length ? (
@@ -2504,6 +3185,40 @@ export default function AdminPortalPage() {
     return (
       <div className="admin-page">
         <PageHeader
+          actions={
+            <div className="admin-analytics-toolbar">
+              <Button
+                onClick={() =>
+                  showToast(
+                    downloadCsv('unidos-campus-report.csv', reportRows)
+                      ? 'CSV report downloaded.'
+                      : 'There is no report data to export.',
+                    reportRows.length ? 'success' : 'error'
+                  )
+                }
+                variant="secondary"
+              >
+                <Icon name="download" size={14} /> Download CSV
+              </Button>
+              <Button
+                onClick={() =>
+                  showToast(
+                    downloadExcel('unidos-campus-report.xls', reportRows)
+                      ? 'Excel-compatible report downloaded.'
+                      : 'There is no report data to export.',
+                    reportRows.length ? 'success' : 'error'
+                  )
+                }
+                variant="primary"
+              >
+                <Icon name="download" size={14} /> Download Excel
+              </Button>
+            </div>
+          }
+          breadcrumbs={[
+            { label: 'Admin Dashboard', to: '/admin/dashboard' },
+            { label: 'Reports' },
+          ]}
           description="Export institutional records for administrative compliance review."
           eyebrow="UNIDOS ADMINISTRATION"
           title="Reports"
@@ -2519,80 +3234,78 @@ export default function AdminPortalPage() {
           </div>
         </PageHeader>
 
-        <div className="admin-report-actions">
-          <Button
-            onClick={() =>
-              showToast(
-                downloadCsv('unidos-campus-report.csv', reportRows)
-                  ? 'CSV report downloaded.'
-                  : 'There is no report data to export.',
-                reportRows.length ? 'success' : 'error'
-              )
-            }
-          >
-            Download CSV
-          </Button>
-          <Button
-            onClick={() =>
-              showToast(
-                downloadExcel('unidos-campus-report.xls', reportRows)
-                  ? 'Excel-compatible report downloaded.'
-                  : 'There is no report data to export.',
-                reportRows.length ? 'success' : 'error'
-              )
-            }
-            variant="secondary"
-          >
-            Download Excel
-          </Button>
-        </div>
-
-        <FilterBar search={search} setSearch={setSearch}>
-          <select
-            aria-label="Filter report status"
-            onChange={(event) => setStatusFilter(event.target.value)}
-            value={statusFilter}
-          >
-            <option>All</option>
-            {[...new Set(allReportRows.map((row) => row.status).filter(Boolean))].map((value) => (
-              <option key={value} value={value}>{value.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
-          <select aria-label="Filter academic year">
-            <option>{data.adminSettings.academicYear}</option>
-          </select>
-          <select aria-label="Filter semester">
-            <option>{data.adminSettings.semester}</option>
-          </select>
-          <select
-            aria-label="Filter college"
-            onChange={(event) => setReportFilters((current) => ({ ...current, college: event.target.value }))}
-            value={reportFilters.college}
-          >
-            {['All Colleges', ...new Set((data.academicColleges || []).map((col) => col.name))].map((value) => (
-              <option key={value}>{value}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter organization category"
-            onChange={(event) => setReportFilters((current) => ({ ...current, category: event.target.value }))}
-            value={reportFilters.category}
-          >
-            {['All Categories', ...new Set(data.adminOrganizations.map((organization) => organization.category))].map(
-              (value) => (
+        <FilterBar className="admin-reports-filter-bar" search={search} setSearch={setSearch}>
+          <label className="admin-filter-field">
+            <span>Status</span>
+            <select
+              aria-label="Filter report status"
+              onChange={(event) => setStatusFilter(event.target.value)}
+              value={statusFilter}
+            >
+              <option>All</option>
+              {[...new Set(allReportRows.map((row) => row.status).filter(Boolean))].map((value) => (
+                <option key={value} value={value}>{value.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+          </label>
+          <label className="admin-filter-field">
+            <span>Academic Year</span>
+            <select
+              aria-label="Active academic year"
+              disabled
+              title="Active academic year configured in System Settings"
+            >
+              <option>{data.adminSettings.academicYear}</option>
+            </select>
+          </label>
+          <label className="admin-filter-field">
+            <span>Semester</span>
+            <select
+              aria-label="Active semester"
+              disabled
+              title="Active semester configured in System Settings"
+            >
+              <option>{data.adminSettings.semester}</option>
+            </select>
+          </label>
+          <label className="admin-filter-field">
+            <span>College</span>
+            <select
+              aria-label="Filter college"
+              onChange={(event) => setReportFilters((current) => ({ ...current, college: event.target.value }))}
+              value={reportFilters.college}
+            >
+              {['All Colleges', ...new Set((data.academicColleges || []).map((col) => col.name))].map((value) => (
                 <option key={value}>{value}</option>
-              )
-            )}
-          </select>
-          <select
-            aria-label="Filter event type"
-            onChange={(event) => setReportFilters((current) => ({ ...current, eventType: event.target.value }))}
-            value={reportFilters.eventType}
-          >
-            {['All Event Types', ...new Set(orgEvents.map((event) => event.category).filter(Boolean))].map((value) => (
-              <option key={value}>{value}</option>
-            ))}
-          </select>
+              ))}
+            </select>
+          </label>
+          <label className="admin-filter-field">
+            <span>Category</span>
+            <select
+              aria-label="Filter organization category"
+              onChange={(event) => setReportFilters((current) => ({ ...current, category: event.target.value }))}
+              value={reportFilters.category}
+            >
+              {['All Categories', ...new Set(data.adminOrganizations.map((organization) => organization.category))].map(
+                (value) => (
+                  <option key={value}>{value}</option>
+                )
+              )}
+            </select>
+          </label>
+          <label className="admin-filter-field">
+            <span>Event Type</span>
+            <select
+              aria-label="Filter event type"
+              onChange={(event) => setReportFilters((current) => ({ ...current, eventType: event.target.value }))}
+              value={reportFilters.eventType}
+            >
+              {['All Event Types', ...new Set(orgEvents.map((event) => event.category).filter(Boolean))].map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </label>
         </FilterBar>
 
         <Card className="admin-section-card">
@@ -2604,6 +3317,7 @@ export default function AdminPortalPage() {
                 { key: 'status', label: 'Status', render: (value) => <Status value={value} /> },
                 { key: 'count', label: 'Officers / registrations' },
               ]}
+              getRowKey={(row, idx) => `${row.type}-${row.organizationId ?? ''}-${row.name}-${idx}`}
               rows={reportRows}
               useDataTable
             />
@@ -2646,11 +3360,14 @@ export default function AdminPortalPage() {
       isDateInSelectedMonth(e.startDatetime || e.date || e.submittedDate || e.createdAt)
     )
     const periodAttended = attendedRegistrations.filter((r) =>
-      isDateInSelectedMonth(r.checkInDate || r.registrationDate || r.checkInTime)
+      isDateInSelectedMonth(r.checkInDate || r.registrationDate)
     )
     const periodRegistrations = validRegistrations.filter((r) =>
       isDateInSelectedMonth(r.registrationDate || r.checkInDate)
     )
+    const periodTurnoutPercent = periodRegistrations.length
+      ? Math.round((periodAttended.length / periodRegistrations.length) * 100)
+      : 0
 
     const stats = [
       {
@@ -2661,7 +3378,9 @@ export default function AdminPortalPage() {
       {
         label: selectedMonthObj ? `Events (${selectedMonthObj.shortLabel})` : 'Approved & published events',
         value: selectedMonthObj ? periodEvents.length : approvedOrPublishedEvents.length,
-        detail: selectedMonthObj ? `of ${orgEvents.length} total campus events` : `of ${orgEvents.length} total proposals`,
+        detail: selectedMonthObj
+          ? `all proposals in ${selectedMonthObj.shortLabel} (${orgEvents.length} total)`
+          : `of ${orgEvents.length} total proposals`,
       },
       {
         label: 'Active organization officers',
@@ -2733,7 +3452,7 @@ export default function AdminPortalPage() {
     const attendanceCounts = {}
     attendedRegistrations.forEach((reg) => {
       const slotKey = findSlotForDate(
-        reg.checkInDate || reg.checkInTime || reg.registrationDate,
+        reg.checkInDate || reg.registrationDate,
         chartTimeline.slots
       )
       if (slotKey) {
@@ -2776,10 +3495,12 @@ export default function AdminPortalPage() {
           Section: 'KPI Summary',
           Interval: periodLabel,
           Metric_or_Entity: 'Campus Events',
-          Category_or_Status: 'APPROVED / PUBLISHED',
+          Category_or_Status: selectedMonthObj ? 'ALL STATUSES' : 'APPROVED / PUBLISHED',
           Value: selectedMonthObj ? periodEvents.length : approvedOrPublishedEvents.length,
           Total_or_Capacity: orgEvents.length,
-          Notes: 'Deduplicated database event records',
+          Notes: selectedMonthObj
+            ? `All event proposals scheduled or submitted in ${selectedMonthObj.shortLabel}`
+            : 'Approved & published events out of deduplicated proposals',
         },
         {
           Section: 'KPI Summary',
@@ -2797,7 +3518,9 @@ export default function AdminPortalPage() {
           Category_or_Status: 'ATTENDED',
           Value: selectedMonthObj ? periodAttended.length : attendedRegistrations.length,
           Total_or_Capacity: selectedMonthObj ? periodRegistrations.length : validRegistrations.length,
-          Notes: `${turnoutPercent}% overall verified turnout (${uniqueParticipantsCount} unique participants)`,
+          Notes: selectedMonthObj
+            ? `${periodTurnoutPercent}% verified turnout in ${selectedMonthObj.shortLabel} (${periodRegistrations.length} registrations)`
+            : `${turnoutPercent}% overall verified turnout (${uniqueParticipantsCount} unique participants)`,
         },
       ]
 
@@ -2873,6 +3596,10 @@ export default function AdminPortalPage() {
               </Button>
             </div>
           }
+          breadcrumbs={[
+            { label: 'Admin Dashboard', to: '/admin/dashboard' },
+            { label: 'Analytics' },
+          ]}
           description="Reconciled institutional metrics across organizations, officer councils, events, and verified check-ins using clean 1-month intervals."
           eyebrow="UNIDOS ADMINISTRATION"
           title="Analytics"
@@ -2900,7 +3627,7 @@ export default function AdminPortalPage() {
                 ? `Active categories (${selectedMonthObj.shortLabel})`
                 : 'Organization category distribution'
             }
-            type="bar"
+            type="horizontal-bars"
           />
           <AnalyticsChart
             filter={
@@ -2924,7 +3651,7 @@ export default function AdminPortalPage() {
                 value={analyticsMonthInterval}
               />
             }
-            lineColor="#2563eb"
+            lineColor="#4a0b1f"
             rows={attendanceTrends}
             title={
               selectedMonthObj
@@ -2970,6 +3697,10 @@ export default function AdminPortalPage() {
     return (
       <div className="admin-page">
         <PageHeader
+          breadcrumbs={[
+            { label: 'Admin Dashboard', to: '/admin/dashboard' },
+            { label: 'System Settings' },
+          ]}
           description="Update academic period, organization categories, and notification preferences."
           eyebrow="UNIDOS ADMINISTRATION"
           title="System Settings"
@@ -3028,27 +3759,66 @@ export default function AdminPortalPage() {
             <Button onClick={handleAddCategory}>Add category</Button>
           </div>
           <h2>Notification preferences</h2>
-          {Object.entries(settings.notifications || adminDefaultSettings.notifications).map(([key, checked]) => (
-            <label className="admin-checkbox-row" key={key}>
-              <input
-                checked={Boolean(checked)}
-                onChange={(event) =>
-                  setSettings((current) => ({
-                    ...current,
-                    notifications: {
-                      ...adminDefaultSettings.notifications,
-                      ...(current.notifications || {}),
-                      [key]: event.target.checked,
-                    },
-                  }))
-                }
-                type="checkbox"
-              />
-              {key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())}
-            </label>
-          ))}
-          <Button onClick={() => setSaveSettingsOpen(true)}>Save Settings</Button>
+          <div className="officer-settings-preferences">
+            {Object.entries(settings.notifications || adminDefaultSettings.notifications).map(([key, checked]) => {
+              const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())
+              const isOn = Boolean(checked)
+              return (
+                <label className="officer-settings-preference" key={key}>
+                  <span>{label}</span>
+                  <span className={`officer-settings-toggle${isOn ? ' is-on' : ''}`}>
+                    <span>{isOn ? 'ON' : 'OFF'}</span>
+                    <input
+                      aria-label={label}
+                      checked={isOn}
+                      onChange={(event) =>
+                        setSettings((current) => ({
+                          ...current,
+                          notifications: {
+                            ...adminDefaultSettings.notifications,
+                            ...(current.notifications || {}),
+                            [key]: event.target.checked,
+                          },
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+          <div className="admin-settings-submit-row">
+            <Button onClick={() => setSaveSettingsOpen(true)}>Save Settings</Button>
+          </div>
         </Card>
+        <Card className="admin-section-card admin-settings-card-gap">
+          <div className="officer-settings-danger-row">
+            <div>
+              <h2>Account Security</h2>
+              <p style={{ margin: '4px 0 0', color: 'var(--ink-secondary)' }}>
+                Signed in as <strong>{data.currentUser?.email || 'Student Affairs Admin'}</strong>. Update your administrator password regularly.
+              </p>
+            </div>
+            <Button onClick={() => setChangePasswordOpen(true)} type="button" variant="secondary">
+              Change Password
+            </Button>
+          </div>
+        </Card>
+
+        <AcademicStructureCard
+          colleges={data.academicColleges || []}
+          departments={data.academicDepartments || []}
+          onCreateCollege={data.createAcademicCollege}
+          onCreateDepartment={data.createAcademicDepartment}
+          onCreateProgram={data.createAcademicProgram}
+          onDeleteCollege={data.deleteAcademicCollege}
+          onDeleteDepartment={data.deleteAcademicDepartment}
+          onDeleteProgram={data.deleteAcademicProgram}
+          programs={data.academicPrograms || []}
+          showToast={showToast}
+        />
+
         <ConfirmDialog
           confirmLabel="Save settings"
           message="Are you sure you want to save these system settings? They apply to every user."
@@ -3061,6 +3831,18 @@ export default function AdminPortalPage() {
           open={saveSettingsOpen}
           title="Save system settings"
           tone="success"
+        />
+        <ChangePasswordModal
+          onClose={() => setChangePasswordOpen(false)}
+          onSubmit={async (payload) => {
+            const res = await data.changeOwnPassword?.(payload)
+            if (res?.ok) {
+              showToast(res.message || 'Account password updated.', 'success')
+            }
+            return res
+          }}
+          open={changePasswordOpen}
+          userEmail={data.currentUser?.email || ''}
         />
       </div>
     )

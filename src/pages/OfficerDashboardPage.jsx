@@ -177,7 +177,7 @@ export default function OfficerDashboardPage() {
         <div className="fb-feed">
           <Card className="fb-card fb-composer">
             <div className="fb-composer-row">
-              <span aria-hidden="true" className="fb-mini-avatar">{(organization?.acronym ?? 'ORG').slice(0, 3)}</span>
+              <span aria-hidden="true" className="fb-mini-avatar">{(organization?.acronym ?? 'ORG').slice(0, 5)}</span>
               <Link className="fb-composer-input" to="/officer/announcements">What would you like to do today?</Link>
             </div>
             <div aria-label="Quick actions" className="fb-composer-actions fb-composer-actions-4">
@@ -210,7 +210,10 @@ export default function OfficerDashboardPage() {
                     </div>
                     <div className="officer-person-copy">
                       <strong>{formatDisplayName(request)}</strong>
-                      <span>{request.program} <i aria-hidden="true">·</i> Applied: {request.applicationDate}</span>
+                      <span>
+                        <span>{request.program}</span>
+                        <span className="officer-person-applied">Applied: {request.applicationDate}</span>
+                      </span>
                     </div>
                   </div>
                   <div className="officer-request-actions-wrap">
@@ -218,7 +221,7 @@ export default function OfficerDashboardPage() {
                     <div className="officer-request-actions">
                       <Button onClick={() => setRequestToApprove(request)} variant="primary">Approve</Button>
                       <Button onClick={() => { setRequestToReject(request); setRejectionReason('') }} variant="secondary">Reject</Button>
-                      <Button aria-label={`View ${formatDisplayName(request)}'s application`} onClick={() => setSelectedRequest(request)} variant="ghost">View</Button>
+                      <Button aria-label={`View ${formatDisplayName(request)}'s application`} onClick={() => setSelectedRequest(request)} variant="secondary">View</Button>
                     </div>
                   </div>
                 </article>
@@ -245,7 +248,7 @@ export default function OfficerDashboardPage() {
                   </span>
                   <div className="officer-event-copy">
                     <strong>{event.title}</strong>
-                    <span>{event.date} <i aria-hidden="true">·</i> {event.registrations} registrations</span>
+                    <span>{event.date} <i aria-hidden="true">·</i> {(event.registrations ?? 0) === 1 ? '1 registration' : `${event.registrations ?? 0} registrations`}</span>
                   </div>
                   <Badge tone={officerEventStatuses[event.status]?.tone ?? 'neutral'}>
                     {officerEventStatuses[event.status]?.label ?? event.status}

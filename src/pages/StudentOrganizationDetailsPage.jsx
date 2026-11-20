@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useOutletContext, useParams } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
+import Breadcrumb from '../components/ui/Breadcrumb.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
@@ -16,10 +17,12 @@ import {
   OFFICER_HIERARCHY,
   ORGANIZATION_COMMITTEES,
   YEAR_LEVEL_OPTIONS,
+  applyNumericStudentIdPaste,
   getHierarchyEntry,
   readFileAsDataUrl,
   sanitizeNumericStudentId,
 } from '../data/officerHierarchy.js'
+import { downloadFileFromEndpoint, validateUploadFile } from '../data/fileDownload.js'
 
 const statusLabels = {
   NOT_MEMBER: 'NOT ENROLLED',
@@ -114,11 +117,14 @@ export default function StudentOrganizationDetailsPage() {
   if (!organization) {
     return (
       <div className="student-page">
-        <div className="student-org-top-nav">
-          <Link className="student-org-back-link" to="/organizations">
-            <Icon name="arrow-left" size={14} /> Back to Organizations
-          </Link>
-        </div>
+        <Breadcrumb
+          items={[
+            { label: 'Home', to: '/' },
+            { label: 'Organizations Directory', to: '/organizations' },
+            { label: 'Organization Not Found' },
+          ]}
+          standalone
+        />
         <Card className="organization-not-found" style={{ marginTop: '20px' }}>
           <h2>Organization Not Found</h2>
           <p>We could not find that organization in the current directory.</p>
@@ -135,11 +141,14 @@ export default function StudentOrganizationDetailsPage() {
     committee: o.committee || getHierarchyEntry(o.rawPosition || o.position).defaultCommittee,
     tierLabel: getHierarchyEntry(o.rawPosition || o.position).tierLabel,
   }))
-  const orgDocuments = organization.documents?.length
-    ? organization.documents
-    : adviserDocuments
-        .filter((d) => String(d.organizationId) === String(organization.id) && d.status === 'APPROVED')
-        .map((d) => d.title)
+  const approvedDocsFromContext = adviserDocuments.filter(
+    (d) => String(d.organizationId) === String(organization.id) && d.status === 'APPROVED'
+  )
+  const orgDocuments = organization.publicDocuments?.length
+    ? organization.publicDocuments
+    : approvedDocsFromContext.length
+      ? approvedDocsFromContext
+      : (organization.documents || []).map((title, idx) => ({ id: `doc-${idx}`, title, type: 'Public Document' }))
 
   const orgAnnouncementsList = (organization.announcements && organization.announcements.length > 0)
     ? organization.announcements
@@ -157,6 +166,12 @@ export default function StudentOrganizationDetailsPage() {
   async function handleCorUpload(event) {
     const file = event.target.files?.[0]
     if (!file) return
+    const validation = validateUploadFile(file)
+    if (!validation.ok) {
+      showToast(validation.error, 'error')
+      event.target.value = ''
+      return
+    }
     try {
       const dataUrl = await readFileAsDataUrl(file)
       setApplicantForm((prev) => ({
@@ -185,7 +200,7 @@ export default function StudentOrganizationDetailsPage() {
       return
     }
     if (!applicantForm.corFileName && !currentUser?.corFileName) {
-      showToast('Please upload your Certificate of Registration (COR).', 'error')
+      showToast('Please upload your COR.', 'error')
       return
     }
 
@@ -248,13 +263,14 @@ export default function StudentOrganizationDetailsPage() {
 
   return (
     <div className="student-organization-details fb-page">
-      <div className="student-org-top-nav">
-        <Link className="student-org-back-link" to="/organizations">
-          <Icon name="back" size={14} /> Organizations Directory
-        </Link>
-        <span className="student-org-breadcrumb-sep">/</span>
-        <span className="student-org-breadcrumb-current">{organization.name}</span>
-      </div>
+      <Breadcrumb
+        items={[
+          { label: 'Home', to: '/' },
+          { label: 'Organizations Directory', to: '/organizations' },
+          { label: organization.name },
+        ]}
+        standalone
+      />
 
       <ProfileCover
         actions={actionControls}
@@ -302,6 +318,32 @@ export default function StudentOrganizationDetailsPage() {
               <li>
                 <span aria-hidden="true"><Icon name="tag" /></span>
                 <div>Acronym: <strong>{organization.acronym}</strong></div>
+              </li>
+              <li>
+                <span aria-hidden="true"><Icon name="organization" /></span>
+                <div>
+                  Membership Scope:{' '}
+                  <strong>
+                    {organization.scope === 'DEPARTMENT' && organization.department
+                      ? `${organization.department}${organization.college ? ` (${organization.college})` : ''}`
+                      : organization.scope === 'COLLEGE' && organization.college
+                        ? organization.college
+                        : 'University-Wide'}
+                  </strong>
+                </div>
+              </li>
+              <li>
+                <span aria-hidden="true"><Icon name="shield" /></span>
+                <div>
+                  Eligibility:{' '}
+                  <strong>
+                    {organization.eligibleLevel === 'GRADUATE' ? 'Graduate' : 'Undergraduate'}
+                    {organization.minYearLevel || organization.maxYearLevel
+                      ? ` · Year ${organization.minYearLevel || 1}–${organization.maxYearLevel || 6}`
+                      : ''}
+                    {organization.eligibilityNotes ? ` · ${organization.eligibilityNotes}` : ''}
+                  </strong>
+                </div>
               </li>
             </ul>
 
@@ -355,15 +397,15 @@ export default function StudentOrganizationDetailsPage() {
             {orgDocuments.length ? (
               <div className="student-documents-stack">
                 {orgDocuments.map((doc) => (
-                  <div className="student-doc-card" key={doc}>
+                  <div className="student-doc-card" key={doc.id ?? doc.title ?? doc}>
                     <span aria-hidden="true" className="student-doc-icon"><Icon name="document" size={16} /></span>
                     <div className="student-doc-info">
-                      <strong>{doc}</strong>
-                      <small>Public Document · On File</small>
+                      <strong>{doc.title || doc}</strong>
+                      <small>{doc.type || 'Public Document'} · {doc.submittedDate ? `Submitted ${doc.submittedDate}` : 'On File'}</small>
                     </div>
                     <button
                       className="student-doc-action"
-                      onClick={() => setSelectedDoc(doc)}
+                      onClick={() => setSelectedDoc(typeof doc === 'string' ? { title: doc } : doc)}
                       type="button"
                     >
                       View
@@ -407,7 +449,7 @@ export default function StudentOrganizationDetailsPage() {
                       <article className="student-announcement-card" key={announcement.id ?? announcement.title ?? index}>
                         <div className="student-announcement-header">
                           <div className="student-announcement-meta">
-                            <span aria-hidden="true" className="fb-mini-avatar">{(organization.acronym || organization.name).slice(0, 3)}</span>
+                            <span aria-hidden="true" className="fb-mini-avatar">{(organization.acronym || organization.name).slice(0, 5)}</span>
                             <div>
                               <strong>{organization.name}</strong>
                               <time>{announcement.datePosted ?? announcement.date}</time>
@@ -488,6 +530,32 @@ export default function StudentOrganizationDetailsPage() {
                 <li>
                   <span aria-hidden="true"><Icon name="adviser" /></span>
                   <div>Faculty Adviser: <strong>{organization.adviser}</strong></div>
+                </li>
+                <li>
+                  <span aria-hidden="true"><Icon name="organization" /></span>
+                  <div>
+                    Membership Scope:{' '}
+                    <strong>
+                      {organization.scope === 'DEPARTMENT' && organization.department
+                        ? `${organization.department}${organization.college ? ` (${organization.college})` : ''}`
+                        : organization.scope === 'COLLEGE' && organization.college
+                          ? organization.college
+                          : 'University-Wide'}
+                    </strong>
+                  </div>
+                </li>
+                <li>
+                  <span aria-hidden="true"><Icon name="shield" /></span>
+                  <div>
+                    Eligibility:{' '}
+                    <strong>
+                      {organization.eligibleLevel === 'GRADUATE' ? 'Graduate' : 'Undergraduate'}
+                      {organization.minYearLevel || organization.maxYearLevel
+                        ? ` · Year ${organization.minYearLevel || 1}–${organization.maxYearLevel || 6}`
+                        : ''}
+                      {organization.eligibilityNotes ? ` · ${organization.eligibilityNotes}` : ''}
+                    </strong>
+                  </div>
                 </li>
               </ul>
             </Card>
@@ -593,15 +661,15 @@ export default function StudentOrganizationDetailsPage() {
               {orgDocuments.length ? (
                 <div className="student-documents-stack">
                   {orgDocuments.map((doc) => (
-                    <div className="student-doc-card" key={doc}>
+                    <div className="student-doc-card" key={doc.id ?? doc.title ?? doc}>
                       <span aria-hidden="true" className="student-doc-icon"><Icon name="document" size={16} /></span>
                       <div className="student-doc-info">
-                        <strong>{doc}</strong>
-                        <small>Public Document · Verified by Student Affairs</small>
+                        <strong>{doc.title || doc}</strong>
+                        <small>{doc.type || 'Public Document'} · Verified by Student Affairs</small>
                       </div>
                       <button
                         className="student-doc-action"
-                        onClick={() => setSelectedDoc(doc)}
+                        onClick={() => setSelectedDoc(typeof doc === 'string' ? { title: doc } : doc)}
                         type="button"
                       >
                         View Document
@@ -623,15 +691,15 @@ export default function StudentOrganizationDetailsPage() {
         size="md"
         title={`Apply as Officer — ${organization.name}`}
       >
-        <form onSubmit={confirmApplication} style={{ display: 'grid', gap: '14px', padding: '4px 0' }}>
-          <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5 }}>
-            Select your desired officer position &amp; assigned committee in <strong>{organization.name}</strong>, and attach your Certificate of Registration (COR).
+        <form className="modal-form-stack" onSubmit={confirmApplication}>
+          <p className="modal-lead-copy">
+            Select your desired officer position &amp; assigned committee in <strong>{organization.name}</strong>, and attach your COR.
           </p>
 
           {!currentUser && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-              <label className="inline-required-label" style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-                <span>First Name <span className="required-asterisk">*</span></span>
+            <div className="modal-form-grid">
+              <label className="modal-field-compact">
+                <span>First Name <span aria-hidden="true" className="required-asterisk">*</span></span>
                 <input
                   className="input"
                   onChange={(e) => setApplicantForm((p) => ({ ...p, firstName: e.target.value }))}
@@ -640,8 +708,8 @@ export default function StudentOrganizationDetailsPage() {
                   value={applicantForm.firstName}
                 />
               </label>
-              <label className="inline-required-label" style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-                <span>Last Name <span className="required-asterisk">*</span></span>
+              <label className="modal-field-compact">
+                <span>Last Name <span aria-hidden="true" className="required-asterisk">*</span></span>
                 <input
                   className="input"
                   onChange={(e) => setApplicantForm((p) => ({ ...p, lastName: e.target.value }))}
@@ -650,12 +718,13 @@ export default function StudentOrganizationDetailsPage() {
                   value={applicantForm.lastName}
                 />
               </label>
-              <label className="inline-required-label" style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-                <span>Student ID (Numbers Only) <span className="required-asterisk">*</span></span>
+              <label className="modal-field-compact">
+                <span>Student ID (Numbers Only) <span aria-hidden="true" className="required-asterisk">*</span></span>
                 <input
                   className="input"
                   inputMode="numeric"
                   onChange={(e) => setApplicantForm((p) => ({ ...p, studentNumber: sanitizeNumericStudentId(e.target.value) }))}
+                  onPaste={(e) => setApplicantForm((p) => ({ ...p, studentNumber: applyNumericStudentIdPaste(e, p.studentNumber) }))}
                   pattern="[0-9]*"
                   placeholder="e.g. 202401482"
                   required
@@ -663,8 +732,8 @@ export default function StudentOrganizationDetailsPage() {
                   value={applicantForm.studentNumber}
                 />
               </label>
-              <label className="inline-required-label" style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-                <span>WMSU Email <span className="required-asterisk">*</span></span>
+              <label className="modal-field-compact">
+                <span>WMSU Email <span aria-hidden="true" className="required-asterisk">*</span></span>
                 <input
                   className="input"
                   onChange={(e) => setApplicantForm((p) => ({ ...p, email: e.target.value }))}
@@ -674,8 +743,8 @@ export default function StudentOrganizationDetailsPage() {
                   value={applicantForm.email}
                 />
               </label>
-              <label className="inline-required-label" style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-                <span>Year Level <span className="required-asterisk">*</span></span>
+              <label className="modal-field-compact">
+                <span>Year Level <span aria-hidden="true" className="required-asterisk">*</span></span>
                 <select
                   className="input"
                   onChange={(e) => setApplicantForm((p) => ({ ...p, yearLevel: e.target.value }))}
@@ -684,8 +753,8 @@ export default function StudentOrganizationDetailsPage() {
                   {YEAR_LEVEL_OPTIONS.map((yr) => <option key={yr} value={yr}>{yr}</option>)}
                 </select>
               </label>
-              <div style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-                <span>Course / Program <span className="required-asterisk">*</span></span>
+              <div className="modal-field-compact">
+                <span>Course / Program <span aria-hidden="true" className="required-asterisk">*</span></span>
                 <SearchableSelect
                   onChange={(val) => setApplicantForm((p) => ({ ...p, program: val }))}
                   options={academicPrograms}
@@ -697,9 +766,9 @@ export default function StudentOrganizationDetailsPage() {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
-            <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-              <span>Desired Officer Role <span className="required-asterisk">*</span></span>
+          <div className="modal-form-grid">
+            <label className="modal-field-compact">
+              <span>Desired Officer Role <span aria-hidden="true" className="required-asterisk">*</span></span>
               <select
                 className="input"
                 onChange={(e) => {
@@ -720,8 +789,8 @@ export default function StudentOrganizationDetailsPage() {
                 ))}
               </select>
             </label>
-            <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-              <span>Assigned Committee <span className="required-asterisk">*</span></span>
+            <label className="modal-field-compact">
+              <span>Assigned Committee <span aria-hidden="true" className="required-asterisk">*</span></span>
               <select
                 className="input"
                 onChange={(e) => setDesiredCommittee(e.target.value)}
@@ -734,8 +803,8 @@ export default function StudentOrganizationDetailsPage() {
             </label>
           </div>
 
-          <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 }}>
-            <span>Certificate of Registration (COR) <span className="required-asterisk">*</span></span>
+          <label className="modal-field-compact">
+            <span>COR <span aria-hidden="true" className="required-asterisk">*</span></span>
             <input
               accept=".pdf,.jpg,.jpeg,.png"
               className="input"
@@ -744,13 +813,13 @@ export default function StudentOrganizationDetailsPage() {
               type="file"
             />
             {(applicantForm.corFileName || currentUser?.corFileName) && (
-              <small style={{ color: '#15803d', fontWeight: 600 }}>
-                Attached COR: {applicantForm.corFileName || currentUser?.corFileName}
+              <small className="file-upload-selected">
+                Attached COR: <strong>{applicantForm.corFileName || currentUser?.corFileName}</strong>
               </small>
             )}
           </label>
 
-          <div className="organization-application-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '8px' }}>
+          <div className="organization-application-actions">
             <Button onClick={() => setApplicationOpen(false)} type="button" variant="secondary">Cancel</Button>
             <Button disabled={submitting || (desiredRole === 'PRESIDENT' && Boolean(existingPresident))} type="submit">
               {submitting ? 'Submitting…' : 'Submit Officer Application'}
@@ -764,11 +833,11 @@ export default function StudentOrganizationDetailsPage() {
         open={Boolean(selectedDoc)}
         size="lg"
         status="APPROVED"
-        title={selectedDoc ?? 'Document Preview'}
+        title={selectedDoc?.title ?? (typeof selectedDoc === 'string' ? selectedDoc : 'Document Preview')}
       >
         <div className="student-doc-preview-body">
           <div className="student-doc-preview-callout">
-            This document is on official record with the <strong>Western Mindanao State University</strong> Student Affairs and Services Division (SASD).
+            Official approved record filed by <strong>{organization.name}</strong> and verified under Western Mindanao State University UNIDOS.
           </div>
           <dl className="student-doc-preview-meta">
             <div className="student-doc-preview-item">
@@ -776,15 +845,50 @@ export default function StudentOrganizationDetailsPage() {
               <dd>{organization.name}</dd>
             </div>
             <div className="student-doc-preview-item">
-              <dt>Classification</dt>
-              <dd>Verified Public Record</dd>
+              <dt>Document Type</dt>
+              <dd>{selectedDoc?.type || 'Public Record'}</dd>
             </div>
+            {selectedDoc?.submittedDate && (
+              <div className="student-doc-preview-item">
+                <dt>Submitted</dt>
+                <dd>{selectedDoc.submittedDate}</dd>
+              </div>
+            )}
+            {selectedDoc?.processedBy && (
+              <div className="student-doc-preview-item">
+                <dt>Verified By</dt>
+                <dd>{selectedDoc.processedBy}</dd>
+              </div>
+            )}
+            {selectedDoc?.fileName && (
+              <div className="student-doc-preview-item">
+                <dt>Attachment</dt>
+                <dd>{selectedDoc.fileName}</dd>
+              </div>
+            )}
             <div className="student-doc-preview-item">
               <dt>Status</dt>
-              <dd>Accredited &amp; Approved</dd>
+              <dd>Approved &amp; On File</dd>
             </div>
           </dl>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+            {selectedDoc?.documentId && (selectedDoc?.hasFileData || (selectedDoc?.fileUrl && /^https?:\/\//i.test(selectedDoc.fileUrl))) && (
+              <Button
+                onClick={async () => {
+                  const res = await downloadFileFromEndpoint({
+                    endpoint: `/api/documents/${selectedDoc.documentId}/file`,
+                    dataField: 'file_data',
+                    nameField: 'file_name',
+                    fallbackUrlField: 'drive_view_link',
+                    fallbackName: selectedDoc.fileName || selectedDoc.title || 'document',
+                  })
+                  if (!res.ok) showToast(res.error || 'Unable to download document.', 'error')
+                }}
+                variant="primary"
+              >
+                Download Document
+              </Button>
+            )}
             <Button onClick={() => setSelectedDoc(null)} variant="secondary">Close</Button>
           </div>
         </div>

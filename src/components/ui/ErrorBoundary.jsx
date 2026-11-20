@@ -30,13 +30,13 @@ export default class ErrorBoundary extends Component {
       return (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: '24px' }}>
           <Card style={{ maxWidth: '520px', width: '100%', textAlign: 'center', padding: '36px 24px' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '56px', height: '56px', borderRadius: '50%', backgroundColor: 'rgba(155, 27, 43, 0.1)', color: '#9b1b2b', marginBottom: '16px' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '56px', height: '56px', borderRadius: '50%', backgroundColor: 'rgba(143, 21, 56, 0.1)', color: 'var(--color-primary, #8f1538)', marginBottom: '16px' }}>
               <Icon name="alert-triangle" size={28} />
             </div>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '8px', color: 'var(--color-text, #1e293b)' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '8px', color: 'var(--color-text, #27252a)' }}>
               Something went wrong
             </h2>
-            <p style={{ color: 'var(--color-text-muted, #64748b)', fontSize: '0.95rem', marginBottom: '24px', lineHeight: 1.5 }}>
+            <p style={{ color: 'var(--color-muted, #5a5560)', fontSize: '0.95rem', marginBottom: '24px', lineHeight: 1.5 }}>
               An error occurred while loading this section. You can try refreshing the page or navigating back.
             </p>
             {this.state.error?.message && (

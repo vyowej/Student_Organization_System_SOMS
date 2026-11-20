@@ -3757,7 +3757,7 @@
 
 .officer-settings-section-heading h2 {
   margin: 0;
-  color: var(--text, #1e293b);
+  color: var(--color-text, #27252a);
   font-family: Manrope, 'Segoe UI', sans-serif;
   font-size: 1.15rem;
   font-weight: 700;
@@ -3766,7 +3766,7 @@
 
 .officer-settings-section-heading p {
   margin: 4px 0 0;
-  color: var(--muted, #64748b);
+  color: var(--color-muted, #5a5560);
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
   font-size: 13.5px;
   font-weight: 400;
@@ -3789,7 +3789,7 @@
 .officer-settings-request-form>label {
   display: grid;
   gap: 6px;
-  color: #334155;
+  color: var(--color-text, #27252a);
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
   font-size: 13px;
   font-weight: 600;
@@ -3803,10 +3803,10 @@
   width: 100%;
   min-height: 42px;
   padding: 10px 13px;
-  border: 1px solid #e2e8f0;
-  border-radius: 9px;
+  border: 1px solid var(--color-border, #eadfe2);
+  border-radius: 10px;
   background: #fff;
-  color: #0f172a;
+  color: var(--color-text, #27252a);
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
   font-size: 14px;
   font-weight: 400;
@@ -6090,9 +6090,11 @@
   place-items: center;
   width: 48px;
   height: 48px;
-  border-radius: 13px;
-  font-size: 13px;
+  border-radius: 50%;
+  border: 1px solid #edd3dc;
+  font-size: 12px;
   font-weight: 800;
+  letter-spacing: 0.03em;
   transition: transform 220ms ease;
 }
 
@@ -6100,9 +6102,16 @@
   transform: scale(1.06);
 }
 
+.organization-avatar-crimson {
+  color: #8f1538;
+  background: #f8e9ee;
+  border-color: #edd3dc;
+}
+
 .organization-avatar-blue {
-  color: #315c87;
-  background: #eaf2fa;
+  color: #4a0b1f;
+  background: #f5eaee;
+  border-color: #e6d1d8;
 }
 
 .organization-avatar-rose {
@@ -10170,7 +10179,7 @@ label.admin-field-label,
 }
 
 .admin-standing-pending {
-  stroke: #2563eb;
+  stroke: #c08346;
 }
 
 .admin-standing-total {
@@ -10242,7 +10251,7 @@ label.admin-field-label,
 }
 
 .admin-standing-swatch.admin-standing-pending {
-  background: #2563eb;
+  background: #c08346;
 }
 
 .admin-standing-legend-name {
@@ -10550,8 +10559,8 @@ label.admin-field-label,
 }
 
 .student-notif-icon.notif-type-membership {
-  background: #eff6ff;
-  color: #2563eb;
+  background: #faf1dc;
+  color: #765029;
 }
 
 .student-notif-icon.notif-type-registration {
@@ -11098,7 +11107,7 @@ label.admin-field-label,
   font-size: 18px;
 }
 
-.adviser-report-file-card>span:last-child {
+.adviser-report-file-card>span {
   display: grid;
   min-width: 0;
   gap: 2px;
@@ -13110,17 +13119,17 @@ label.admin-field-label,
 }
 
 .modal.modal--tone-info {
-  border-top: 5px solid #2563eb !important;
-  box-shadow: 0 24px 54px rgba(37, 99, 235, 0.15);
+  border-top: 5px solid var(--color-gold, #c08346) !important;
+  box-shadow: 0 24px 54px rgba(192, 131, 70, 0.16);
 }
 
 .modal.modal--tone-info > .modal-header {
-  background: linear-gradient(90deg, #eff6ff 0%, #f8fbff 100%);
-  border-bottom-color: #bfdbfe;
+  background: linear-gradient(90deg, #faf1dc 0%, #fffaf0 100%);
+  border-bottom-color: #ebd5a7;
 }
 
 .modal.modal--tone-info > .modal-header h2 {
-  color: #1e3a8a;
+  color: #5c3a12;
 }
 
 .confirm-dialog-icon--success {
@@ -13136,9 +13145,9 @@ label.admin-field-label,
 .status-callout {
   padding: 12px 14px;
   border-radius: 10px;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  color: #334155;
+  border: 1px solid var(--color-border, #eadfe2);
+  background: var(--color-background, #fbf7f5);
+  color: var(--color-text, #27252a);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -13223,8 +13232,8 @@ label.admin-field-label,
   gap: 10px;
 }
 
-.admin-month-dropdown,
-.admin-month-interval-select {
+/* 1-month interval dropdown */
+.admin-month-dropdown {
   min-height: 40px;
   padding: 0 34px 0 12px;
   border: 1px solid #dbd3d8;
@@ -13236,8 +13245,8 @@ label.admin-field-label,
   cursor: pointer;
 }
 
-.admin-month-dropdown:focus,
-.admin-month-interval-select:focus {
+/* focus state */
+.admin-month-dropdown:focus {
   outline: none;
   border-color: var(--crimson, #8f1538);
   box-shadow: 0 0 0 3px rgba(143, 21, 56, 0.12);

@@ -71,10 +71,44 @@ function normalizeCode(str) {
   return String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
+function resolvePositiveInt(val) {
+  if (val === undefined || val === null || String(val).trim() === '') return null;
+  const num = Number(val);
+  return Number.isInteger(num) && num > 0 && num <= 2147483647 ? num : null;
+}
+
 async function resolveStudentDbId(identifier) {
   if (!identifier) return null;
-  if (Number.isFinite(Number(identifier))) {
-    const numId = Number(identifier);
+  const rawStr = String(identifier).trim();
+  if (!rawStr) return null;
+
+  // Support EventPassCard JSON QR payloads: { type: 'UNIDOS_EVENT_PASS', id, code, studentId }
+  if (rawStr.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(rawStr);
+      if (parsed && typeof parsed === 'object') {
+        const candidates = [parsed.code, parsed.qrCodeValue, parsed.studentId, parsed.student_number, parsed.id]
+          .filter((v) => v !== undefined && v !== null && String(v).trim() !== '');
+        for (const candidate of candidates) {
+          const found = await resolveStudentDbId(candidate);
+          if (found) return found;
+        }
+        return null;
+      }
+    } catch {
+      // Ignore invalid JSON and continue checking plain identifiers
+    }
+  }
+
+  // Match explicit student_number first so long numeric IDs never hit integer range checks unnecessarily
+  const byNumber = await db.query(
+    'SELECT id FROM students WHERE lower(student_number) = lower($1) LIMIT 1',
+    [rawStr]
+  );
+  if (byNumber.rows.length > 0) return byNumber.rows[0].id;
+
+  const numId = resolvePositiveInt(rawStr);
+  if (numId) {
     const byId = await db.query(
       'SELECT id FROM students WHERE id = $1 OR user_id = $1 ORDER BY CASE WHEN id = $1 THEN 0 ELSE 1 END LIMIT 1',
       [numId]
@@ -96,29 +130,25 @@ async function resolveStudentDbId(identifier) {
       if (ins.rows.length > 0) return ins.rows[0].id;
     }
   }
-  const trimmed = String(identifier).trim();
-  const byNumber = await db.query(
-    'SELECT id FROM students WHERE lower(student_number) = lower($1) LIMIT 1',
-    [trimmed]
-  );
-  if (byNumber.rows.length > 0) return byNumber.rows[0].id;
 
   // Support QR code lookup in event_registrations
   const byQr = await db.query(
     'SELECT student_id FROM event_registrations WHERE lower(qr_code) = lower($1) LIMIT 1',
-    [trimmed]
+    [rawStr]
   );
   if (byQr.rows.length > 0) return byQr.rows[0].student_id;
 
   // Support registration format (e.g. REG-1, UNIDOS-1)
-  const matchReg = trimmed.match(/^(?:REG|UNIDOS)[-_]?(\d+)$/i);
+  const matchReg = rawStr.match(/^(?:REG|UNIDOS)[-_]?(\d+)$/i);
   if (matchReg) {
-    const regId = Number(matchReg[1]);
-    const byReg = await db.query(
-      'SELECT student_id FROM event_registrations WHERE id = $1 LIMIT 1',
-      [regId]
-    );
-    if (byReg.rows.length > 0) return byReg.rows[0].student_id;
+    const regId = resolvePositiveInt(matchReg[1]);
+    if (regId) {
+      const byReg = await db.query(
+        'SELECT student_id FROM event_registrations WHERE id = $1 LIMIT 1',
+        [regId]
+      );
+      if (byReg.rows.length > 0) return byReg.rows[0].student_id;
+    }
   }
 
   return null;
@@ -172,8 +202,12 @@ router.get('/registrations', async (req, res) => {
     let queryText = `${REGISTRATION_SELECT_QUERY} WHERE 1=1`;
     const params = [];
 
-    if (event_id) {
-      params.push(event_id);
+    if (event_id !== undefined && String(event_id).trim() !== '') {
+      const eventIdNum = resolvePositiveInt(event_id);
+      if (!eventIdNum) {
+        return res.status(400).json({ error: 'Valid event_id is required' });
+      }
+      params.push(eventIdNum);
       queryText += ` AND er.event_id = $${params.length}`;
     }
     if (student_id) {
@@ -194,12 +228,15 @@ router.get('/registrations', async (req, res) => {
 // GET /api/attendance/registrations/:event_id — List all student registrations for an event
 router.get('/registrations/:event_id', async (req, res) => {
   try {
-    const { event_id } = req.params;
+    const eventIdNum = resolvePositiveInt(req.params.event_id);
+    if (!eventIdNum) {
+      return res.status(400).json({ error: 'Valid event_id is required' });
+    }
     const result = await db.query(
       `${REGISTRATION_SELECT_QUERY}
         WHERE er.event_id = $1
         ORDER BY er.registered_at ASC`,
-      [event_id]
+      [eventIdNum]
     );
     res.json(result.rows);
   } catch (err) {
@@ -230,9 +267,10 @@ router.post('/register', async (req, res) => {
       require_cor,
     } = req.body || {};
 
-    if (!event_id) {
+    const eventIdNum = resolvePositiveInt(event_id);
+    if (!eventIdNum) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'event_id is required' });
+      return res.status(400).json({ error: 'Valid event_id is required' });
     }
 
     let resolvedStudentId = await resolveStudentDbId(student_id || user_id);
@@ -382,34 +420,35 @@ router.post('/register', async (req, res) => {
     const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [insertRes.rows[0].id]);
     const registration = fullRow.rows[0];
 
-    // Dispatch registration confirmation notification to the participant
+    // Dispatch registration confirmation notification and record audit log for all registrations
     try {
       const studentUser = await db.query('SELECT user_id FROM students WHERE id = $1', [resolvedStudentId]);
-      if (studentUser.rows.length > 0 && studentUser.rows[0].user_id) {
+      const studentUserId = studentUser.rows[0]?.user_id || req.body?.user_id || null;
+      if (studentUserId) {
         await db.query(
           `INSERT INTO notifications (user_id, type, title, message, created_at)
            VALUES ($1, 'EVENT_REGISTRATION', $2, $3, now())`,
           [
-            studentUser.rows[0].user_id,
+            studentUserId,
             `Registered: ${registration.event_title || 'Campus Event'}`,
             `You have successfully registered for "${registration.event_title}". Access your Event Pass for attendance check-in.`
           ]
         );
-
-        await recordAuditLog({
-          userId: studentUser.rows[0].user_id,
-          action: 'REGISTER_EVENT',
-          entity: 'event_registrations',
-          entityId: registration.id,
-          metadata: {
-            event_id,
-            student_id: resolvedStudentId,
-            event_title: registration.event_title,
-            description: `Registered for event "${registration.event_title || 'Campus Event'}"`,
-          },
-          req,
-        });
       }
+
+      await recordAuditLog({
+        userId: studentUserId,
+        action: 'REGISTER_EVENT',
+        entity: 'event_registrations',
+        entityId: registration.id,
+        metadata: {
+          event_id,
+          student_id: resolvedStudentId,
+          event_title: registration.event_title,
+          description: `Registered for event "${registration.event_title || 'Campus Event'}"`,
+        },
+        req,
+      });
     } catch (notifErr) {
       console.error('[ATTENDANCE NOTIF ERROR]', notifErr);
     }
@@ -418,7 +457,7 @@ router.post('/register', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => null);
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   } finally {
     client.release();
   }
@@ -427,20 +466,23 @@ router.post('/register', async (req, res) => {
 // PUT /api/attendance/registrations/:id/cancel — Cancel a registration by registration id
 router.put('/registrations/:id/cancel', async (req, res) => {
   try {
-    const { id } = req.params;
+    const regId = resolvePositiveInt(req.params.id);
+    if (!regId) {
+      return res.status(400).json({ error: 'Valid registration ID is required' });
+    }
     const result = await db.query(
       `UPDATE event_registrations
           SET status = 'CANCELLED'
         WHERE id = $1
         RETURNING id`,
-      [id]
+      [regId]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Registration record not found' });
     }
 
-    const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [id]);
+    const fullRow = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [regId]);
     const cancelledReg = fullRow.rows[0];
 
     // Dispatch cancellation notification to student
@@ -461,10 +503,10 @@ router.put('/registrations/:id/cancel', async (req, res) => {
     }
 
     await recordAuditLog({
-      userId: cancelledReg?.user_id || req.body?.user_id || null,
+      userId: cancelledReg?.user_id || resolvePositiveInt(req.body?.user_id) || null,
       action: 'CANCEL_EVENT_REGISTRATION',
       entity: 'event_registrations',
-      entityId: id,
+      entityId: regId,
       metadata: {
         event_id: cancelledReg?.event_id,
         student_id: cancelledReg?.student_id,
@@ -484,14 +526,20 @@ router.put('/registrations/:id/cancel', async (req, res) => {
 // DELETE /api/attendance/registrations/:event_id/:student_id — Cancel a student's event registration
 router.delete('/registrations/:event_id/:student_id', async (req, res) => {
   try {
-    const { event_id, student_id } = req.params;
-    const resolvedStudentId = await resolveStudentDbId(student_id);
+    const eventIdNum = resolvePositiveInt(req.params.event_id);
+    if (!eventIdNum) {
+      return res.status(400).json({ error: 'Valid event_id is required' });
+    }
+    const resolvedStudentId = await resolveStudentDbId(req.params.student_id);
+    if (!resolvedStudentId) {
+      return res.status(404).json({ error: 'Registration record not found' });
+    }
     const result = await db.query(
       `UPDATE event_registrations
           SET status = 'CANCELLED'
         WHERE event_id = $1 AND student_id = $2
         RETURNING id`,
-      [event_id, resolvedStudentId || student_id]
+      [eventIdNum, resolvedStudentId]
     );
 
     if (result.rows.length === 0) {
@@ -502,12 +550,12 @@ router.delete('/registrations/:event_id/:student_id', async (req, res) => {
     const cancelledReg = fullRow.rows[0];
 
     await recordAuditLog({
-      userId: cancelledReg?.user_id || req.body?.user_id || null,
+      userId: cancelledReg?.user_id || resolvePositiveInt(req.body?.user_id) || null,
       action: 'CANCEL_EVENT_REGISTRATION',
       entity: 'event_registrations',
       entityId: result.rows[0].id,
       metadata: {
-        event_id,
+        event_id: eventIdNum,
         student_id: resolvedStudentId,
         event_title: cancelledReg?.event_title,
         description: `Cancelled registration for event "${cancelledReg?.event_title || 'Campus Event'}"`,
@@ -556,8 +604,12 @@ router.get('/', async (req, res) => {
     `;
     const params = [];
 
-    if (event_id) {
-      params.push(event_id);
+    if (event_id !== undefined && String(event_id).trim() !== '') {
+      const eventIdNum = resolvePositiveInt(event_id);
+      if (!eventIdNum) {
+        return res.status(400).json({ error: 'Valid event_id is required' });
+      }
+      params.push(eventIdNum);
       queryText += ` AND a.event_id = $${params.length}`;
     }
     if (student_id) {
@@ -578,7 +630,10 @@ router.get('/', async (req, res) => {
 // GET /api/attendance/event/:event_id — List all attendance check-ins for a specific event
 router.get('/event/:event_id', async (req, res) => {
   try {
-    const { event_id } = req.params;
+    const eventIdNum = resolvePositiveInt(req.params.event_id);
+    if (!eventIdNum) {
+      return res.status(400).json({ error: 'Valid event_id is required' });
+    }
     const result = await db.query(
       `SELECT a.id,
               a.event_id,
@@ -604,7 +659,7 @@ router.get('/event/:event_id', async (req, res) => {
     LEFT JOIN users recorder ON recorder.id = a.recorded_by
         WHERE a.event_id = $1
         ORDER BY a.checked_in_at DESC`,
-      [event_id]
+      [eventIdNum]
     );
     res.json(result.rows);
   } catch (err) {
@@ -617,11 +672,20 @@ router.get('/event/:event_id', async (req, res) => {
 router.post('/check-in', async (req, res) => {
   try {
     const { event_id, student_id, user_id, student_number, method, recorded_by } = req.body;
+    const eventIdNum = Number(event_id);
     const resolvedStudentId = await resolveStudentDbId(student_id || student_number || user_id);
 
-    if (!event_id || !resolvedStudentId) {
-      return res.status(400).json({ error: 'event_id and a valid student_id or student_number are required' });
+    if (!Number.isInteger(eventIdNum) || eventIdNum <= 0 || !resolvedStudentId) {
+      return res.status(400).json({ error: 'Valid event_id and student_id or student_number are required' });
     }
+
+    const eventCheck = await db.query('SELECT id FROM events WHERE id = $1', [eventIdNum]);
+    if (eventCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const recordedByNum = Number(recorded_by);
+    const safeRecordedBy = Number.isInteger(recordedByNum) && recordedByNum > 0 ? recordedByNum : null;
 
     const rawMethod = String(method || 'QR_SCAN').toUpperCase();
     const checkInMethod = ['QR_SCAN', 'MANUAL', 'SELF_CHECKIN'].includes(rawMethod) ? rawMethod : 'QR_SCAN';
@@ -632,18 +696,18 @@ router.post('/check-in', async (req, res) => {
        ON CONFLICT (event_id, student_id)
        DO UPDATE SET checked_in_at = now(), scanned_at = now(), method = $3, recorded_by = $4, verified_by = $4
        RETURNING *`,
-      [event_id, resolvedStudentId, checkInMethod, recorded_by || null]
+      [eventIdNum, resolvedStudentId, checkInMethod, safeRecordedBy]
     );
 
     // Synchronize or create corresponding event_registrations record with status = 'ATTENDED'
-    const qrCodeValue = `UNIDOS-EVT${event_id}-STU${resolvedStudentId}`;
+    const qrCodeValue = `UNIDOS-EVT${eventIdNum}-STU${resolvedStudentId}`;
     const regRes = await db.query(
       `INSERT INTO event_registrations (event_id, student_id, qr_code, status)
        VALUES ($1, $2, $3, 'ATTENDED')
        ON CONFLICT (event_id, student_id)
        DO UPDATE SET status = 'ATTENDED', qr_code = COALESCE(event_registrations.qr_code, EXCLUDED.qr_code)
        RETURNING id`,
-      [event_id, resolvedStudentId, qrCodeValue]
+      [eventIdNum, resolvedStudentId, qrCodeValue]
     );
 
     const fullReg = await db.query(`${REGISTRATION_SELECT_QUERY} WHERE er.id = $1`, [regRes.rows[0].id]);
@@ -667,16 +731,16 @@ router.post('/check-in', async (req, res) => {
     }
 
     await recordAuditLog({
-      userId: recorded_by || checkedInReg?.user_id || null,
+      userId: safeRecordedBy || checkedInReg?.user_id || null,
       action: 'ATTENDANCE_CHECKIN',
       entity: 'attendance',
       entityId: result.rows[0]?.id,
       metadata: {
-        event_id,
+        event_id: eventIdNum,
         student_id: resolvedStudentId,
         student_name: checkedInReg?.student_name,
         method: checkInMethod,
-        recorded_by: recorded_by || null,
+        recorded_by: safeRecordedBy,
         description: `Checked in ${checkedInReg?.student_name || 'student'} via ${checkInMethod} for "${checkedInReg?.event_title || 'Campus Event'}"`,
       },
       req,
@@ -689,14 +753,18 @@ router.post('/check-in', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // GET /api/attendance/event/:event_id/code — Retrieve active attendance code for an event
 router.get('/event/:event_id/code', async (req, res) => {
   try {
-    const session = getOrCreateEventCode(req.params.event_id);
+    const eventIdNum = resolvePositiveInt(req.params.event_id);
+    if (!eventIdNum) {
+      return res.status(400).json({ error: 'Valid event_id is required' });
+    }
+    const session = getOrCreateEventCode(eventIdNum);
     res.json(session);
   } catch (err) {
     console.error(err);
@@ -707,9 +775,16 @@ router.get('/event/:event_id/code', async (req, res) => {
 // POST /api/attendance/event/:event_id/code — Regenerate random code or toggle session
 router.post('/event/:event_id/code', async (req, res) => {
   try {
-    const { event_id } = req.params;
+    const eventIdNum = resolvePositiveInt(req.params.event_id);
+    if (!eventIdNum) {
+      return res.status(400).json({ error: 'Valid event_id is required' });
+    }
+    const eventCheck = await db.query('SELECT id FROM events WHERE id = $1', [eventIdNum]);
+    if (eventCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
     const { action, active } = req.body;
-    const current = getOrCreateEventCode(event_id);
+    const current = getOrCreateEventCode(eventIdNum);
 
     if (action === 'generate' || action === 'regenerate') {
       current.code = generateRandomCode();
@@ -720,21 +795,21 @@ router.post('/event/:event_id/code', async (req, res) => {
       current.updated_at = new Date().toISOString();
     }
 
-    attendanceCodes.set(String(event_id), current);
+    attendanceCodes.set(String(eventIdNum), current);
     saveAttendanceCodes(attendanceCodes);
 
     await recordAuditLog({
-      userId: req.body?.user_id || null,
+      userId: resolvePositiveInt(req.body?.user_id) || null,
       action: action === 'generate' || action === 'regenerate' ? 'REGENERATE_ATTENDANCE_CODE' : 'TOGGLE_ATTENDANCE_SESSION',
       entity: 'events',
-      entityId: event_id,
+      entityId: eventIdNum,
       metadata: {
-        event_id,
+        event_id: eventIdNum,
         code: current.code,
         active: current.active,
         description: action === 'generate' || action === 'regenerate'
-          ? `Regenerated attendance code for event #${event_id}`
-          : `Set attendance session for event #${event_id} to ${current.active ? 'ACTIVE' : 'CLOSED'}`,
+          ? `Regenerated attendance code for event #${eventIdNum}`
+          : `Set attendance session for event #${eventIdNum} to ${current.active ? 'ACTIVE' : 'CLOSED'}`,
       },
       req,
     });
@@ -749,9 +824,9 @@ router.post('/event/:event_id/code', async (req, res) => {
 // POST /api/attendance/verify-code — Student attends with random generated code
 router.post('/verify-code', async (req, res) => {
   try {
-    const { event_id, code, student_id, student_number, user_id } = req.body;
-    const eventIdNum = Number(event_id);
-    if (!event_id || !Number.isFinite(eventIdNum)) {
+    const { event_id, code, student_id, student_number, registration_code, user_id } = req.body;
+    const eventIdNum = resolvePositiveInt(event_id);
+    if (!eventIdNum) {
       return res.status(400).json({ error: 'Valid event_id is required' });
     }
     if (!code || !String(code).trim()) {
@@ -767,25 +842,31 @@ router.post('/verify-code', async (req, res) => {
     const sessionNorm = normalizeCode(session.code);
     const sessionShort = sessionNorm.replace(/^WMSU/, '');
 
-    const isMatch = inputNorm === sessionNorm || 
-                    inputNorm === sessionShort || 
-                    sessionNorm.endsWith(inputNorm);
+    const isMatch =
+      inputNorm.length >= 4 &&
+      (inputNorm === sessionNorm ||
+        (sessionShort.length >= 4 && inputNorm === sessionShort));
 
     if (!isMatch) {
       return res.status(400).json({ error: `Invalid attendance code "${code}". Please check the code announced by the organizer.` });
     }
 
-    const resolvedStudentId = await resolveStudentDbId(student_id || student_number || user_id);
+    const resolvedStudentId = await resolveStudentDbId(
+      student_id || student_number || registration_code || user_id
+    );
     if (!resolvedStudentId) {
-      return res.status(400).json({ error: 'Student record could not be found. Please ensure you are logged in.' });
+      return res.status(400).json({ error: 'Participant registration or Student ID could not be found.' });
     }
 
-    // Verify event exists
+    // Verify event exists and is open for attendance
     const eventRes = await db.query('SELECT id, title, status FROM events WHERE id = $1', [eventIdNum]);
     if (eventRes.rows.length === 0) {
       return res.status(404).json({ error: 'Event not found' });
     }
     const event = eventRes.rows[0];
+    if (['CANCELLED', 'DRAFT', 'SUBMITTED', 'REJECTED'].includes(String(event.status || '').toUpperCase())) {
+      return res.status(400).json({ error: `Attendance check-in is not open for this event (status: ${event.status}).` });
+    }
 
     // Check if student already checked in
     const existingAtt = await db.query(
@@ -867,7 +948,7 @@ router.post('/verify-code', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -877,9 +958,17 @@ router.post('/manual-toggle', async (req, res) => {
     const { event_id, student_id, status, recorded_by } = req.body;
     const eventIdNum = Number(event_id);
     const resolvedStudentId = await resolveStudentDbId(student_id);
-    if (!event_id || !Number.isFinite(eventIdNum) || !resolvedStudentId) {
+    if (!Number.isInteger(eventIdNum) || eventIdNum <= 0 || !resolvedStudentId) {
       return res.status(400).json({ error: 'Valid event_id and student_id are required' });
     }
+
+    const eventCheck = await db.query('SELECT id FROM events WHERE id = $1', [eventIdNum]);
+    if (eventCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const recordedByNum = Number(recorded_by);
+    const safeRecordedBy = Number.isInteger(recordedByNum) && recordedByNum > 0 ? recordedByNum : null;
 
     if (status === 'ATTENDED') {
       const attRes = await db.query(
@@ -888,7 +977,7 @@ router.post('/manual-toggle', async (req, res) => {
          ON CONFLICT (event_id, student_id)
          DO UPDATE SET checked_in_at = now(), scanned_at = now(), method = 'MANUAL', recorded_by = $3, verified_by = $3
          RETURNING *`,
-        [eventIdNum, resolvedStudentId, recorded_by || null]
+        [eventIdNum, resolvedStudentId, safeRecordedBy]
       );
       await db.query(
         `UPDATE event_registrations SET status = 'ATTENDED' WHERE event_id = $1 AND student_id = $2`,
@@ -896,7 +985,7 @@ router.post('/manual-toggle', async (req, res) => {
       );
 
       await recordAuditLog({
-        userId: recorded_by || null,
+        userId: safeRecordedBy,
         action: 'ATTENDANCE_MARK_ATTENDED',
         entity: 'attendance',
         entityId: attRes.rows[0]?.id,
@@ -904,7 +993,7 @@ router.post('/manual-toggle', async (req, res) => {
           event_id: eventIdNum,
           student_id: resolvedStudentId,
           status: 'ATTENDED',
-          recorded_by: recorded_by || null,
+          recorded_by: safeRecordedBy,
           description: `Marked student #${resolvedStudentId} attendance as ATTENDED for event #${eventIdNum}`,
         },
         req,
@@ -922,7 +1011,7 @@ router.post('/manual-toggle', async (req, res) => {
       );
 
       await recordAuditLog({
-        userId: recorded_by || null,
+        userId: safeRecordedBy,
         action: 'ATTENDANCE_RESET_PENDING',
         entity: 'attendance',
         entityId: eventIdNum,
@@ -930,7 +1019,7 @@ router.post('/manual-toggle', async (req, res) => {
           event_id: eventIdNum,
           student_id: resolvedStudentId,
           status: 'REGISTERED',
-          recorded_by: recorded_by || null,
+          recorded_by: safeRecordedBy,
           description: `Reset student #${resolvedStudentId} attendance to PENDING for event #${eventIdNum}`,
         },
         req,
@@ -940,7 +1029,7 @@ router.post('/manual-toggle', async (req, res) => {
     }
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

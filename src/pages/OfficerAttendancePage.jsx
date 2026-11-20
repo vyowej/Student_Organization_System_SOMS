@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
+import QrScannerModal from '../components/attendance/QrScannerModal.jsx'
 import Badge from '../components/ui/Badge.jsx'
+import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
@@ -9,6 +11,7 @@ import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
+import { triggerFileDownload } from '../data/fileDownload.js'
 
 export default function OfficerAttendancePage() {
   const {
@@ -45,9 +48,13 @@ export default function OfficerAttendancePage() {
   const [sessionCodeData, setSessionCodeData] = useState(null)
   const [isRegeneratingCode, setIsRegeneratingCode] = useState(false)
   const [isProjectorOpen, setIsProjectorOpen] = useState(false)
+  const [qrScannerOpen, setQrScannerOpen] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState(false)
 
-  const activeEventId = selectedEventId || events[0]?.id || ''
+  const activeEventId =
+    selectedEventId && events.some((event) => String(event.id) === String(selectedEventId))
+      ? selectedEventId
+      : events[0]?.id || ''
   const selectedEvent = events.find((event) => String(event.id) === String(activeEventId))
 
   // Fetch or generate event session code whenever selected event changes
@@ -117,6 +124,20 @@ export default function OfficerAttendancePage() {
     if (registrationCode.trim()) setConfirmCheckInOpen(true)
   }
 
+  async function handleQrScan(decodedText) {
+    setQrScannerOpen(false)
+    if (!decodedText || !activeEventId) return
+    const undo = captureUndo()
+    const result = await checkInStudent(activeEventId, decodedText)
+    setFeedback({ ...result, id: Date.now() })
+    if (result?.ok) {
+      setRegistrationCode('')
+      showToast(result.message || 'Attendance recorded via QR scan.', 'success', undoAction(undo))
+    } else {
+      showToast(result?.message || 'Unable to verify scanned QR pass.', 'error')
+    }
+  }
+
   async function confirmCheckIn() {
     setConfirmCheckInOpen(false)
     const undo = captureUndo()
@@ -144,7 +165,7 @@ export default function OfficerAttendancePage() {
         'success'
       )
     } else {
-      showToast(res?.message || 'Failed to update attendance', 'danger')
+      showToast(res?.message || 'Failed to update attendance', 'error')
     }
   }
 
@@ -156,6 +177,8 @@ export default function OfficerAttendancePage() {
     if (res) {
       setSessionCodeData(res)
       showToast(`New random attendance code generated: ${res.code}`, 'success')
+    } else {
+      showToast('Failed to regenerate attendance code.', 'error')
     }
     setIsRegeneratingCode(false)
   }
@@ -173,6 +196,8 @@ export default function OfficerAttendancePage() {
           : 'Attendance session PAUSED. Code submissions blocked.',
         'info'
       )
+    } else {
+      showToast('Failed to update attendance session status.', 'error')
     }
   }
 
@@ -200,17 +225,12 @@ export default function OfficerAttendancePage() {
       `"${a.checkInTime || '—'}"`,
       `"${a.checkInMethod || (a.attendanceStatus === 'ATTENDED' ? 'MANUAL' : '—')}"`,
     ])
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n')
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute(
-      'download',
-      `Attendance_${(selectedEvent?.title || 'Event').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`
-    )
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    const csvString = [headers.join(','), ...rows.map((e) => e.join(','))].join('\n')
+    const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const filename = `Attendance_${(selectedEvent?.title || 'Event').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`
+    triggerFileDownload(url, filename)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
     showToast('Attendance roster exported to CSV successfully.', 'success')
   }
 
@@ -229,6 +249,10 @@ export default function OfficerAttendancePage() {
   return (
     <div className="officer-attendance-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Officer Dashboard', to: '/officer/dashboard' },
+          { label: 'Event Attendance' },
+        ]}
         description={`Manage event check-in sessions, broadcast random attendance codes to attendees, and monitor live turnout for ${organization.name}.`}
         eyebrow={organization.name}
         title="Event Attendance Station"
@@ -346,7 +370,7 @@ export default function OfficerAttendancePage() {
                     </button>
                   </div>
                   <small className="attendance-code-hint">
-                    Students can enter this code in their <strong>UNIDOS Student Portal → Attendance History</strong> to record their attendance.
+                    Participants can enter this code on the <Link to={`/events/${activeEventId}`}><strong>Event Details</strong></Link> page to record their attendance.
                   </small>
                 </div>
               </div>
@@ -422,6 +446,15 @@ export default function OfficerAttendancePage() {
                 <Icon name="check-circle" size={16} />
                 Record Attendance
               </button>
+              <Button
+                className="attendance-qr-trigger"
+                onClick={() => setQrScannerOpen(true)}
+                type="button"
+                variant="secondary"
+              >
+                <Icon name="camera" size={16} />
+                Scan QR Pass
+              </Button>
             </form>
 
             {feedback && (
@@ -603,7 +636,7 @@ export default function OfficerAttendancePage() {
           </div>
 
           <div className="projector-code-hero">
-            <span className="projector-code-sub">ENTER THIS CODE IN YOUR STUDENT PORTAL:</span>
+            <span className="projector-code-sub">ENTER THIS CODE ON THE EVENT DETAILS PAGE:</span>
             <div className="projector-code-box">
               <span className="projector-code-value">{sessionCodeData?.code || 'WMSU-....'}</span>
             </div>
@@ -619,15 +652,15 @@ export default function OfficerAttendancePage() {
             <div className="projector-step">
               <span className="step-num">1</span>
               <div>
-                <strong>Open UNIDOS</strong>
-                <p>Log in at your student portal on your mobile phone or laptop.</p>
+                <strong>Open UNIDOS Events</strong>
+                <p>Open <strong>{selectedEvent?.title || 'this event'}</strong> on the UNIDOS Events directory on your mobile phone or laptop.</p>
               </div>
             </div>
             <div className="projector-step">
               <span className="step-num">2</span>
               <div>
-                <strong>Go to Attendance</strong>
-                <p>Click on <strong>Attendance History</strong> in the navigation menu.</p>
+                <strong>Find Self Check-In</strong>
+                <p>Scroll to the <strong>Event Self Check-In</strong> panel on the Event Details page.</p>
               </div>
             </div>
             <div className="projector-step">
@@ -649,6 +682,12 @@ export default function OfficerAttendancePage() {
           </div>
         </div>
       </Modal>
+      <QrScannerModal
+        eventTitle={selectedEvent?.title || ''}
+        onClose={() => setQrScannerOpen(false)}
+        onScan={handleQrScan}
+        open={qrScannerOpen}
+      />
     </div>
   )
 }

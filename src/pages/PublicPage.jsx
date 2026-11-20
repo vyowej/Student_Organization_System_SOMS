@@ -13,10 +13,12 @@ import {
   OFFICER_HIERARCHY,
   ORGANIZATION_COMMITTEES,
   YEAR_LEVEL_OPTIONS,
+  applyNumericStudentIdPaste,
   getHierarchyEntry,
   readFileAsDataUrl,
   sanitizeNumericStudentId,
 } from '../data/officerHierarchy.js'
+import { validateUploadFile } from '../data/fileDownload.js'
 import WmsuLogo from '../components/ui/WmsuLogo.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import LandingPage from './LandingPage.jsx'
@@ -59,7 +61,7 @@ function PasswordVisibilityIcon({ visible }) {
 }
 
 function AuthenticationPage({ page }) {
-  const { login, registerOfficer } = useAuth()
+  const { login, registerOfficer, requestPasswordReset } = useAuth()
   const { academicPrograms = [], studentOrganizations = [], refreshPortalData } = usePortalData()
   const { showToast } = useToast()
   const navigate = useNavigate()
@@ -73,6 +75,10 @@ function AuthenticationPage({ page }) {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [resetMode, setResetMode] = useState('REQUEST_ADMIN')
+  const [resetIdNumber, setResetIdNumber] = useState('')
+  const [resetNewPassword, setResetNewPassword] = useState('')
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('')
   const [registrationStep, setRegistrationStep] = useState(1)
   const [form, setForm] = useState({
     lastName: '',
@@ -131,6 +137,12 @@ function AuthenticationPage({ page }) {
       setForm((current) => ({ ...current, corFileName: '', corFileData: null }))
       return
     }
+    const check = validateUploadFile(file)
+    if (!check.ok) {
+      setError(check.error)
+      event.target.value = ''
+      return
+    }
     try {
       const dataUrl = await readFileAsDataUrl(file)
       setForm((current) => ({
@@ -140,7 +152,7 @@ function AuthenticationPage({ page }) {
       }))
       setError('')
     } catch {
-      setError('Unable to read the selected Certificate of Registration (COR) file.')
+      setError('Unable to read the selected COR file.')
     }
   }
 
@@ -156,8 +168,8 @@ function AuthenticationPage({ page }) {
         setError('Student ID must contain numeric digits only (0–9).')
         return false
       }
-      if (!isValidEmail(form.email)) {
-        setError('Enter a valid email address.')
+      if (!isWmsuEmail(form.email)) {
+        setError('Enter your official WMSU email ending in @wmsu.edu.ph.')
         return false
       }
       return true
@@ -167,7 +179,7 @@ function AuthenticationPage({ page }) {
       return false
     }
     if (!form.corFileName) {
-      setError('Please upload your Certificate of Registration (COR) before submitting.')
+      setError('Please upload your COR before submitting.')
       return false
     }
     if (form.password.length < 6) {
@@ -219,13 +231,13 @@ function AuthenticationPage({ page }) {
       return
     }
     await refreshPortalData()
-    showToast('Officer account created with Certificate of Registration (COR) on file.', 'success')
+    showToast('Officer account created with COR on file.', 'success')
     navigate(result.user?.organizationId ? '/officer/dashboard' : '/organizations', { replace: true })
   }
 
   const titles = {
     login: ['Welcome back', 'Sign in to access your Admin, Faculty Adviser, or Organization Officer portal.'],
-    register: ['Officer Registration', 'Register as an organization officer and upload your Certificate of Registration (COR).'],
+    register: ['Officer Registration', 'Register as an organization officer and upload your COR.'],
     'forgot-password': ['Reset your password', 'Enter your WMSU email address to continue.'],
   }
   const [title, description] = titles[page]
@@ -305,7 +317,7 @@ function AuthenticationPage({ page }) {
           </form>
         )}
 
-        {page === 'login' && (
+        {page === 'login' && import.meta.env.DEV && (
           <div className="auth-adviser-seeds">
             <div className="auth-adviser-seeds-header">
               <div className="auth-adviser-seeds-title">
@@ -363,7 +375,7 @@ function AuthenticationPage({ page }) {
                 <Input
                   autoComplete="given-name"
                   id="register-first-name"
-                  label="First Name *"
+                  label={<>First Name <span aria-hidden="true" className="required-asterisk">*</span></>}
                   onChange={(event) => setForm((current) => ({ ...current, firstName: event.target.value }))}
                   value={form.firstName}
                 />
@@ -377,7 +389,7 @@ function AuthenticationPage({ page }) {
                 <Input
                   autoComplete="family-name"
                   id="register-last-name"
-                  label="Last Name *"
+                  label={<>Last Name <span aria-hidden="true" className="required-asterisk">*</span></>}
                   onChange={(event) => setForm((current) => ({ ...current, lastName: event.target.value }))}
                   value={form.lastName}
                 />
@@ -394,7 +406,7 @@ function AuthenticationPage({ page }) {
                   fieldClassName="auth-field-full"
                   id="register-student-id"
                   inputMode="numeric"
-                  label="Student ID (Digits Only) *"
+                  label={<>Student ID (Digits Only) <span aria-hidden="true" className="required-asterisk">*</span></>}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
@@ -402,11 +414,9 @@ function AuthenticationPage({ page }) {
                     }))
                   }
                   onPaste={(event) => {
-                    event.preventDefault()
-                    const pasted = event.clipboardData?.getData('text') || ''
                     setForm((current) => ({
                       ...current,
-                      studentId: sanitizeNumericStudentId(pasted),
+                      studentId: applyNumericStudentIdPaste(event, current.studentId),
                     }))
                   }}
                   pattern="[0-9]*"
@@ -418,7 +428,7 @@ function AuthenticationPage({ page }) {
                   autoComplete="email"
                   fieldClassName="auth-field-full"
                   id="register-email"
-                  label="WMSU Email *"
+                  label={<>WMSU Email <span aria-hidden="true" className="required-asterisk">*</span></>}
                   onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                   placeholder="name@wmsu.edu.ph"
                   type="email"
@@ -516,7 +526,7 @@ function AuthenticationPage({ page }) {
 
                 <div className="form-field auth-field-full">
                   <label className="admin-field-label" htmlFor="register-cor-upload">
-                    Certificate of Registration (COR) <span className="required-asterisk">*</span>
+                    COR <span className="required-asterisk">*</span>
                   </label>
                   <input
                     accept=".pdf,.jpg,.jpeg,.png"
@@ -541,7 +551,7 @@ function AuthenticationPage({ page }) {
                   <Input
                     autoComplete="new-password"
                     id="register-password"
-                    label="Password *"
+                    label={<>Password <span aria-hidden="true" className="required-asterisk">*</span></>}
                     onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
                     type={showPassword ? 'text' : 'password'}
                     value={form.password}
@@ -560,7 +570,7 @@ function AuthenticationPage({ page }) {
                   <Input
                     autoComplete="new-password"
                     id="register-confirm-password"
-                    label="Confirm Password *"
+                    label={<>Confirm Password <span aria-hidden="true" className="required-asterisk">*</span></>}
                     onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
                     type={showConfirmPassword ? 'text' : 'password'}
                     value={form.confirmPassword}
@@ -600,17 +610,70 @@ function AuthenticationPage({ page }) {
           <form
             className="auth-form"
             noValidate
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault()
+              setError('')
+              setSuccess('')
               if (!isWmsuEmail(identifier)) {
                 setError('Enter your WMSU email address ending in @wmsu.edu.ph.')
-                setSuccess('')
                 return
               }
-              setError('')
-              setSuccess('If this account exists, password reset instructions would be sent.')
+              if (resetMode === 'VERIFY_ID') {
+                if (!resetIdNumber.trim()) {
+                  setError('Enter your Student Number or Employee Number to verify your identity.')
+                  return
+                }
+                if (resetNewPassword.length < 6) {
+                  setError('New password must be at least 6 characters long.')
+                  return
+                }
+                if (resetNewPassword !== resetConfirmPassword) {
+                  setError('The new password confirmation does not match.')
+                  return
+                }
+              }
+              setSubmitting(true)
+              const result = await requestPasswordReset({
+                email: identifier.trim(),
+                mode: resetMode,
+                student_or_employee_id: resetMode === 'VERIFY_ID' ? resetIdNumber.trim() : undefined,
+                new_password: resetMode === 'VERIFY_ID' ? resetNewPassword : undefined,
+              })
+              setSubmitting(false)
+              if (!result?.ok) {
+                setError(result?.error || 'Unable to process password reset request.')
+                return
+              }
+              await refreshPortalData()
+              setSuccess(result.message || 'Password reset request processed.')
+              if (resetMode === 'VERIFY_ID') {
+                setResetIdNumber('')
+                setResetNewPassword('')
+                setResetConfirmPassword('')
+                showToast('Password updated. Sign in with your new password.', 'success')
+              } else {
+                showToast('Password reset ticket recorded for Student Affairs review.', 'success')
+              }
             }}
           >
+            <div className="officer-request-tabs" role="group" aria-label="Password reset method">
+              <button
+                aria-pressed={resetMode === 'REQUEST_ADMIN'}
+                className={resetMode === 'REQUEST_ADMIN' ? 'is-selected' : ''}
+                onClick={() => { setResetMode('REQUEST_ADMIN'); setError(''); setSuccess('') }}
+                type="button"
+              >
+                Request Admin Reset
+              </button>
+              <button
+                aria-pressed={resetMode === 'VERIFY_ID'}
+                className={resetMode === 'VERIFY_ID' ? 'is-selected' : ''}
+                onClick={() => { setResetMode('VERIFY_ID'); setError(''); setSuccess('') }}
+                type="button"
+              >
+                Verify ID &amp; Reset Now
+              </button>
+            </div>
             <Input
               autoComplete="username"
               id="reset-identifier"
@@ -620,9 +683,43 @@ function AuthenticationPage({ page }) {
               type="email"
               value={identifier}
             />
+            {resetMode === 'VERIFY_ID' && (
+              <>
+                <Input
+                  id="reset-id-number"
+                  label="Student Number or Employee Number"
+                  onChange={(event) => setResetIdNumber(event.target.value)}
+                  placeholder="e.g. 202400189 or EMP-001"
+                  type="text"
+                  value={resetIdNumber}
+                />
+                <Input
+                  autoComplete="new-password"
+                  id="reset-new-password"
+                  label="New Password (at least 6 characters)"
+                  onChange={(event) => setResetNewPassword(event.target.value)}
+                  type="password"
+                  value={resetNewPassword}
+                />
+                <Input
+                  autoComplete="new-password"
+                  id="reset-confirm-password"
+                  label="Confirm New Password"
+                  onChange={(event) => setResetConfirmPassword(event.target.value)}
+                  type="password"
+                  value={resetConfirmPassword}
+                />
+              </>
+            )}
             {error && <p className="auth-error" role="alert">{error}</p>}
             {success && <p className="auth-success" role="status">{success}</p>}
-            <Button className="auth-submit" type="submit">Reset Password</Button>
+            <Button className="auth-submit" disabled={submitting} type="submit">
+              {submitting
+                ? 'Processing...'
+                : resetMode === 'VERIFY_ID'
+                  ? 'Verify ID & Reset Password'
+                  : 'Submit Reset Request'}
+            </Button>
           </form>
         )}
 

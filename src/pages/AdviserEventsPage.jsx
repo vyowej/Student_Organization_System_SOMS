@@ -64,6 +64,10 @@ export default function AdviserEventsPage() {
   return (
     <div className="adviser-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Adviser Dashboard', to: '/adviser/dashboard' },
+          { label: 'Organization Events' },
+        ]}
         description="Review activities for assigned organizations. Adviser approval does not publish an event; Student Affairs must complete the next review."
         eyebrow="UNIDOS · FACULTY ADVISER"
         title="Organization Events"
@@ -82,7 +86,7 @@ export default function AdviserEventsPage() {
                   <h2>{event.title}</h2>
                   <p>{event.date} · {event.time || event.startTime || 'Time to be confirmed'} · {event.location || event.venue || 'Venue to be confirmed'}</p>
                   <small>
-                    {event.registrations ?? 0} registrations · Capacity {event.capacity ?? 'Not specified'}
+                    {(event.registrations ?? 0) === 1 ? '1 registration' : `${event.registrations ?? 0} registrations`} · Capacity {event.capacity ?? 'Open capacity'}
                     {event.complianceFileName ? ` · Compliance file: ${event.complianceFileName}` : ''}
                   </small>
                 </div>

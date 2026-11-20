@@ -123,9 +123,11 @@ function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allD
     .filter((a) => String(a.organization_id) === String(orgId))
     .map(normalizeAnnouncement)
 
-  const orgDocs = allDocuments
-    .filter((d) => String(d.organization_id) === String(orgId) && d.status === 'APPROVED')
-    .map((d) => d.title)
+  const orgApprovedDocs = allDocuments.filter(
+    (d) => String(d.organization_id) === String(orgId) && d.status === 'APPROVED'
+  )
+  const orgDocs = orgApprovedDocs.map((d) => d.title)
+  const publicDocuments = orgApprovedDocs.map((d) => normalizeDocument(d))
 
   const adviserName = row.adviser_name || (row.adviser_last_name && row.adviser_first_name
     ? `${row.adviser_last_name}, ${row.adviser_first_name}${row.adviser_suffix ? ` ${row.adviser_suffix}` : ''}`
@@ -152,6 +154,9 @@ function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allD
     description: row.description || row.mission || 'Official WMSU student organization.',
     mission: row.mission || 'Not provided.',
     vision: row.vision || 'Not provided.',
+    officialEmail: row.official_email || '',
+    contactNumber: row.contact_number || '',
+    socialMedia: row.social_media || '',
     logo: row.logo || '',
     adviserId: row.current_adviser_id || row.adviser_id || null,
     adviserUserId: row.adviser_user_id || null,
@@ -160,6 +165,10 @@ function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allD
     adviserStatus: (row.current_adviser_id || row.adviser_id || (adviserName && adviserName !== 'Unassigned')) ? 'ACTIVE' : 'UNASSIGNED',
     status: row.status || 'ACTIVE',
     accreditationStatus: row.accreditation_status || row.status || 'PENDING',
+    eligibleLevel: row.eligible_level || 'UNDERGRADUATE',
+    minYearLevel: row.min_year_level ?? null,
+    maxYearLevel: row.max_year_level ?? null,
+    eligibilityNotes: row.eligibility_notes || '',
     memberCount: activeCount,
     activeMembers: activeCount,
     upcomingEventsCount: Number(row.upcoming_events_count ?? 0),
@@ -168,6 +177,7 @@ function normalizeOrganization(row, allMembers = [], allAnnouncements = [], allD
     officers,
     announcements: orgAnnouncements,
     documents: orgDocs,
+    publicDocuments,
   }
 }
 
@@ -196,9 +206,9 @@ function normalizeEvent(row) {
     ['COMPLETED', 'CANCELLED'].includes(rawStatus) ||
     Boolean(endDt && !Number.isNaN(new Date(endDt).getTime()) && new Date(endDt).getTime() <= Date.now())
 
-  const maxCap = row.max_participants !== null && row.max_participants !== undefined
-    ? Number(row.max_participants)
-    : Number(row.capacity ?? 100)
+  const rawMaxCap = row.max_participants ?? row.capacity
+  const maxCap =
+    rawMaxCap !== null && rawMaxCap !== undefined && rawMaxCap !== '' ? Number(rawMaxCap) : null
 
   return {
     id: evtId,
@@ -226,7 +236,12 @@ function normalizeEvent(row) {
     attendedCount: Number(row.attended_count ?? 0),
     attendance: Number(row.attended_count ?? 0),
     registrationClosed: hasEnded,
-    status: (row.is_published && rawStatus === 'APPROVED') || rawStatus === 'PUBLISHED' ? 'PUBLISHED' : mappedStatus,
+    status:
+      rawStatus === 'DRAFT' && Boolean(row.review_remarks && String(row.review_remarks).trim())
+        ? 'RETURNED_FOR_REVISION'
+        : (row.is_published && rawStatus === 'APPROVED') || rawStatus === 'PUBLISHED'
+          ? 'PUBLISHED'
+          : mappedStatus,
     rawStatus,
     isPublished: Boolean(row.is_published || rawStatus === 'PUBLISHED'),
     adviserDecisionDate: row.approved_by || row.adviser_approved_by ? formatDisplayDate(row.approved_at || row.adviser_approved_at || row.updated_at || row.created_at) : null,
@@ -235,6 +250,11 @@ function normalizeEvent(row) {
     createdByName: row.created_by_name || '',
     approvedBy: row.approved_by || row.adviser_approved_by,
     createdAt: row.created_at,
+    targetAudience: row.target_audience || '',
+    registrationDeadline: row.registration_deadline ? String(row.registration_deadline).slice(0, 10) : '',
+    budget: row.budget !== null && row.budget !== undefined && row.budget !== '' ? String(row.budget) : '',
+    revisionNote: row.review_remarks || '',
+    reviewRemarks: row.review_remarks || '',
     complianceFileName,
     hasComplianceFile: Boolean(row.has_compliance_file || row.compliance_file_data),
     supportingDocuments,
@@ -270,6 +290,7 @@ function normalizeMember(row) {
     tierLabel: hierarchy.tierLabel,
     committee,
     corFileName: row.cor_file_name || '',
+    hasCor: Boolean(row.has_cor),
     customTitle: row.custom_title || '',
     termStart: row.term_start,
     termEnd: row.term_end,
@@ -307,9 +328,11 @@ function normalizeApplication(row) {
     yearLevel: row.year_level ? normalizeYearLevelOption(row.year_level) : '',
     desiredRole: row.desired_role || 'Committee Officer',
     corFileName: row.cor_file_name || '',
+    hasCor: Boolean(row.has_cor),
     message: row.message || row.reason || row.remarks || 'Officer application submitted via UNIDOS portal.',
     reason: row.message || row.reason || row.remarks || '',
     reviewRemarks: row.review_remarks || '',
+    decisionReason: row.review_remarks || '',
     status: row.status || 'PENDING',
     applicationDate: formatDisplayDate(row.applied_at || row.created_at),
     appliedAt: row.applied_at || row.created_at,
@@ -380,6 +403,8 @@ function normalizeDocument(row) {
     type: docType,
     docType,
     fileUrl: row.file_url || '',
+    fileName: row.file_name || '',
+    hasFileData: Boolean(row.has_file_data || row.file_data),
     academicYear: row.academic_year || '',
     semester: row.semester || '',
     status: row.status || 'PENDING',
@@ -423,6 +448,7 @@ function normalizeUser(row) {
     rawRole: row.role === 'STUDENT' ? 'OFFICER' : (row.role || 'OFFICER'),
     isCoordinator: Boolean(row.is_coordinator || row.isCoordinator || String(row.email || '').toLowerCase() === 'marjorie.rojas@wmsu.edu.ph'),
     corFileName: row.cor_file_name || row.corFileName || '',
+    hasCor: Boolean(row.has_cor || row.hasCor),
     status: row.status || 'ACTIVE',
     programId: row.program_id ?? row.programId ?? null,
     program: row.program || row.program_name || row.adviser_department_name || '—',
@@ -676,70 +702,54 @@ export function PortalDataProvider({ children }) {
   const [rawAuditLogs, setRawAuditLogs] = useState([])
   const [rawAdvisers, setRawAdvisers] = useState([])
   const [rawAdviserChangeRequests, setRawAdviserChangeRequests] = useState([])
+  const [rawOrganizationRequests, setRawOrganizationRequests] = useState([])
+  const [rawPasswordResetRequests, setRawPasswordResetRequests] = useState([])
   const [academicHierarchy, setAcademicHierarchy] = useState({
     colleges: [],
     departments: [],
     programs: [],
   })
-  const [adminSettings, setAdminSettings] = useState(() => {
-    try {
-      const saved = typeof window !== 'undefined' ? localStorage.getItem('soms_admin_settings') : null
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        return {
-          ...adminDefaultSettings,
-          ...parsed,
-          organizationCategories: Array.isArray(parsed?.organizationCategories) && parsed.organizationCategories.length > 0
-            ? parsed.organizationCategories
-            : adminDefaultSettings.organizationCategories,
-          notifications: {
-            ...adminDefaultSettings.notifications,
-            ...(parsed?.notifications || {}),
-          },
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return adminDefaultSettings
+  const [adminSettings, setAdminSettings] = useState(adminDefaultSettings)
+  const [officerNotificationPreferences, setOfficerNotificationPreferences] = useState({
+    membershipRequests: true,
+    eventUpdates: true,
+    documentUpdates: true,
+    adviserApprovalUpdates: true,
+    studentAnnouncements: true,
   })
-  const [officerNotificationPreferences, setOfficerNotificationPreferences] = useState(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const activeOrgId = currentUser?.organizationId || 'default'
-        const saved = localStorage.getItem(`soms_officer_notification_preferences_${activeOrgId}`) || localStorage.getItem('soms_officer_notification_preferences')
-        if (saved) return JSON.parse(saved)
-      }
-    } catch {
-      // ignore
-    }
-    return {
-      membershipRequests: true,
-      eventUpdates: true,
-      documentUpdates: true,
-      adviserApprovalUpdates: true,
-      studentAnnouncements: true,
-    }
-  })
-
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const activeOrgId = currentUser?.organizationId || 'default'
-        const saved = localStorage.getItem(`soms_officer_notification_preferences_${activeOrgId}`) || localStorage.getItem('soms_officer_notification_preferences')
-        if (saved) setOfficerNotificationPreferences(JSON.parse(saved))
-      }
-    } catch {
-      // ignore
-    }
-  }, [currentUser?.organizationId])
 
   const [loading, setLoading] = useState(true)
 
   const refreshPortalData = useCallback(async () => {
     try {
       const activeUserId = currentUser?.dbUserId ?? currentUser?.id ?? currentUser?.userId
-      const notifsUrl = activeUserId ? `/api/notifications?user_id=${activeUserId}` : '/api/notifications'
+      const notifsUrl = activeUserId ? `/api/notifications?user_id=${activeUserId}` : null
+      const activeOrgId = currentUser?.organizationId || null
+
+      const settingsPromise = fetch('/api/settings')
+        .then(async (res) => {
+          if (!res?.ok) return null
+          const dbSettings = await res.json().catch(() => ({}))
+          const resolvedYear = dbSettings.academicYear || dbSettings.academic_year
+          const resolvedSemester = dbSettings.semester
+          const resolvedCategories = Array.isArray(dbSettings.organizationCategories) && dbSettings.organizationCategories.length > 0
+            ? dbSettings.organizationCategories
+            : null
+          if (resolvedYear || resolvedSemester || resolvedCategories || dbSettings.notifications) {
+            setAdminSettings((prev) => ({
+              ...prev,
+              academicYear: resolvedYear || prev.academicYear,
+              semester: resolvedSemester || prev.semester,
+              organizationCategories: resolvedCategories || prev.organizationCategories,
+              notifications: {
+                ...prev.notifications,
+                ...(dbSettings.notifications || {}),
+              },
+            }))
+          }
+          return res
+        })
+        .catch(() => null)
 
       const [
         orgsRes,
@@ -754,8 +764,11 @@ export function PortalDataProvider({ children }) {
         logsRes,
         advisersRes,
         adviserReqRes,
+        orgReqRes,
+        resetReqRes,
         hierarchyRes,
         settingsRes,
+        officerPrefsRes,
       ] = await Promise.all([
         fetch('/api/organizations?all=true').catch(() => null),
         fetch('/api/events?all=true').catch(() => null),
@@ -765,12 +778,15 @@ export function PortalDataProvider({ children }) {
         fetch('/api/documents').catch(() => null),
         fetch('/api/announcements').catch(() => null),
         fetch('/api/users').catch(() => null),
-        fetch(notifsUrl).catch(() => null),
+        notifsUrl ? fetch(notifsUrl).catch(() => null) : Promise.resolve(null),
         fetch('/api/audit-logs').catch(() => null),
         fetch('/api/advisers').catch(() => null),
         fetch('/api/advisers/requests').catch(() => null),
+        fetch('/api/organizations/requests').catch(() => null),
+        fetch('/api/users/password-reset-requests').catch(() => null),
         fetch('/api/academic/hierarchy').catch(() => null),
-        fetch('/api/settings').catch(() => null),
+        settingsPromise,
+        activeOrgId ? fetch(`/api/settings/organization/${activeOrgId}/preferences`).catch(() => null) : Promise.resolve(null),
       ])
 
       if (orgsRes?.ok) setRawOrganizations(await orgsRes.json())
@@ -781,25 +797,25 @@ export function PortalDataProvider({ children }) {
       if (docsRes?.ok) setRawDocuments(await docsRes.json())
       if (annRes?.ok) setRawAnnouncements(await annRes.json())
       if (usersRes?.ok) setRawUsers(await usersRes.json())
-      if (notifsRes?.ok) setRawNotifications(await notifsRes.json())
+      if (!activeUserId) setRawNotifications([])
+      else if (notifsRes?.ok) setRawNotifications(await notifsRes.json())
       if (logsRes?.ok) setRawAuditLogs(await logsRes.json())
       if (advisersRes?.ok) setRawAdvisers(await advisersRes.json())
       if (adviserReqRes?.ok) setRawAdviserChangeRequests(await adviserReqRes.json())
+      if (orgReqRes?.ok) setRawOrganizationRequests(await orgReqRes.json())
+      if (resetReqRes?.ok) setRawPasswordResetRequests(await resetReqRes.json())
       if (hierarchyRes?.ok) setAcademicHierarchy(await hierarchyRes.json())
-      if (settingsRes?.ok) {
-        const dbSettings = await settingsRes.json().catch(() => ({}))
-        if (dbSettings && (dbSettings.academic_year || dbSettings.semester)) {
-          setAdminSettings((prev) => ({
-            ...prev,
-            academicYear: dbSettings.academic_year || prev.academicYear,
-            semester: dbSettings.semester || prev.semester,
-          }))
+      void settingsRes
+      if (officerPrefsRes?.ok) {
+        const prefsData = await officerPrefsRes.json().catch(() => null)
+        if (prefsData && typeof prefsData === 'object') {
+          setOfficerNotificationPreferences((prev) => ({ ...prev, ...prefsData }))
         }
       }
     } finally {
       setLoading(false)
     }
-  }, [currentUser?.id, currentUser?.dbUserId, currentUser?.userId])
+  }, [currentUser?.id, currentUser?.dbUserId, currentUser?.userId, currentUser?.organizationId])
 
   useEffect(() => {
     refreshPortalData()
@@ -985,6 +1001,9 @@ export function PortalDataProvider({ children }) {
               ? (metadata.adviserRemarks || (typeof d.reviewRemarks === 'string' && !d.reviewRemarks.trim().startsWith('{') ? d.reviewRemarks.trim() : ''))
               : '',
             supportingDocuments: d.fileUrl ? [d.fileUrl] : [],
+            fileName: d.fileName || '',
+            hasFileData: Boolean(d.hasFileData),
+            fileUrl: d.fileUrl || '',
             // Accomplishment Narrative fields for AdviserReviewDialog & Officer details view
             objectives: metadata.objectives || '',
             activitiesConducted: metadata.activitiesConducted || metadata.activities || '',
@@ -1417,15 +1436,21 @@ export function PortalDataProvider({ children }) {
   }, [registerParticipantForEvent])
 
   const cancelEventRegistration = useCallback(async (registrationOrEventId) => {
-    const reg = studentRegistrations.find(
-      (r) =>
-        String(r.id) === String(registrationOrEventId) ||
-        String(r.registrationId) === String(registrationOrEventId) ||
-        (String(r.eventId) === String(registrationOrEventId) &&
-          String(r.studentId) === String(currentUser?.studentId))
-    )
+    const reg =
+      studentRegistrations.find(
+        (r) =>
+          String(r.id) === String(registrationOrEventId) ||
+          String(r.registrationId) === String(registrationOrEventId)
+      ) ||
+      studentRegistrations.find(
+        (r) =>
+          String(r.eventId) === String(registrationOrEventId) &&
+          currentUser?.studentId &&
+          String(r.studentId) === String(currentUser.studentId)
+      )
     if (!reg) return false
-    const response = await fetch(`/api/attendance/registrations/${reg.registrationId}/cancel`, {
+    const targetRegId = reg.registrationId ?? reg.id
+    const response = await fetch(`/api/attendance/registrations/${targetRegId}/cancel`, {
       method: 'PUT',
     })
     if (!response.ok) return false
@@ -1434,8 +1459,21 @@ export function PortalDataProvider({ children }) {
   }, [studentRegistrations, currentUser?.studentId, refreshPortalData])
 
   const checkInStudent = useCallback(async (eventId, registrationCodeOrStudentId) => {
-    const code = String(registrationCodeOrStudentId || '').trim()
+    let code = String(registrationCodeOrStudentId || '').trim()
     if (!code) return { ok: false, message: 'Enter a student registration code or Employee/Student ID.' }
+
+    if (code.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(code)
+        if (parsed && typeof parsed === 'object') {
+          code = String(
+            parsed.code || parsed.qrCodeValue || parsed.studentId || parsed.student_number || parsed.id || code
+          ).trim()
+        }
+      } catch {
+        // Keep raw code if payload is not JSON
+      }
+    }
 
     const matchedReg = studentRegistrations.find(
       (r) =>
@@ -1495,7 +1533,13 @@ export function PortalDataProvider({ children }) {
     }
   }, [])
 
-  const attendWithEventCode = useCallback(async ({ eventId, code }) => {
+  const attendWithEventCode = useCallback(async ({
+    eventId,
+    code,
+    studentId,
+    studentNumber,
+    registrationCode,
+  }) => {
     const cleanCode = String(code || '').trim()
     if (!eventId || !cleanCode) {
       return { ok: false, message: 'Please provide both an event and the attendance code.' }
@@ -1507,8 +1551,9 @@ export function PortalDataProvider({ children }) {
         body: JSON.stringify({
           event_id: eventId,
           code: cleanCode,
-          student_id: currentUser?.studentRecordId || currentUser?.studentId,
-          student_number: currentUser?.studentId,
+          student_id: studentId ?? currentUser?.studentRecordId ?? currentUser?.studentId,
+          student_number: studentNumber ?? currentUser?.studentId,
+          registration_code: registrationCode || undefined,
           user_id: currentUser?.dbUserId || currentUser?.id || null,
         }),
       })
@@ -1601,6 +1646,10 @@ export function PortalDataProvider({ children }) {
       ? [complianceName]
       : (Array.isArray(eventPayload.supportingDocuments) ? eventPayload.supportingDocuments : undefined)
 
+    const rawCap = eventPayload.capacity ?? eventPayload.maxParticipants
+    const parsedCap = rawCap !== null && rawCap !== undefined && rawCap !== '' ? Number(rawCap) : null
+    const validCap = Number.isFinite(parsedCap) && parsedCap > 0 ? parsedCap : null
+
     const response = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
@@ -1617,8 +1666,11 @@ export function PortalDataProvider({ children }) {
         event_type: eventPayload.category || eventPayload.eventType || 'Academic',
         category: eventPayload.category || eventPayload.eventType || 'Academic',
         status: dbStatus,
-        max_participants: Number(eventPayload.capacity || eventPayload.maxParticipants || 100),
-        capacity: Number(eventPayload.capacity || eventPayload.maxParticipants || 100),
+        max_participants: validCap,
+        capacity: validCap,
+        target_audience: eventPayload.targetAudience ?? eventPayload.target_audience ?? undefined,
+        registration_deadline: eventPayload.registrationDeadline ?? eventPayload.registration_deadline ?? undefined,
+        budget: eventPayload.budget !== undefined && eventPayload.budget !== '' ? Number(eventPayload.budget) : undefined,
         ...(complianceName !== undefined ? { compliance_file_name: complianceName } : {}),
         ...(eventPayload.complianceFileData !== undefined ? { compliance_file_data: eventPayload.complianceFileData } : {}),
         ...(supportingList !== undefined ? { supporting_documents: supportingList } : {}),
@@ -1631,20 +1683,34 @@ export function PortalDataProvider({ children }) {
     return normalizeEvent(saved)
   }, [currentUser?.organizationId, currentUser?.userId, currentUser?.dbUserId, currentUser?.id, adminOrganizations, refreshPortalData])
 
+  const deleteOfficerEvent = useCallback(async (eventId) => {
+    if (!eventId) return { ok: false, error: 'Event ID is required.' }
+    try {
+      const response = await fetch(`/api/events/${eventId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUser?.dbUserId || currentUser?.id || currentUser?.userId || null,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: payload.error || 'Unable to delete event.' }
+      }
+      await refreshPortalData()
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'Network error while deleting event.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, currentUser?.userId, refreshPortalData])
+
   const reviewAdviserRequest = useCallback(async (kindOrId, idOrStatus, decisionOrReason = '', commentMaybe = '') => {
     // Support both 4-arg (kind, id, decision, comment) and 3-arg (id, status, reason)
-    let kind = 'EVENT'
-    let itemId = kindOrId
-    let nextStatus = idOrStatus
-    if (['EVENT', 'DOCUMENT'].includes(String(kindOrId).toUpperCase()) && commentMaybe !== undefined && decisionOrReason !== '') {
-      kind = String(kindOrId).toUpperCase()
-      itemId = idOrStatus
-      nextStatus = decisionOrReason
-    } else if (['EVENT', 'DOCUMENT'].includes(String(kindOrId).toUpperCase())) {
-      kind = String(kindOrId).toUpperCase()
-      itemId = idOrStatus
-      nextStatus = decisionOrReason
-    }
+    const isFourArg = ['EVENT', 'DOCUMENT'].includes(String(kindOrId).toUpperCase())
+    const kind = isFourArg ? String(kindOrId).toUpperCase() : 'EVENT'
+    const itemId = isFourArg ? idOrStatus : kindOrId
+    const nextStatus = isFourArg ? decisionOrReason : idOrStatus
+    const reviewRemarks = String((isFourArg ? commentMaybe : decisionOrReason) || '').trim()
 
     if (kind === 'DOCUMENT') {
       const docStatus = nextStatus === 'RETURNED' ? 'REJECTED' : nextStatus
@@ -1654,7 +1720,7 @@ export function PortalDataProvider({ children }) {
         body: JSON.stringify({
           status: docStatus,
           reviewed_by: currentUser?.dbUserId || currentUser?.id || null,
-          review_remarks: commentMaybe || decisionOrReason || '',
+          review_remarks: reviewRemarks,
         }),
       })
       if (!response.ok) return false
@@ -1663,10 +1729,10 @@ export function PortalDataProvider({ children }) {
     }
 
     const dbStatus = ['RETURNED', 'RETURNED_FOR_REVISION'].includes(nextStatus)
-      ? 'CANCELLED'
+      ? 'DRAFT'
       : nextStatus === 'APPROVED'
         ? 'APPROVED'
-        : 'REJECTED'
+        : 'CANCELLED'
 
     const response = await fetch(`/api/events/${itemId}/status`, {
       method: 'PUT',
@@ -1674,6 +1740,7 @@ export function PortalDataProvider({ children }) {
       body: JSON.stringify({
         status: dbStatus,
         approved_by: currentUser?.dbUserId || currentUser?.id || null,
+        review_remarks: reviewRemarks,
       }),
     })
     if (!response.ok) return false
@@ -1699,14 +1766,15 @@ export function PortalDataProvider({ children }) {
     return true
   }, [currentUser, refreshPortalData, refreshCurrentUser])
 
-  const reviewAdminEvent = useCallback(async (eventId, decision) => {
-    const dbStatus = decision === 'APPROVED' ? 'APPROVED' : decision === 'RETURNED' ? 'PENDING' : 'REJECTED'
+  const reviewAdminEvent = useCallback(async (eventId, decision, comment = '') => {
+    const dbStatus = decision === 'APPROVED' ? 'APPROVED' : decision === 'RETURNED' ? 'DRAFT' : 'CANCELLED'
     const response = await fetch(`/api/events/${eventId}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         status: dbStatus,
         approved_by: currentUser?.dbUserId || currentUser?.id || null,
+        review_remarks: String(comment || '').trim(),
         is_published: decision === 'APPROVED' ? false : undefined,
       }),
     })
@@ -1804,7 +1872,9 @@ export function PortalDataProvider({ children }) {
         organization_id: orgId,
         title: docPayload.title,
         doc_type: docPayload.type || docPayload.docType || 'OTHER',
-        file_url: docPayload.fileUrl || docPayload.fileName || '/uploads/pending-google-drive-link',
+        file_url: docPayload.fileUrl || docPayload.fileName || '',
+        file_name: docPayload.fileName || null,
+        file_data: docPayload.fileData || null,
         academic_year: docPayload.academicYear || adminSettings.academicYear,
         semester: docPayload.semester || adminSettings.semester,
         uploaded_by: currentUser?.dbUserId || currentUser?.id || null,
@@ -1865,6 +1935,8 @@ export function PortalDataProvider({ children }) {
         title: resolvedTitle,
         type: 'REPORT',
         file_url: fileUrl,
+        file_name: reportPayload.fileName || null,
+        file_data: reportPayload.fileData || null,
         academic_year: reportPayload.academicYear || adminSettings.academicYear,
         semester: reportPayload.semester || adminSettings.semester,
         uploaded_by: currentUser?.dbUserId || currentUser?.id || null,
@@ -1914,18 +1986,26 @@ export function PortalDataProvider({ children }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: orgUpdates.name ?? currentOrg.name,
-        acronym: orgUpdates.acronym ?? currentOrg.acronym,
+        acronym: orgUpdates.acronym !== undefined ? orgUpdates.acronym : currentOrg.acronym,
         org_type: orgUpdates.category || orgUpdates.orgType || currentOrg.org_type,
         scope: orgUpdates.scope ?? currentOrg.scope,
-        college_id: orgUpdates.collegeId ?? currentOrg.college_id,
-        department_id: orgUpdates.departmentId ?? currentOrg.department_id,
+        college_id: orgUpdates.collegeId !== undefined ? orgUpdates.collegeId : currentOrg.college_id,
+        department_id: orgUpdates.departmentId !== undefined ? orgUpdates.departmentId : currentOrg.department_id,
         description: orgUpdates.description ?? currentOrg.description,
-        mission: orgUpdates.mission ?? currentOrg.mission,
-        vision: orgUpdates.vision ?? currentOrg.vision,
+        mission: orgUpdates.mission !== undefined ? orgUpdates.mission : currentOrg.mission,
+        vision: orgUpdates.vision !== undefined ? orgUpdates.vision : currentOrg.vision,
+        official_email: orgUpdates.officialEmail !== undefined ? orgUpdates.officialEmail : currentOrg.official_email,
+        contact_number: orgUpdates.contactNumber !== undefined ? orgUpdates.contactNumber : currentOrg.contact_number,
+        social_media: orgUpdates.socialMedia !== undefined ? orgUpdates.socialMedia : currentOrg.social_media,
         logo: orgUpdates.logo !== undefined ? orgUpdates.logo : currentOrg.logo,
+        eligible_level: orgUpdates.eligibleLevel !== undefined ? orgUpdates.eligibleLevel : currentOrg.eligible_level,
+        min_year_level: orgUpdates.minYearLevel !== undefined ? orgUpdates.minYearLevel : currentOrg.min_year_level,
+        max_year_level: orgUpdates.maxYearLevel !== undefined ? orgUpdates.maxYearLevel : currentOrg.max_year_level,
+        eligibility_notes: orgUpdates.eligibilityNotes !== undefined ? orgUpdates.eligibilityNotes : currentOrg.eligibility_notes,
         status: orgUpdates.status ?? currentOrg.status,
         accreditation_status: orgUpdates.accreditationStatus ?? currentOrg.accreditation_status,
         approved_by: currentUser?.dbUserId || currentUser?.id || null,
+        ...(orgUpdates.adviserId !== undefined ? { adviser_id: orgUpdates.adviserId } : {}),
       }),
     })
     if (!response.ok) return false
@@ -1942,37 +2022,41 @@ export function PortalDataProvider({ children }) {
     if (!orgId) return false
     const currentOrg = rawOrganizations.find((o) => String(o.organization_id ?? o.id) === String(orgId))
     if (!currentOrg) return false
-    const contactSummary = [
-      contactValues.officialEmail ? `Email: ${contactValues.officialEmail}` : '',
-      contactValues.contactNumber ? `Phone: ${contactValues.contactNumber}` : '',
-      contactValues.socialMedia ? `Page: ${contactValues.socialMedia}` : '',
-    ].filter(Boolean).join(' | ')
     return updateOfficerOrganizationProfile({
-      description: contactSummary || currentOrg.description,
+      officialEmail: String(contactValues.officialEmail || '').trim() || null,
+      contactNumber: String(contactValues.contactNumber || '').trim() || null,
+      socialMedia: String(contactValues.socialMedia || '').trim() || null,
     })
   }, [currentUser?.organizationId, adminOrganizations, rawOrganizations, updateOfficerOrganizationProfile])
 
-  const saveOfficerNotificationPreferences = useCallback((newPrefs) => {
+  const saveOfficerNotificationPreferences = useCallback(async (newPrefs) => {
     if (!newPrefs || typeof newPrefs !== 'object') return false
+    const activeOrgId = currentUser?.organizationId || adminOrganizations[0]?.id || 'default'
     try {
-      if (typeof window !== 'undefined') {
-        const activeOrgId = currentUser?.organizationId || 'default'
-        localStorage.setItem(`soms_officer_notification_preferences_${activeOrgId}`, JSON.stringify(newPrefs))
-        localStorage.setItem('soms_officer_notification_preferences', JSON.stringify(newPrefs))
-      }
-      setOfficerNotificationPreferences(newPrefs)
+      const response = await fetch(`/api/settings/organization/${activeOrgId}/preferences`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newPrefs,
+          userId: currentUser?.dbUserId || currentUser?.id || null,
+        }),
+      })
+      if (!response.ok) return false
+      const savedPrefs = await response.json().catch(() => newPrefs)
+      setOfficerNotificationPreferences(savedPrefs)
+      await refreshPortalData()
       return true
     } catch {
       return false
     }
-  }, [currentUser?.organizationId])
+  }, [currentUser?.organizationId, currentUser?.dbUserId, currentUser?.id, adminOrganizations, refreshPortalData])
 
   const submitOfficerOrganizationRequest = useCallback(async (requestType, reason, requestedAdviserId) => {
     const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
     if (!orgId || !reason?.trim()) return false
 
     if (requestType === 'ADVISER_CHANGE') {
-      const targetAdviserId = requestedAdviserId || rawAdvisers[0]?.adviser_id
+      const targetAdviserId = requestedAdviserId || (rawAdvisers[0]?.adviser_id ?? rawAdvisers[0]?.id)
       if (!targetAdviserId) return false
       const response = await fetch('/api/advisers/requests', {
         method: 'POST',
@@ -1989,41 +2073,83 @@ export function PortalDataProvider({ children }) {
       return true
     }
 
-    await fetch('/api/audit-logs', {
+    const response = await fetch(`/api/organizations/${orgId}/requests`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user_id: currentUser?.dbUserId || currentUser?.id || null,
-        action: `REQUEST_${requestType}`,
-        entity_type: 'organizations',
-        entity_id: orgId,
+        request_type: requestType || 'DEACTIVATION',
+        requested_by: currentUser?.dbUserId || currentUser?.id || null,
+        reason: reason.trim(),
       }),
-    }).catch(() => null)
+    })
+    if (!response.ok) return false
     await refreshPortalData()
     return true
   }, [currentUser?.organizationId, currentUser?.dbUserId, currentUser?.id, adminOrganizations, rawAdvisers, refreshPortalData])
 
-  const updateAdminOrganizationStatus = useCallback(async (organizationId, nextStatus) => {
+  const reviewOrganizationRequest = useCallback(async (requestId, decision, reviewRemarks = '') => {
+    const mapped = decision === 'APPROVED' ? 'APPROVED' : 'REJECTED'
+    const response = await fetch(`/api/organizations/requests/${requestId}/review`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: mapped,
+        reviewed_by: currentUser?.dbUserId || currentUser?.id || null,
+        review_remarks: String(reviewRemarks || '').trim(),
+      }),
+    })
+    if (!response.ok) return false
+    await refreshPortalData()
+    return true
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
+
+  const updateAdminOrganizationStatus = useCallback(async (organizationId, nextStatus, reason = '') => {
     const response = await fetch(`/api/organizations/${organizationId}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         status: nextStatus,
         accreditation_status: nextStatus === 'ACTIVE' ? 'ACCREDITED' : undefined,
+        approved_by: currentUser?.dbUserId || currentUser?.id || null,
+        reason: String(reason || '').trim() || undefined,
       }),
     })
     if (!response.ok) return false
     await refreshPortalData()
     return true
-  }, [refreshPortalData])
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const updateAdminOrganization = useCallback(async (organizationId, changes) => {
-    if (!changes?.name || !changes?.acronym) return false
+    if (!changes?.name?.trim()) return false
     return updateOfficerOrganizationProfile({
       id: organizationId,
-      name: changes.name,
-      acronym: changes.acronym,
+      name: changes.name.trim(),
+      acronym: changes.acronym?.trim() || null,
       category: changes.category,
+      ...(changes.scope !== undefined ? { scope: changes.scope } : {}),
+      ...(changes.collegeId !== undefined
+        ? { collegeId: changes.collegeId ? Number(changes.collegeId) : null }
+        : {}),
+      ...(changes.departmentId !== undefined
+        ? { departmentId: changes.departmentId ? Number(changes.departmentId) : null }
+        : {}),
+      ...(changes.description !== undefined ? { description: changes.description?.trim() || null } : {}),
+      ...(changes.mission !== undefined ? { mission: changes.mission?.trim() || null } : {}),
+      ...(changes.vision !== undefined ? { vision: changes.vision?.trim() || null } : {}),
+      ...(changes.status !== undefined ? { status: changes.status } : {}),
+      ...(changes.eligibleLevel !== undefined ? { eligibleLevel: changes.eligibleLevel || null } : {}),
+      ...(changes.minYearLevel !== undefined
+        ? { minYearLevel: changes.minYearLevel ? Number(changes.minYearLevel) : null }
+        : {}),
+      ...(changes.maxYearLevel !== undefined
+        ? { maxYearLevel: changes.maxYearLevel ? Number(changes.maxYearLevel) : null }
+        : {}),
+      ...(changes.eligibilityNotes !== undefined
+        ? { eligibilityNotes: changes.eligibilityNotes?.trim() || null }
+        : {}),
+      ...(changes.adviserId !== undefined
+        ? { adviserId: changes.adviserId ? Number(changes.adviserId) : null }
+        : {}),
     })
   }, [updateOfficerOrganizationProfile])
 
@@ -2042,6 +2168,10 @@ export function PortalDataProvider({ children }) {
           college_id: orgData.college_id ? Number(orgData.college_id) : null,
           department_id: orgData.department_id ? Number(orgData.department_id) : null,
           adviser_id: orgData.adviser_id ? Number(orgData.adviser_id) : null,
+          eligible_level: orgData.eligible_level || 'UNDERGRADUATE',
+          min_year_level: orgData.min_year_level ? Number(orgData.min_year_level) : null,
+          max_year_level: orgData.max_year_level ? Number(orgData.max_year_level) : null,
+          eligibility_notes: orgData.eligibility_notes?.trim() || null,
           status: orgData.status || 'ACTIVE',
           created_by: currentUser?.dbUserId || currentUser?.id || null,
         }),
@@ -2057,7 +2187,7 @@ export function PortalDataProvider({ children }) {
     }
   }, [currentUser, refreshPortalData])
 
-  const reviewOrganizationApplication = useCallback(async (organizationId, decision) => {
+  const reviewOrganizationApplication = useCallback(async (organizationId, decision, comment = '') => {
     const nextAccStatus = decision === 'APPROVED' ? 'ACCREDITED' : decision === 'REJECTED' ? 'REVOKED' : 'PENDING'
     const nextStatus = decision === 'APPROVED' ? 'ACTIVE' : decision === 'REJECTED' ? 'INACTIVE' : 'PENDING'
     const response = await fetch(`/api/organizations/${organizationId}/status`, {
@@ -2066,12 +2196,14 @@ export function PortalDataProvider({ children }) {
       body: JSON.stringify({
         status: nextStatus,
         accreditation_status: nextAccStatus,
+        approved_by: currentUser?.dbUserId || currentUser?.id || null,
+        reason: String(comment || '').trim() || undefined,
       }),
     })
     if (!response.ok) return false
     await refreshPortalData()
     return true
-  }, [refreshPortalData])
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const updateAdminUser = useCallback(async (userId, updates) => {
     const roleMap = {
@@ -2095,6 +2227,7 @@ export function PortalDataProvider({ children }) {
         email: updates.email,
         role: roleMap[updates.role] || updates.rawRole || updates.role,
         status: updates.status,
+        updated_by: currentUser?.dbUserId || currentUser?.id || null,
       }),
     })
     if (!response.ok) {
@@ -2103,7 +2236,7 @@ export function PortalDataProvider({ children }) {
     }
     await refreshPortalData()
     return { ok: true }
-  }, [rawUsers, refreshPortalData])
+  }, [currentUser?.dbUserId, currentUser?.id, rawUsers, refreshPortalData])
 
   const createAdviserAccount = useCallback(async (payload) => {
     try {
@@ -2199,45 +2332,124 @@ export function PortalDataProvider({ children }) {
         adviser_id: payload.adviserId,
         term_start: payload.termStart,
         term_end: payload.termEnd,
+        assigned_by: currentUser?.dbUserId || currentUser?.id || null,
       }),
     })
     if (!response.ok) return false
     await refreshPortalData()
     return true
-  }, [refreshPortalData])
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const createAcademicCollege = useCallback(async (payload) => {
-    const response = await fetch('/api/academic/colleges', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (!response.ok) return false
-    await refreshPortalData()
-    return true
-  }, [refreshPortalData])
+    try {
+      const response = await fetch('/api/academic/colleges', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...payload,
+          created_by: currentUser?.dbUserId || currentUser?.id || null,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to create college.' }
+      }
+      await refreshPortalData()
+      return { ok: true, data }
+    } catch {
+      return { ok: false, error: 'Network error creating college.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
+
+  const deleteAcademicCollege = useCallback(async (collegeId) => {
+    try {
+      const actorId = currentUser?.dbUserId || currentUser?.id || null
+      const query = actorId ? `?user_id=${encodeURIComponent(actorId)}` : ''
+      const response = await fetch(`/api/academic/colleges/${collegeId}${query}`, { method: 'DELETE' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to delete college.' }
+      }
+      await refreshPortalData()
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'Network error deleting college.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const createAcademicDepartment = useCallback(async (payload) => {
-    const response = await fetch('/api/academic/departments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (!response.ok) return false
-    await refreshPortalData()
-    return true
-  }, [refreshPortalData])
+    try {
+      const response = await fetch('/api/academic/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...payload,
+          created_by: currentUser?.dbUserId || currentUser?.id || null,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to create department.' }
+      }
+      await refreshPortalData()
+      return { ok: true, data }
+    } catch {
+      return { ok: false, error: 'Network error creating department.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
+
+  const deleteAcademicDepartment = useCallback(async (departmentId) => {
+    try {
+      const actorId = currentUser?.dbUserId || currentUser?.id || null
+      const query = actorId ? `?user_id=${encodeURIComponent(actorId)}` : ''
+      const response = await fetch(`/api/academic/departments/${departmentId}${query}`, { method: 'DELETE' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to delete department.' }
+      }
+      await refreshPortalData()
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'Network error deleting department.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const createAcademicProgram = useCallback(async (payload) => {
-    const response = await fetch('/api/academic/programs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (!response.ok) return false
-    await refreshPortalData()
-    return true
-  }, [refreshPortalData])
+    try {
+      const response = await fetch('/api/academic/programs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...payload,
+          created_by: currentUser?.dbUserId || currentUser?.id || null,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to create program.' }
+      }
+      await refreshPortalData()
+      return { ok: true, data }
+    } catch {
+      return { ok: false, error: 'Network error creating program.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
+
+  const deleteAcademicProgram = useCallback(async (programId) => {
+    try {
+      const actorId = currentUser?.dbUserId || currentUser?.id || null
+      const query = actorId ? `?user_id=${encodeURIComponent(actorId)}` : ''
+      const response = await fetch(`/api/academic/programs/${programId}${query}`, { method: 'DELETE' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to delete program.' }
+      }
+      await refreshPortalData()
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'Network error deleting program.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const markNotificationRead = useCallback(async (notificationId) => {
     const id = typeof notificationId === 'object' ? notificationId?.id : notificationId
@@ -2262,28 +2474,96 @@ export function PortalDataProvider({ children }) {
     return true
   }, [currentUser, refreshPortalData, refreshCurrentUser])
 
-  const saveAdminSettings = useCallback((nextSettings) => {
-    setAdminSettings((prev) => {
-      const updated = { ...prev, ...nextSettings }
-      try {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('soms_admin_settings', JSON.stringify(updated))
-          fetch('/api/settings', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              academic_year: updated.academicYear,
-              semester: updated.semester,
-            }),
-          }).catch(() => null)
-        }
-      } catch {
-        // ignore
+  const resetAdminUserPassword = useCallback(async (userId, newPassword, requestId = null, remarks = '') => {
+    try {
+      const response = await fetch(`/api/users/${userId}/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          new_password: newPassword,
+          updated_by: currentUser?.dbUserId || currentUser?.id || null,
+          request_id: requestId || undefined,
+          review_remarks: remarks || undefined,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to reset user password.' }
       }
-      return updated
-    })
-    return true
-  }, [])
+      await refreshPortalData()
+      return { ok: true, message: data.message }
+    } catch {
+      return { ok: false, error: 'Network error resetting password.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
+
+  const changeOwnPassword = useCallback(async ({ currentPassword, newPassword }) => {
+    const targetUserId = currentUser?.dbUserId || currentUser?.id || currentUser?.userId
+    if (!targetUserId) {
+      return { ok: false, error: 'Sign in required to change your password.' }
+    }
+    try {
+      const response = await fetch(`/api/users/${targetUserId}/password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+          updated_by: targetUserId,
+          self_service: true,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to change password.' }
+      }
+      await refreshPortalData()
+      return { ok: true, message: data.message || 'Password updated.' }
+    } catch {
+      return { ok: false, error: 'Network error updating password.' }
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, currentUser?.userId, refreshPortalData])
+
+  const rejectPasswordResetRequest = useCallback(async (requestId, remarks = '') => {
+    try {
+      const response = await fetch(`/api/users/password-reset-requests/${requestId}/reject`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resolved_by: currentUser?.dbUserId || currentUser?.id || null,
+          review_remarks: remarks,
+        }),
+      })
+      if (!response.ok) return false
+      await refreshPortalData()
+      return true
+    } catch {
+      return false
+    }
+  }, [currentUser?.dbUserId, currentUser?.id, refreshPortalData])
+
+  const saveAdminSettings = useCallback(async (nextSettings) => {
+    const updated = { ...adminSettings, ...nextSettings }
+    setAdminSettings(updated)
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          academicYear: updated.academicYear,
+          semester: updated.semester,
+          organizationCategories: updated.organizationCategories,
+          notifications: updated.notifications,
+          userId: currentUser?.dbUserId || currentUser?.id || null,
+        }),
+      })
+      if (!response.ok) return false
+      await refreshPortalData()
+      return true
+    } catch {
+      return false
+    }
+  }, [adminSettings, currentUser?.dbUserId, currentUser?.id, refreshPortalData])
 
   const refreshAuditLogs = useCallback(async () => {
     try {
@@ -2362,7 +2642,9 @@ export function PortalDataProvider({ children }) {
     academicPrograms: academicHierarchy.programs || [],
     advisers: rawAdvisers,
     adviserChangeRequests: rawAdviserChangeRequests,
+    organizationRequests: rawOrganizationRequests,
     organizationChangeRequests: rawAdviserChangeRequests,
+    passwordResetRequests: rawPasswordResetRequests,
     studentNotifications: notifications,
     officerNotifications,
     adviserNotifications: notifications,
@@ -2393,6 +2675,7 @@ export function PortalDataProvider({ children }) {
     attendWithEventCode,
     toggleStudentAttendance,
     saveOfficerEvent,
+    deleteOfficerEvent,
     reviewAdviserRequest,
     reviewAccomplishmentReport,
     reviewAdminEvent,
@@ -2411,6 +2694,10 @@ export function PortalDataProvider({ children }) {
     updateOfficerOrganizationContact,
     saveOfficerNotificationPreferences,
     submitOfficerOrganizationRequest,
+    reviewOrganizationRequest,
+    resetAdminUserPassword,
+    changeOwnPassword,
+    rejectPasswordResetRequest,
     updateAdminOrganizationStatus,
     updateAdminOrganization,
     createAdminOrganization,
@@ -2424,8 +2711,11 @@ export function PortalDataProvider({ children }) {
     reviewAdviserChangeRequest,
     assignOrganizationAdviser,
     createAcademicCollege,
+    deleteAcademicCollege,
     createAcademicDepartment,
+    deleteAcademicDepartment,
     createAcademicProgram,
+    deleteAcademicProgram,
     markNotificationRead,
     markStudentNotificationRead: markNotificationRead,
     markAdminNotificationRead: markNotificationRead,
@@ -2458,6 +2748,8 @@ export function PortalDataProvider({ children }) {
     academicHierarchy,
     rawAdvisers,
     rawAdviserChangeRequests,
+    rawOrganizationRequests,
+    rawPasswordResetRequests,
     notifications,
     officerNotifications,
     adminNotifications,
@@ -2480,6 +2772,7 @@ export function PortalDataProvider({ children }) {
     attendWithEventCode,
     toggleStudentAttendance,
     saveOfficerEvent,
+    deleteOfficerEvent,
     reviewAdviserRequest,
     reviewAccomplishmentReport,
     reviewAdminEvent,
@@ -2495,6 +2788,10 @@ export function PortalDataProvider({ children }) {
     updateOfficerOrganizationContact,
     saveOfficerNotificationPreferences,
     submitOfficerOrganizationRequest,
+    reviewOrganizationRequest,
+    resetAdminUserPassword,
+    changeOwnPassword,
+    rejectPasswordResetRequest,
     updateAdminOrganizationStatus,
     updateAdminOrganization,
     createAdminOrganization,
@@ -2506,8 +2803,11 @@ export function PortalDataProvider({ children }) {
     reviewAdviserChangeRequest,
     assignOrganizationAdviser,
     createAcademicCollege,
+    deleteAcademicCollege,
     createAcademicDepartment,
+    deleteAcademicDepartment,
     createAcademicProgram,
+    deleteAcademicProgram,
     markNotificationRead,
     markAllNotificationsRead,
     saveAdminSettings,

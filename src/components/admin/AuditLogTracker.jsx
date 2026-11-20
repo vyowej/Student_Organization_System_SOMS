@@ -342,7 +342,7 @@ export default function AuditLogTracker({ logs = [], onRefresh }) {
     () => [
       {
         key: 'timestamp',
-        label: 'Date & Time',
+        label: 'Date / Time',
         getOrderValue: (_, row) => (row.createdAt ? new Date(row.createdAt).getTime() : 0),
         render: (value, row) => (
           <div className="log-time-cell">
@@ -353,7 +353,7 @@ export default function AuditLogTracker({ logs = [], onRefresh }) {
       },
       {
         key: 'actor',
-        label: 'Actor & Role',
+        label: 'Actor / Role',
         render: (value, row) => (
           <div className="log-actor-cell">
             <span className="log-actor-name">{value || 'System'}</span>
@@ -382,7 +382,7 @@ export default function AuditLogTracker({ logs = [], onRefresh }) {
       },
       {
         key: 'description',
-        label: 'Details & Description',
+        label: 'Description',
         render: (value) => (
           <div className="log-description-cell" title={value}>
             {value}
@@ -417,72 +417,74 @@ export default function AuditLogTracker({ logs = [], onRefresh }) {
 
   return (
     <div className="admin-page audit-log-tracker">
-      {/* Top Header with title and export/refresh buttons */}
-      <div className="log-tracker-header-wrap">
-        <PageHeader
-          description="Monitor, inspect, and export system-wide user actions, security events, and governance decisions."
-          eyebrow="UNIDOS ADMINISTRATION"
-          title="Audit Log Tracker"
-        />
-        <div className="log-tracker-action-buttons">
-          {onRefresh && (
+      <PageHeader
+        actions={(
+          <div className="log-tracker-action-buttons">
+            {onRefresh && (
+              <Button
+                className="log-tracker-btn"
+                disabled={isRefreshing}
+                onClick={handleRefresh}
+                variant="secondary"
+              >
+                <Icon className={isRefreshing ? 'animate-spin' : ''} name="refresh" size={14} />
+                <span>{isRefreshing ? 'Refreshing...' : 'Live Sync'}</span>
+              </Button>
+            )}
             <Button
               className="log-tracker-btn"
-              disabled={isRefreshing}
-              onClick={handleRefresh}
+              onClick={handleExportCsv}
               variant="secondary"
             >
-              <Icon className={isRefreshing ? 'animate-spin' : ''} name="refresh" size={14} />
-              <span>{isRefreshing ? 'Refreshing...' : 'Live Sync'}</span>
+              <Icon name="download" size={14} />
+              <span>Export CSV</span>
             </Button>
-          )}
-          <Button
-            className="log-tracker-btn"
-            onClick={handleExportCsv}
-            variant="secondary"
-          >
-            <Icon name="download" size={14} />
-            <span>Export CSV</span>
-          </Button>
-          <Button
-            className="log-tracker-btn"
-            onClick={handleExportExcel}
-            variant="secondary"
-          >
-            <Icon name="reports" size={14} />
-            <span>Export Excel</span>
-          </Button>
+            <Button
+              className="log-tracker-btn"
+              onClick={handleExportExcel}
+              variant="primary"
+            >
+              <Icon name="reports" size={14} />
+              <span>Export Excel</span>
+            </Button>
+          </div>
+        )}
+        breadcrumbs={[
+          { label: 'Admin Dashboard', to: '/admin/dashboard' },
+          { label: 'Audit Logs' },
+        ]}
+        description="Monitor, inspect, and export system-wide user actions, security events, and governance decisions."
+        eyebrow="UNIDOS ADMINISTRATION"
+        title="Audit Log Tracker"
+      >
+        <div className="admin-metrics-grid log-tracker-metrics">
+          <Card className="admin-metric-card">
+            <span className="stat-label">Total Audit Events</span>
+            <strong className="stat-value">{metrics.total.toLocaleString()}</strong>
+            <small className="stat-note">Recorded in system database</small>
+          </Card>
+
+          <Card className="admin-metric-card">
+            <span className="stat-label">
+              <span className="live-pulse-dot" /> Today&apos;s Activities
+            </span>
+            <strong className="stat-value">{metrics.todayCount.toLocaleString()}</strong>
+            <small className="stat-note">Recorded in last 24 hours</small>
+          </Card>
+
+          <Card className="admin-metric-card">
+            <span className="stat-label">Governance Decisions</span>
+            <strong className="stat-value">{metrics.decisionsCount.toLocaleString()}</strong>
+            <small className="stat-note">Approvals, rejections &amp; reviews</small>
+          </Card>
+
+          <Card className="admin-metric-card">
+            <span className="stat-label">Active Actors</span>
+            <strong className="stat-value">{metrics.uniqueActorsCount.toLocaleString()}</strong>
+            <small className="stat-note">Distinct users &amp; automated system</small>
+          </Card>
         </div>
-      </div>
-
-      {/* KPI Overview Cards */}
-      <div className="admin-metrics-grid log-tracker-metrics">
-        <Card className="admin-metric-card">
-          <span className="stat-label">Total Audit Events</span>
-          <strong className="stat-value">{metrics.total.toLocaleString()}</strong>
-          <small className="stat-note">Recorded in system database</small>
-        </Card>
-
-        <Card className="admin-metric-card">
-          <span className="stat-label">
-            <span className="live-pulse-dot" /> Today&apos;s Activities
-          </span>
-          <strong className="stat-value">{metrics.todayCount.toLocaleString()}</strong>
-          <small className="stat-note">Recorded in last 24 hours</small>
-        </Card>
-
-        <Card className="admin-metric-card">
-          <span className="stat-label">Governance Decisions</span>
-          <strong className="stat-value">{metrics.decisionsCount.toLocaleString()}</strong>
-          <small className="stat-note">Approvals, rejections &amp; reviews</small>
-        </Card>
-
-        <Card className="admin-metric-card">
-          <span className="stat-label">Active Actors</span>
-          <strong className="stat-value">{metrics.uniqueActorsCount.toLocaleString()}</strong>
-          <small className="stat-note">Distinct users &amp; automated system</small>
-        </Card>
-      </div>
+      </PageHeader>
 
       {/* Multi-Facet Filter Bar */}
       <div className="admin-filter-bar log-tracker-filter-bar">

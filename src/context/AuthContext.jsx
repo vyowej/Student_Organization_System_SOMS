@@ -150,6 +150,7 @@ export function AuthProvider({ children }) {
       const response = await fetch(`/api/users/${targetId}`)
       if (!response.ok) {
         sessionStorage.removeItem(SESSION_STORAGE_KEY)
+        if (typeof localStorage !== 'undefined') localStorage.removeItem(SESSION_STORAGE_KEY)
         setCurrentUser(null)
         setAuthLoading(false)
         return null
@@ -173,7 +174,9 @@ export function AuthProvider({ children }) {
   }, [currentUser?.id, currentUser?.userId])
 
   useEffect(() => {
-    const savedId = sessionStorage.getItem(SESSION_STORAGE_KEY)
+    const savedId =
+      sessionStorage.getItem(SESSION_STORAGE_KEY) ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_STORAGE_KEY) : null)
     if (savedId && savedId !== 'undefined' && savedId !== 'null') {
       refreshCurrentUser(savedId)
     } else {
@@ -181,7 +184,7 @@ export function AuthProvider({ children }) {
     }
   }, [refreshCurrentUser])
 
-  const login = useCallback(async (identifier, password) => {
+  const login = useCallback(async (identifier, password, rememberMe = false) => {
     try {
       const trimmed = String(identifier || '').trim()
       const response = await fetch('/api/users/login', {
@@ -203,6 +206,10 @@ export function AuthProvider({ children }) {
       const mapped = mapUserRow(payload)
       if (mapped?.id) {
         sessionStorage.setItem(SESSION_STORAGE_KEY, String(mapped.id))
+        if (typeof localStorage !== 'undefined') {
+          if (rememberMe) localStorage.setItem(SESSION_STORAGE_KEY, String(mapped.id))
+          else localStorage.removeItem(SESSION_STORAGE_KEY)
+        }
       }
       setCurrentUser(mapped)
       return { ok: true, user: mapped }
@@ -254,8 +261,29 @@ export function AuthProvider({ children }) {
       }).catch(() => null)
     }
     sessionStorage.removeItem(SESSION_STORAGE_KEY)
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(SESSION_STORAGE_KEY)
     setCurrentUser(null)
   }, [currentUser?.id])
+
+  const requestPasswordReset = useCallback(async (payload) => {
+    try {
+      const response = await fetch('/api/users/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return { ok: false, error: data.error || 'Unable to process password reset request.' }
+      }
+      return { ok: true, ...data }
+    } catch {
+      return {
+        ok: false,
+        error: 'Unable to reach the backend server. Please verify the API and PostgreSQL database are running.',
+      }
+    }
+  }, [])
 
   const setActiveRole = useCallback((nextRole, organizationId) => {
     if (!currentUser || nextRole === 'STUDENT') return false
@@ -283,9 +311,10 @@ export function AuthProvider({ children }) {
     registerStudent,
     registerOfficer: registerStudent,
     refreshCurrentUser,
+    requestPasswordReset,
     switchRole: setActiveRole,
     setActiveRole,
-  }), [currentUser, authLoading, login, logout, registerStudent, refreshCurrentUser, setActiveRole])
+  }), [currentUser, authLoading, login, logout, registerStudent, refreshCurrentUser, requestPasswordReset, setActiveRole])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

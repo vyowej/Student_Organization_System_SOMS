@@ -11,65 +11,6 @@ const defaultNotifications = [
   { type: 'Events', icon: 'calendar', title: 'Campus Events', message: 'Check upcoming activities and slot availability.', time: 'live' },
 ]
 
-const defaultLandingEvents = [
-  {
-    id: 'wmsu-orientation-2026',
-    title: 'University Organization Fair & General Assembly',
-    organizationName: 'University Student Council',
-    category: 'Student Council',
-    date: 'December 15, 2026',
-    endDatetime: '2027-12-15T17:00:00',
-    time: '8:00 AM – 5:00 PM',
-    location: 'WMSU Gymnasium',
-    capacity: 250,
-    registeredCount: 42,
-    status: 'PUBLISHED',
-    color: 'crimson',
-  },
-  {
-    id: 'wmsu-hackathon-2026',
-    title: 'WMSU Innovators & Builders Hackathon',
-    organizationName: 'Computer Science Society',
-    category: 'Technology',
-    date: 'December 20, 2026',
-    endDatetime: '2027-12-20T18:00:00',
-    time: '9:00 AM – 6:00 PM',
-    location: 'College of Computing Studies',
-    capacity: 120,
-    registeredCount: 38,
-    status: 'PUBLISHED',
-    color: 'blue',
-  },
-  {
-    id: 'leadership-summit-2026',
-    title: 'Campus Officers & Advisers Governance Summit',
-    organizationName: 'Student Affairs & Services Division',
-    category: 'Leadership',
-    date: 'January 12, 2027',
-    endDatetime: '2027-12-22T17:00:00',
-    time: '1:00 PM – 5:00 PM',
-    location: 'University Social Hall',
-    capacity: 180,
-    registeredCount: 64,
-    status: 'PUBLISHED',
-    color: 'gold',
-  },
-  {
-    id: 'cultural-fest-2026',
-    title: 'Grand Cultural & Arts Showcase',
-    organizationName: 'WMSU Cultural Ensemble',
-    category: 'Cultural',
-    date: 'January 24, 2027',
-    endDatetime: '2027-12-28T20:30:00',
-    time: '4:00 PM – 8:30 PM',
-    location: 'Open Grounds & Amphitheater',
-    capacity: 300,
-    registeredCount: 95,
-    status: 'PUBLISHED',
-    color: 'emerald',
-  },
-]
-
 const defaultCommunityUpdates = [
   {
     label: 'Campus Directory',
@@ -143,7 +84,7 @@ function HeroSearch() {
           aria-label="Search organizations"
           autoComplete="off"
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search organizations by name, acronym, or college..."
+          placeholder="Search organizations or colleges..."
           type="search"
           value={query}
         />
@@ -156,6 +97,7 @@ function HeroSearch() {
 }
 
 function LiveStatCards({ activeOrgs, publishedEvents, loading }) {
+  const showSkeleton = loading && activeOrgs === 0 && publishedEvents === 0
   const orgValue = `${activeOrgs}`
   const orgLabel = activeOrgs === 1 ? 'Active Organization' : 'Active Organizations'
   const evtValue = `${publishedEvents}`
@@ -163,7 +105,7 @@ function LiveStatCards({ activeOrgs, publishedEvents, loading }) {
 
   return (
     <>
-      <div className={`hero-float-card float-organizations${loading ? ' is-loading' : ''}`}>
+      <div className={`hero-float-card float-organizations${showSkeleton ? ' is-loading' : ''}`}>
         <span className="float-icon">
           <Icon name="organization" size={16} />
         </span>
@@ -172,12 +114,12 @@ function LiveStatCards({ activeOrgs, publishedEvents, loading }) {
             <span className="skeleton-line float-skeleton-value skeleton" />
             <span className="skeleton-line float-skeleton-label skeleton" />
           </span>
-          {!loading && <strong className="float-stat-value">{orgValue}</strong>}
-          {!loading && <small className="float-stat-label">{orgLabel}</small>}
+          {!showSkeleton && <strong className="float-stat-value">{orgValue}</strong>}
+          {!showSkeleton && <small className="float-stat-label">{orgLabel}</small>}
         </span>
       </div>
 
-      <div className={`hero-float-card float-events${loading ? ' is-loading' : ''}`}>
+      <div className={`hero-float-card float-events${showSkeleton ? ' is-loading' : ''}`}>
         <span className="float-icon">
           <Icon name="calendar" size={16} />
         </span>
@@ -186,8 +128,8 @@ function LiveStatCards({ activeOrgs, publishedEvents, loading }) {
             <span className="skeleton-line float-skeleton-value skeleton" />
             <span className="skeleton-line float-skeleton-label skeleton" />
           </span>
-          {!loading && <strong className="float-stat-value">{evtValue}</strong>}
-          {!loading && <small className="float-stat-label">{evtLabel}</small>}
+          {!showSkeleton && <strong className="float-stat-value">{evtValue}</strong>}
+          {!showSkeleton && <small className="float-stat-label">{evtLabel}</small>}
         </span>
       </div>
     </>
@@ -258,7 +200,7 @@ function LandingPage() {
   )
 
   const displayEvents = useMemo(
-    () => (publishedEvents.length > 0 ? publishedEvents.slice(0, 6) : defaultLandingEvents),
+    () => publishedEvents.slice(0, 6),
     [publishedEvents],
   )
 
@@ -353,8 +295,24 @@ function LandingPage() {
   }, [activeCategory, showAllOrgs, filteredOrganizations])
 
   const activeOrgCount = studentOrganizations.length
-  const collegeCount = academicColleges.length || 17
+  const derivedCollegeCount = useMemo(
+    () => new Set(studentOrganizations.map((org) => String(org.college || '').trim()).filter(Boolean)).size,
+    [studentOrganizations],
+  )
+  const collegeCount = academicColleges.length || derivedCollegeCount
   const adviserCount = advisers.length || activeOrgCount
+  const heroOrgPreview = useMemo(
+    () => (
+      studentOrganizations.length > 0
+        ? studentOrganizations.slice(0, 3)
+        : [
+            { id: 'preview-1', acronym: 'USC', name: 'University Student Council' },
+            { id: 'preview-2', acronym: 'CSS', name: 'Computer Science Society' },
+            { id: 'preview-3', acronym: 'ACES', name: 'Civil Engineering Society' },
+          ]
+    ),
+    [studentOrganizations],
+  )
 
   useEffect(() => {
     const stage = heroArtRef.current
@@ -428,7 +386,6 @@ function LandingPage() {
   }, [heroNotifications.length])
 
   const primaryNotif = heroNotifications[notificationIndex % heroNotifications.length]
-  const secondaryNotif = heroNotifications[(notificationIndex + 1) % heroNotifications.length]
 
   return (
     <div className="landing-page">
@@ -452,14 +409,21 @@ function LandingPage() {
             <Link className="button button-primary" to="/organizations">
               Explore Organization <Icon name="arrow-right" size={14} />
             </Link>
-            <Link className="button button-secondary" to="/events" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            <Link className="button button-secondary" to="/events">
               <Icon name="event" size={16} /> Upcoming Events
             </Link>
           </div>
           <div className="hero-social-proof">
             <div className="mini-avatars" aria-hidden="true"><span>UN</span><span>ID</span><span>OS</span><span>+</span></div>
             <span>
-              <strong>{activeOrgCount} active {activeOrgCount === 1 ? 'organization' : 'organizations'}</strong> across {collegeCount} WMSU colleges.
+              {loading && activeOrgCount === 0 ? (
+                'Verified student organizations across WMSU colleges.'
+              ) : (
+                <>
+                  <strong>{activeOrgCount} active {activeOrgCount === 1 ? 'organization' : 'organizations'}</strong>{' '}
+                  {collegeCount > 0 ? `across ${collegeCount} WMSU ${collegeCount === 1 ? 'college' : 'colleges'}.` : 'across WMSU colleges.'}
+                </>
+              )}
             </span>
           </div>
           <MobileHeroStats
@@ -483,11 +447,20 @@ function LandingPage() {
                   <span><b>{adviserCount}</b><small>Advisers</small></span>
                 </div>
                 <div className="mock-dashboard-content">
-                  <div className="mock-org-list"><b>Accredited Orgs</b><i /><i /><i /></div>
+                  <div className="mock-org-list">
+                    <b>Accredited Orgs</b>
+                    {heroOrgPreview.map((org) => (
+                      <span className="mock-mini-row" key={org.id}>
+                        <em>{org.acronym || org.name?.slice(0, 4).toUpperCase()}</em>
+                        <small>{org.name}</small>
+                      </span>
+                    ))}
+                  </div>
                   <div className="mock-event-card">
                     <span>UPCOMING EVENT</span>
                     <b>{publishedEvents[0]?.title || displayEvents[0]?.title || 'Campus Activity'}</b>
-                    <i /><i />
+                    <small>{publishedEvents[0]?.organizationName || displayEvents[0]?.organizationName || 'WMSU Student Organizations'}</small>
+                    <small>{publishedEvents[0]?.date || displayEvents[0]?.date || 'Upcoming Schedule'}</small>
                   </div>
                 </div>
               </div>
@@ -515,14 +488,6 @@ function LandingPage() {
             </span>
             <small>{primaryNotif.time}</small>
           </div>
-          <div className="hero-notification hero-notification-secondary">
-            <span className="hero-notification-icon"><Icon name={secondaryNotif.icon} size={17} /></span>
-            <span className="hero-notification-copy">
-              <strong>{secondaryNotif.title}</strong>
-              <span>{secondaryNotif.message}</span>
-            </span>
-            <small>{secondaryNotif.time}</small>
-          </div>
           <LiveStatCards
             activeOrgs={activeOrgCount}
             loading={loading}
@@ -540,9 +505,16 @@ function LandingPage() {
           id="events-title"
           title="Upcoming events"
         />
-        <div className="event-grid">
-          {displayEvents.map((event) => <EventCard event={event} key={event.id} />)}
-        </div>
+        {displayEvents.length > 0 ? (
+          <div className="event-grid">
+            {displayEvents.map((event) => <EventCard event={event} key={event.id} />)}
+          </div>
+        ) : (
+          <div className="landing-empty-category">
+            <p className="landing-empty-category-title">No upcoming published events yet.</p>
+            <p className="landing-empty-category-copy">Events approved by faculty advisers and published by Student Affairs will appear here automatically.</p>
+          </div>
+        )}
       </Reveal>
 
       <Reveal as="section" aria-labelledby="organizations-title" className="landing-section organizations-section reveal-group" id="organizations">
@@ -554,18 +526,20 @@ function LandingPage() {
           title="Campus organizations"
         />
         <div className="landing-org-toolbar">
-          <div aria-label="Filter organizations by category" className="category-filters" role="group">
-            {organizationCategories.map((category) => (
-              <button
-                aria-pressed={activeCategory === category}
-                className={`category-filter${activeCategory === category ? ' selected' : ''}`}
-                key={category}
-                onClick={() => { setActiveCategory(category); setShowAllOrgs(false); }}
-                type="button"
-              >
-                {category}
-              </button>
-            ))}
+          <div className="category-filters-scroll-wrap">
+            <div aria-label="Filter organizations by category" className="category-filters" role="group">
+              {organizationCategories.map((category) => (
+                <button
+                  aria-pressed={activeCategory === category}
+                  className={`category-filter${activeCategory === category ? ' selected' : ''}`}
+                  key={category}
+                  onClick={() => { setActiveCategory(category); setShowAllOrgs(false); }}
+                  type="button"
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
           </div>
           <p aria-live="polite" className="landing-org-counter-pill">
             Showing <strong>{displayedOrganizations.length}</strong> of <strong>{filteredOrganizations.length}</strong>{' '}
@@ -581,12 +555,12 @@ function LandingPage() {
             ))}
           </div>
         ) : (
-          <div style={{ textAlign: 'center', padding: '48px 16px', color: '#76717a' }}>
-            <p style={{ fontSize: '16px', fontWeight: 600 }}>No organizations under &ldquo;{activeCategory}&rdquo; yet.</p>
-            <p style={{ fontSize: '14px', marginTop: '6px' }}>New accredited organizations under this category will appear here automatically.</p>
+          <div className="landing-empty-category">
+            <p className="landing-empty-category-title">No organizations under &ldquo;{activeCategory}&rdquo; yet.</p>
+            <p className="landing-empty-category-copy">New accredited organizations under this category will appear here automatically.</p>
           </div>
         )}
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '14px', marginTop: '32px' }}>
+        <div className="landing-section-footer-actions">
           {activeCategory === 'All' && !showAllOrgs && filteredOrganizations.length > 12 && (
             <button
               className="button button-secondary"

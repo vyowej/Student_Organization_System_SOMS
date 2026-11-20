@@ -102,6 +102,11 @@ CREATE TABLE organizations (
     name              VARCHAR(150)    NOT NULL,
     acronym           VARCHAR(20),
     description       TEXT,
+    mission           TEXT,
+    vision            TEXT,
+    official_email    VARCHAR(255),
+    contact_number    VARCHAR(50),
+    social_media      TEXT,
     -- ============================================================
     -- [GOOGLE DRIVE API PLACEHOLDER — ORGANIZATION LOGO IMAGE]
     -- Insert Google Drive API shared image URL / file ID here for organization logos.
@@ -194,6 +199,24 @@ CREATE UNIQUE INDEX uq_one_pending_change_request
     ON adviser_change_requests (organization_id)
     WHERE status = 'PENDING';
 
+-- Governance & lifecycle requests from organization officers (e.g. DEACTIVATION)
+CREATE TABLE organization_requests (
+    id              INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    request_type    VARCHAR(50) NOT NULL DEFAULT 'DEACTIVATION',
+    requested_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    reason          TEXT NOT NULL,
+    status          change_request_status NOT NULL DEFAULT 'PENDING',
+    reviewed_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    review_remarks  TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    reviewed_at     TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX uq_one_pending_org_request
+    ON organization_requests (organization_id, request_type)
+    WHERE status = 'PENDING';
+
 -- ============================================================
 -- 4. ORGANIZATION MEMBERSHIPS & APPLICATIONS
 -- ============================================================
@@ -251,6 +274,10 @@ CREATE TABLE events (
     supporting_documents JSONB NOT NULL DEFAULT '[]'::jsonb,
     status               event_status NOT NULL DEFAULT 'DRAFT',
     max_participants     INTEGER,
+    target_audience      TEXT,
+    registration_deadline DATE,
+    budget               NUMERIC(12, 2),
+    review_remarks       TEXT,
     created_by           INTEGER REFERENCES users(id) ON DELETE SET NULL,
     approved_by          INTEGER REFERENCES users(id) ON DELETE SET NULL,
     approved_at          TIMESTAMPTZ,
@@ -296,6 +323,8 @@ CREATE TABLE documents (
     -- ============================================================
     drive_file_id   TEXT            NOT NULL,          -- Google Drive File ID
     drive_view_link TEXT,                              -- Web view link in Drive
+    file_name       VARCHAR(255),
+    file_data       TEXT,
     status          document_status NOT NULL DEFAULT 'PENDING',
     reviewed_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
     reviewed_at     TIMESTAMPTZ,
@@ -345,6 +374,19 @@ CREATE TABLE IF NOT EXISTS system_settings (
     key         VARCHAR(100) PRIMARY KEY,
     value       JSONB NOT NULL,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_requests (
+    id                   INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id              INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    email                VARCHAR(255) NOT NULL,
+    requested_identifier VARCHAR(120),
+    status               VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    reason               TEXT,
+    resolved_by          INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    review_remarks       TEXT,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at          TIMESTAMPTZ
 );
 
 -- ============================================================

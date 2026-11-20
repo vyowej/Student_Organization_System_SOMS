@@ -7,6 +7,17 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { recordAuditLog } = require('../notificationsHelper');
+
+function resolveActorId(req) {
+  return resolvePositiveInt(req.body?.created_by || req.body?.user_id || req.query?.user_id);
+}
+
+function resolvePositiveInt(val) {
+  if (val === undefined || val === null || String(val).trim() === '') return null;
+  const num = Number(val);
+  return Number.isInteger(num) && num > 0 ? num : null;
+}
 
 // GET /api/academic/hierarchy — Fetch colleges, departments, and programs in one call
 router.get('/hierarchy', async (req, res) => {
@@ -65,6 +76,14 @@ router.post('/colleges', async (req, res) => {
       'INSERT INTO colleges (name, acronym) VALUES ($1, $2) RETURNING *',
       [name.trim(), acronym.trim().toUpperCase()]
     );
+    await recordAuditLog({
+      userId: resolveActorId(req),
+      action: 'CREATE_COLLEGE',
+      entity: 'colleges',
+      entityId: result.rows[0].id,
+      metadata: { name: result.rows[0].name, acronym: result.rows[0].acronym, description: `Created college ${result.rows[0].acronym} (${result.rows[0].name})` },
+      req,
+    });
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -78,10 +97,28 @@ router.post('/colleges', async (req, res) => {
 // DELETE /api/academic/colleges/:id — Delete a college if not referenced
 router.delete('/colleges/:id', async (req, res) => {
   try {
-    await db.query('DELETE FROM colleges WHERE id = $1', [req.params.id]);
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid college ID is required.' });
+    }
+    const result = await db.query('DELETE FROM colleges WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'College not found.' });
+    }
+    await recordAuditLog({
+      userId: resolveActorId(req),
+      action: 'DELETE_COLLEGE',
+      entity: 'colleges',
+      entityId: id,
+      metadata: { description: `Deleted college #${id}` },
+      req,
+    });
     res.json({ deleted: true });
   } catch (err) {
     console.error(err);
+    if (err.code === '23503') {
+      return res.status(409).json({ error: 'Cannot delete college while departments or organizations reference it.' });
+    }
     res.status(400).json({ error: 'Cannot delete college while departments or organizations reference it.' });
   }
 });
@@ -97,9 +134,13 @@ router.get('/departments', async (req, res) => {
     `;
     const params = [];
 
-    if (college_id) {
+    if (college_id !== undefined && String(college_id).trim() !== '') {
+      const collegeIdNum = resolvePositiveInt(college_id);
+      if (!collegeIdNum) {
+        return res.status(400).json({ error: 'Valid college_id is required.' });
+      }
       queryText += ' WHERE d.college_id = $1';
-      params.push(college_id);
+      params.push(collegeIdNum);
     }
     queryText += ' ORDER BY d.name ASC';
 
@@ -115,16 +156,28 @@ router.get('/departments', async (req, res) => {
 router.post('/departments', async (req, res) => {
   try {
     const { college_id, name, acronym } = req.body;
-    if (!college_id || !name) {
-      return res.status(400).json({ error: 'college_id and name are required' });
+    const collegeIdNum = resolvePositiveInt(college_id);
+    if (!collegeIdNum || !name || !String(name).trim()) {
+      return res.status(400).json({ error: 'Valid college_id and name are required' });
     }
     const result = await db.query(
       'INSERT INTO departments (college_id, name, acronym) VALUES ($1, $2, $3) RETURNING *',
-      [college_id, name.trim(), acronym ? acronym.trim().toUpperCase() : null]
+      [collegeIdNum, name.trim(), acronym ? acronym.trim().toUpperCase() : null]
     );
+    await recordAuditLog({
+      userId: resolveActorId(req),
+      action: 'CREATE_DEPARTMENT',
+      entity: 'departments',
+      entityId: result.rows[0].id,
+      metadata: { college_id: collegeIdNum, name: result.rows[0].name, description: `Created department "${result.rows[0].name}"` },
+      req,
+    });
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
+    if (err.code === '23503') {
+      return res.status(404).json({ error: 'Referenced college not found' });
+    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Department already exists in this college' });
     }
@@ -135,10 +188,28 @@ router.post('/departments', async (req, res) => {
 // DELETE /api/academic/departments/:id — Delete a department if not referenced
 router.delete('/departments/:id', async (req, res) => {
   try {
-    await db.query('DELETE FROM departments WHERE id = $1', [req.params.id]);
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid department ID is required.' });
+    }
+    const result = await db.query('DELETE FROM departments WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Department not found.' });
+    }
+    await recordAuditLog({
+      userId: resolveActorId(req),
+      action: 'DELETE_DEPARTMENT',
+      entity: 'departments',
+      entityId: id,
+      metadata: { description: `Deleted department #${id}` },
+      req,
+    });
     res.json({ deleted: true });
   } catch (err) {
     console.error(err);
+    if (err.code === '23503') {
+      return res.status(409).json({ error: 'Cannot delete department while programs or organizations reference it.' });
+    }
     res.status(400).json({ error: 'Cannot delete department while programs or organizations reference it.' });
   }
 });
@@ -160,9 +231,13 @@ router.get('/programs', async (req, res) => {
     `;
     const params = [];
 
-    if (department_id) {
+    if (department_id !== undefined && String(department_id).trim() !== '') {
+      const deptIdNum = resolvePositiveInt(department_id);
+      if (!deptIdNum) {
+        return res.status(400).json({ error: 'Valid department_id is required.' });
+      }
       queryText += ' WHERE p.department_id = $1';
-      params.push(department_id);
+      params.push(deptIdNum);
     }
     queryText += ' ORDER BY p.name ASC';
 
@@ -178,16 +253,28 @@ router.get('/programs', async (req, res) => {
 router.post('/programs', async (req, res) => {
   try {
     const { department_id, name, acronym } = req.body;
-    if (!department_id || !name || !acronym) {
-      return res.status(400).json({ error: 'department_id, name, and acronym are required' });
+    const deptIdNum = resolvePositiveInt(department_id);
+    if (!deptIdNum || !name || !String(name).trim() || !acronym || !String(acronym).trim()) {
+      return res.status(400).json({ error: 'Valid department_id, name, and acronym are required' });
     }
     const result = await db.query(
       'INSERT INTO programs (department_id, name, acronym) VALUES ($1, $2, $3) RETURNING *',
-      [department_id, name.trim(), acronym.trim().toUpperCase()]
+      [deptIdNum, name.trim(), acronym.trim().toUpperCase()]
     );
+    await recordAuditLog({
+      userId: resolveActorId(req),
+      action: 'CREATE_PROGRAM',
+      entity: 'programs',
+      entityId: result.rows[0].id,
+      metadata: { department_id: deptIdNum, name: result.rows[0].name, acronym: result.rows[0].acronym, description: `Created program ${result.rows[0].acronym} (${result.rows[0].name})` },
+      req,
+    });
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
+    if (err.code === '23503') {
+      return res.status(404).json({ error: 'Referenced department not found' });
+    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Program name or acronym already exists' });
     }
@@ -198,10 +285,28 @@ router.post('/programs', async (req, res) => {
 // DELETE /api/academic/programs/:id — Delete a program if not referenced
 router.delete('/programs/:id', async (req, res) => {
   try {
-    await db.query('DELETE FROM programs WHERE id = $1', [req.params.id]);
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid program ID is required.' });
+    }
+    const result = await db.query('DELETE FROM programs WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Program not found.' });
+    }
+    await recordAuditLog({
+      userId: resolveActorId(req),
+      action: 'DELETE_PROGRAM',
+      entity: 'programs',
+      entityId: id,
+      metadata: { description: `Deleted program #${id}` },
+      req,
+    });
     res.json({ deleted: true });
   } catch (err) {
     console.error(err);
+    if (err.code === '23503') {
+      return res.status(409).json({ error: 'Cannot delete program while students reference it.' });
+    }
     res.status(400).json({ error: 'Cannot delete program while students reference it.' });
   }
 });
@@ -292,17 +397,31 @@ router.post('/students', async (req, res) => {
       });
     }
 
+    const cleanStudentNumber = String(student_number).trim();
+    if (!/^\d+$/.test(cleanStudentNumber)) {
+      return res.status(400).json({ error: 'student_number must contain digits only (0-9)' });
+    }
+
+    const yearLevelNum = Number(year_level);
     // Matches CHECK (year_level BETWEEN 1 AND 6) in database/student_org_db.sql
-    if (year_level < 1 || year_level > 6) {
-      return res.status(400).json({ error: 'year_level must be between 1 and 6' });
+    if (!Number.isInteger(yearLevelNum) || yearLevelNum < 1 || yearLevelNum > 6) {
+      return res.status(400).json({ error: 'year_level must be an integer between 1 and 6' });
     }
 
     const result = await db.query(
       `INSERT INTO students (user_id, student_number, program_id, year_level)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [user_id, student_number.trim(), program_id, year_level]
+      [user_id, cleanStudentNumber, program_id, yearLevelNum]
     );
+    await recordAuditLog({
+      userId: resolveActorId(req) || user_id,
+      action: 'CREATE_STUDENT_PROFILE',
+      entity: 'students',
+      entityId: result.rows[0].id,
+      metadata: { student_number: cleanStudentNumber, program_id, year_level, description: `Created student record ${cleanStudentNumber}` },
+      req,
+    });
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -354,6 +473,14 @@ router.post('/advisers', async (req, res) => {
        RETURNING *`,
       [user_id, employee_number ? employee_number.trim() : null, college_id || null]
     );
+    await recordAuditLog({
+      userId: resolveActorId(req) || user_id,
+      action: 'CREATE_ADVISER_PROFILE',
+      entity: 'advisers',
+      entityId: result.rows[0].id,
+      metadata: { user_id, employee_number, college_id, description: `Created adviser profile #${result.rows[0].id}` },
+      req,
+    });
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);

@@ -9,6 +9,8 @@ import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
+import { readFileAsDataUrl } from '../data/officerHierarchy.js'
+import { downloadFileFromEndpoint, validateUploadFile } from '../data/fileDownload.js'
 
 const statusTone = {
   PENDING_VERIFICATION: 'warning',
@@ -107,11 +109,13 @@ export default function OfficerReportsPage() {
     const ev = orgEvents.find((e) => String(e.id) === String(eventId))
     if (ev) {
       const parsedDate = ev.startDate || ev.startDatetime || ev.date || ''
+      const dateObj = parsedDate ? new Date(parsedDate) : null
+      const safeDateStr = dateObj && !Number.isNaN(dateObj.getTime()) ? dateObj.toISOString().slice(0, 10) : prev.eventDate
       setReportForm((prev) => ({
         ...prev,
         selectedEventId: eventId,
         title: `${ev.title} — Accomplishment Report`,
-        eventDate: parsedDate ? new Date(parsedDate).toISOString().slice(0, 10) : prev.eventDate,
+        eventDate: safeDateStr,
         attendance: ev.attendedCount || ev.attendance || ev.registeredCount || prev.attendance || '',
         objectives: prev.objectives || ev.description || '',
         venue: ev.venue || ev.location || '',
@@ -144,6 +148,17 @@ export default function OfficerReportsPage() {
     // =========================================================================
 
     try {
+      let fileData = null
+      if (reportForm.file) {
+        const validation = validateUploadFile(reportForm.file)
+        if (!validation.ok) {
+          setFormError(validation.error)
+          setSubmitting(false)
+          return
+        }
+        fileData = await readFileAsDataUrl(reportForm.file)
+      }
+
       const payload = {
         organizationId: organization.id,
         eventId: reportForm.selectedEventId ? Number(reportForm.selectedEventId) : null,
@@ -160,6 +175,7 @@ export default function OfficerReportsPage() {
         recommendations: reportForm.recommendations.trim(),
         summary: (reportForm.results.trim() || reportForm.objectives.trim() || reportForm.summary || '').trim(),
         fileName: reportForm.file ? reportForm.file.name : null,
+        fileData,
       }
 
       let success = false
@@ -200,6 +216,10 @@ export default function OfficerReportsPage() {
   return (
     <div className="officer-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Officer Dashboard', to: '/officer/dashboard' },
+          { label: 'Activity Reports' },
+        ]}
         description={`Review adviser verification decisions, accomplishment reports, and feedback for ${organization.name}.`}
         eyebrow={organization.name}
         title="Activity & Accomplishment Reports"
@@ -319,6 +339,24 @@ export default function OfficerReportsPage() {
                     <Button onClick={() => setSelectedReportForView(report)} size="sm" variant="secondary">
                       <Icon name="document" size={13} /> View Accomplishment Details
                     </Button>
+                    {(report.hasFileData || (report.fileUrl && /^https?:\/\//i.test(report.fileUrl))) && (
+                      <Button
+                        onClick={async () => {
+                          const res = await downloadFileFromEndpoint({
+                            endpoint: `/api/documents/${report.documentId || report.id}/file`,
+                            dataField: 'file_data',
+                            nameField: 'file_name',
+                            fallbackUrlField: 'drive_view_link',
+                            fallbackName: report.fileName || report.supportingDocuments?.[0] || 'accomplishment-report',
+                          })
+                          if (!res.ok) showToast(res.error || 'Unable to download attachment.', 'error')
+                        }}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        Download Attachment
+                      </Button>
+                    )}
                   </div>
                 </div>
               </article>
@@ -466,7 +504,7 @@ export default function OfficerReportsPage() {
           {/* and assign the generated Google Drive webViewLink to `file_url`.          */}
           {/* ========================================================================= */}
           <p className="officer-org-upload-note">
-            Saves this accomplishment report to the PostgreSQL <code>documents</code> table (type: REPORT) and sends an approval verification request to your faculty adviser.
+            Submits this accomplishment report directly to your organization records and notifies your faculty adviser for verification.
           </p>
 
           {formError && <p className="auth-error" role="alert">{formError}</p>}
@@ -536,6 +574,23 @@ export default function OfficerReportsPage() {
             )}
 
             <div className="officer-org-modal-actions" style={{ marginTop: '8px' }}>
+              {(selectedReportForView.hasFileData || (selectedReportForView.fileUrl && /^https?:\/\//i.test(selectedReportForView.fileUrl))) && (
+                <Button
+                  onClick={async () => {
+                    const res = await downloadFileFromEndpoint({
+                      endpoint: `/api/documents/${selectedReportForView.documentId || selectedReportForView.id}/file`,
+                      dataField: 'file_data',
+                      nameField: 'file_name',
+                      fallbackUrlField: 'drive_view_link',
+                      fallbackName: selectedReportForView.fileName || selectedReportForView.supportingDocuments?.[0] || 'accomplishment-report',
+                    })
+                    if (!res.ok) showToast(res.error || 'Unable to download attachment.', 'error')
+                  }}
+                  variant="primary"
+                >
+                  Download Attachment
+                </Button>
+              )}
               <Button onClick={() => setSelectedReportForView(null)} variant="secondary">
                 Close
               </Button>

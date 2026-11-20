@@ -5,11 +5,11 @@
  * Mounts all resource routers and verifies the link to PostgreSQL and
  * ../database/student_org_db.sql on startup.
  */
-const path = require('path');
+const http = require('node:http');
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
-const { testConnection, SCHEMA_PATH, query } = require('./db');
+const { testConnection, SCHEMA_PATH, getDbConfig } = require('./db');
+const { ensureDatabaseReady, formatDatabaseHint } = require('./init-db');
 
 const app = express();
 
@@ -59,37 +59,54 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// Start HTTP server and log database link status
+// Start HTTP server after automatically ensuring PostgreSQL database & schema are ready
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', async () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Linked Database Schema: ${SCHEMA_PATH}`);
 
-  const dbStatus = await testConnection();
-  if (dbStatus.connected) {
-    console.log(`Database Connected: successfully linked to "${dbStatus.database}"`);
-
-    // Ensure default administrator account is immediately available
-    try {
-      const bcrypt = require('bcryptjs');
-      const adminCheck = await query(`SELECT id FROM users WHERE lower(trim(email)) = 'admin@wmsu.edu.ph' LIMIT 1`);
-      if (adminCheck.rows.length === 0) {
-        const adminHash = await bcrypt.hash('admin123', 10);
-        await query(
-          `INSERT INTO users (email, password_hash, first_name, last_name, role, status)
-           VALUES ('admin@wmsu.edu.ph', $1, 'System', 'Administrator', 'ADMIN', 'ACTIVE')
-           ON CONFLICT (email) DO NOTHING`,
-          [adminHash]
-        );
-        console.log('[AUTO-SEED] Default administrator account ready: admin@wmsu.edu.ph (Password: admin123)');
-      }
-    } catch (seedErr) {
-      console.log('[SEED NOTICE] Users table check skipped:', seedErr.message);
+async function startServer() {
+  try {
+    const dbReady = await ensureDatabaseReady({ quietIfReady: true, alwaysSyncSeed: false });
+    console.log(
+      `[AUTO-DB] PostgreSQL database "${dbReady.database}" ready (${dbReady.stats.tables} tables, ${dbReady.stats.organizations} organizations).`
+    );
+  } catch (dbErr) {
+    console.error(`[DATABASE NOTICE] Auto-setup skipped (${dbErr.message}).`);
+    const hint = formatDatabaseHint(dbErr, getDbConfig());
+    if (hint) {
+      console.error(hint);
+    } else {
+      console.error('Run "npm run db:init" once PostgreSQL is ready.');
     }
-  } else {
-    console.log(`Database Notice: Not connected yet (${dbStatus.error}). Run "npm run db:init" once PostgreSQL is ready.`);
   }
-});
+
+  const server = http.createServer(app);
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[SERVER ERROR] Port ${PORT} is already in use. Stop the conflicting process or change PORT in backend/.env.`);
+    } else {
+      console.error(`[SERVER ERROR] Failed to start backend on port ${PORT}:`, err.message);
+    }
+    process.exit(1);
+  });
+
+  server.listen(PORT, '0.0.0.0', async () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Linked Database Schema: ${SCHEMA_PATH}`);
+
+    const dbStatus = await testConnection();
+    if (dbStatus.connected) {
+      console.log(`Database Connected: successfully linked to "${dbStatus.database}"`);
+    } else {
+      console.log(`Database Notice: Not connected yet (${dbStatus.error}).`);
+    }
+  });
+
+  return server;
+}
+
+if (require.main === module) {
+  startServer();
+}
 
 module.exports = app;
 

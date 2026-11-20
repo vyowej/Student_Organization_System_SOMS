@@ -9,6 +9,7 @@ import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { useToast } from '../components/ui/useToast.js'
 import { formatDisplayName } from '../data/displayName.js'
+import { downloadFileFromEndpoint } from '../data/fileDownload.js'
 import {
   OFFICER_HIERARCHY,
   ORGANIZATION_COMMITTEES,
@@ -211,6 +212,10 @@ export default function OfficerMembershipRequestsPage() {
   return (
     <div className="officer-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Officer Dashboard', to: '/officer/dashboard' },
+          { label: 'Officer Applications' },
+        ]}
         description={`Review officer & committee applications for ${organization.name}. Verify uploaded COR files and assign hierarchy roles.`}
         eyebrow={organization.name}
         title="Officer Onboarding Requests"
@@ -230,7 +235,7 @@ export default function OfficerMembershipRequestsPage() {
           <Badge tone="warning">{pending.length} Pending</Badge>
         </div>
 
-        <div className="officer-toolbar-tabs-row officer-announcements-toolbar" style={{ marginTop: '4px', marginBottom: '16px' }}>
+        <div className="officer-toolbar-tabs-row officer-announcements-toolbar">
           <div aria-label="Filter applications" className="officer-request-tabs" role="group">
             {requestFilters.map((filter) => {
               const count =
@@ -280,7 +285,29 @@ export default function OfficerMembershipRequestsPage() {
               <div><dt>Student ID</dt><dd>{selectedRequest.studentId}</dd></div>
               <div><dt>Course / Program</dt><dd>{selectedRequest.program}</dd></div>
               <div><dt>Organization</dt><dd>{selectedRequest.organizationName || organization.name}</dd></div>
-              <div><dt>Certificate of Registration (COR)</dt><dd>{selectedRequest.corFileName || 'On institutional file'}</dd></div>
+              <div>
+                <dt>COR</dt>
+                <dd style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span>{selectedRequest.corFileName || 'On institutional file'}</span>
+                  {selectedRequest.hasCor && (
+                    <Button
+                      onClick={async () => {
+                        const res = await downloadFileFromEndpoint({
+                          endpoint: `/api/members/applications/${selectedRequest.id}/cor`,
+                          dataField: 'cor_file_data',
+                          nameField: 'cor_file_name',
+                          fallbackName: selectedRequest.corFileName || 'COR-document',
+                        })
+                        if (!res.ok) showToast(res.error || 'Unable to download COR file.', 'error')
+                      }}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      Download COR
+                    </Button>
+                  )}
+                </dd>
+              </div>
               <div><dt>Applied</dt><dd>{selectedRequest.applicationDate}</dd></div>
               <div><dt>Status</dt><dd><Badge tone={statusTones[selectedRequest.status]}>{selectedRequest.status}</Badge></dd></div>
               {selectedRequest.decisionDate && <div><dt>Decision Date</dt><dd>{selectedRequest.decisionDate}</dd></div>}

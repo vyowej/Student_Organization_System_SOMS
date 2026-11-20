@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { resolvePositiveInt } = require('../utils');
 const {
   notifyUser,
   notifyAdvisersForOrg,
@@ -50,6 +51,10 @@ const EVENT_SELECT_QUERY = `
          e.supporting_documents,
          e.status,
          e.max_participants,
+         e.target_audience,
+         e.registration_deadline,
+         e.budget,
+         e.review_remarks,
          e.created_by,
          e.approved_by,
          e.approved_at,
@@ -169,7 +174,11 @@ router.get('/', async (req, res) => {
     const params = [];
 
     if (organization_id) {
-      params.push(organization_id);
+      const orgIdNum = resolvePositiveInt(organization_id);
+      if (!orgIdNum) {
+        return res.status(400).json({ error: 'Valid organization_id is required' });
+      }
+      params.push(orgIdNum);
       queryText += ` AND e.organization_id = $${params.length}`;
     }
 
@@ -194,7 +203,10 @@ router.get('/', async (req, res) => {
 // GET /api/events/:id/compliance-file — Retrieve uploaded compliance document metadata & base64 data
 router.get('/:id/compliance-file', async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid event ID is required' });
+    }
     const result = await db.query(
       'SELECT id, title, compliance_file_name, compliance_file_data, supporting_documents FROM events WHERE id = $1',
       [id]
@@ -212,7 +224,10 @@ router.get('/:id/compliance-file', async (req, res) => {
 // GET /api/events/:id — Retrieve a single event by ID
 router.get('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid event ID is required' });
+    }
     const result = await db.query(`${EVENT_SELECT_QUERY} WHERE e.id = $1`, [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Event not found' });
@@ -240,6 +255,11 @@ router.post('/', async (req, res) => {
       end_datetime,
       max_participants,
       capacity,
+      target_audience,
+      targetAudience,
+      registration_deadline,
+      registrationDeadline,
+      budget,
       compliance_file_name,
       complianceFileName,
       compliance_file_data,
@@ -256,24 +276,45 @@ router.post('/', async (req, res) => {
     const resolvedEndDate = end_date || end_datetime;
     const resolvedLocation = location || venue || 'WMSU Campus';
     const resolvedMaxParticipants = max_participants !== undefined ? max_participants : capacity;
-    const resolvedCreatedBy = created_by || user_id || null;
+    const resolvedAudience = target_audience !== undefined ? target_audience : targetAudience;
+    const resolvedDeadline = registration_deadline !== undefined ? registration_deadline : registrationDeadline;
+    const resolvedBudgetNum = budget !== undefined && budget !== null && budget !== '' ? Number(budget) : null;
+    const validBudget = Number.isFinite(resolvedBudgetNum) && resolvedBudgetNum >= 0 ? resolvedBudgetNum : null;
+    const validDeadline = resolvedDeadline && !Number.isNaN(new Date(resolvedDeadline).getTime())
+      ? String(resolvedDeadline).slice(0, 10)
+      : null;
+    const resolvedCreatedBy = resolvePositiveInt(created_by || user_id);
     const rawSupporting = supporting_documents !== undefined ? supporting_documents : supportingDocuments;
     const rawComplianceName = compliance_file_name || complianceFileName || (Array.isArray(rawSupporting) && rawSupporting[0] ? String(rawSupporting[0]).trim() : null);
     const resolvedComplianceData = compliance_file_data || complianceFileData || null;
     const resolvedSupportingDocs = normalizeSupportingDocs(rawSupporting, rawComplianceName);
     const resolvedComplianceName = rawComplianceName || resolvedSupportingDocs[0] || null;
+    const resolvedOrgId = resolvePositiveInt(organization_id);
 
-    if (!organization_id || !resolvedTitle || !resolvedStartDate) {
+    if (!resolvedOrgId || !resolvedTitle || !resolvedStartDate) {
       return res.status(400).json({
-        error: 'organization_id, title, and start_date are required',
+        error: 'Valid organization_id, title, and start_date are required',
       });
     }
 
+    const orgExistsRes = await db.query('SELECT id FROM organizations WHERE id = $1', [resolvedOrgId]);
+    if (orgExistsRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
     const startDateVal = new Date(resolvedStartDate);
-    let endDateVal = resolvedEndDate ? new Date(resolvedEndDate) : new Date(startDateVal.getTime() + 2 * 60 * 60 * 1000);
+    if (Number.isNaN(startDateVal.getTime())) {
+      return res.status(400).json({ error: 'Invalid event start date or time.' });
+    }
+    const endDateVal = resolvedEndDate
+      ? new Date(resolvedEndDate)
+      : new Date(startDateVal.getTime() + 2 * 60 * 60 * 1000);
+    if (Number.isNaN(endDateVal.getTime())) {
+      return res.status(400).json({ error: 'Invalid event end date or time.' });
+    }
     // Matches CHECK (end_date >= start_date) in database/student_org_db.sql
     if (endDateVal < startDateVal) {
-      endDateVal = new Date(startDateVal.getTime() + 60 * 60 * 1000);
+      return res.status(400).json({ error: 'Event end date and time must be on or after the start date and time.' });
     }
 
     const eventStatus = normalizeEventStatus(status);
@@ -283,12 +324,13 @@ router.post('/', async (req, res) => {
       `INSERT INTO events (
         organization_id, title, description, category, location,
         start_date, end_date, max_participants,
+        target_audience, registration_deadline, budget,
         compliance_file_name, compliance_file_data, supporting_documents,
         created_by, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16)
       RETURNING id`,
       [
-        organization_id,
+        resolvedOrgId,
         resolvedTitle,
         description || null,
         category ? String(category).trim() : null,
@@ -296,6 +338,9 @@ router.post('/', async (req, res) => {
         startDateVal.toISOString(),
         endDateVal.toISOString(),
         maxPartVal,
+        resolvedAudience ? String(resolvedAudience).trim() : null,
+        validDeadline,
+        validBudget,
         resolvedComplianceName,
         resolvedComplianceData,
         JSON.stringify(resolvedSupportingDocs),
@@ -309,9 +354,9 @@ router.post('/', async (req, res) => {
     const orgDisplayName = eventRow.organization_name || eventRow.organization_acronym || 'Student Organization';
 
     // If created immediately with PUBLISHED status, notify eligible students & advisers
-    if (['PUBLISHED', 'APPROVED'].includes(eventStatus)) {
+    if (eventStatus === 'PUBLISHED') {
       await notifyStudentsForEvent(eventRow);
-      await notifyAdvisersForOrg(organization_id, {
+      await notifyAdvisersForOrg(resolvedOrgId, {
         type: 'EVENT',
         title: `New Event Published: ${resolvedTitle}`,
         message: `An event "${resolvedTitle}" has been scheduled and published for ${orgDisplayName}.`,
@@ -330,14 +375,14 @@ router.post('/', async (req, res) => {
         entityId: eventRow.id,
         metadata: {
           title: resolvedTitle,
-          organization_id,
+          organization_id: resolvedOrgId,
           description: `Created and published event "${resolvedTitle}" for ${orgDisplayName}`,
         },
         req,
       });
     } else if (eventStatus === 'SUBMITTED') {
       // 1. Notify assigned adviser(s) that an officer submitted an event proposal
-      await notifyAdvisersForOrg(organization_id, {
+      await notifyAdvisersForOrg(resolvedOrgId, {
         type: 'APPROVAL',
         title: `Event Proposal Submitted: ${resolvedTitle}`,
         message: `An officer from ${orgDisplayName} submitted event proposal "${resolvedTitle}" for your review and endorsement.`,
@@ -360,7 +405,7 @@ router.post('/', async (req, res) => {
         entityId: eventRow.id,
         metadata: {
           title: resolvedTitle,
-          organization_id,
+          organization_id: resolvedOrgId,
           status: eventStatus,
           description: `Submitted event proposal "${resolvedTitle}" for ${orgDisplayName}`,
         },
@@ -375,7 +420,7 @@ router.post('/', async (req, res) => {
         entityId: eventRow.id,
         metadata: {
           title: resolvedTitle,
-          organization_id,
+          organization_id: resolvedOrgId,
           status: eventStatus,
           description: `Saved draft event "${resolvedTitle}" for ${orgDisplayName}`,
         },
@@ -386,15 +431,19 @@ router.post('/', async (req, res) => {
     res.status(201).json(eventRow);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // PUT /api/events/:id/publish — Transition an event status to PUBLISHED and notify students
 router.put('/:id/publish', async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid event ID is required.' });
+    }
     const { approved_by } = req.body || {};
+    const safeApprovedBy = resolvePositiveInt(approved_by);
     const result = await db.query(
       `UPDATE events
           SET status = 'PUBLISHED',
@@ -402,7 +451,7 @@ router.put('/:id/publish', async (req, res) => {
               approved_at = COALESCE(approved_at, now())
         WHERE id = $1
         RETURNING id`,
-      [id, approved_by || null]
+      [id, safeApprovedBy]
     );
 
     if (result.rows.length === 0) {
@@ -432,7 +481,7 @@ router.put('/:id/publish', async (req, res) => {
     });
 
     await recordAuditLog({
-      userId: approved_by || null,
+      userId: safeApprovedBy,
       action: 'PUBLISH_EVENT',
       entity: 'events',
       entityId: eventRow.id,
@@ -454,8 +503,12 @@ router.put('/:id/publish', async (req, res) => {
 // PUT /api/events/:id/status — Transition event status (APPROVED, PUBLISHED, REJECTED, CANCELLED)
 router.put('/:id/status', async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid event ID is required.' });
+    }
     const { status, approved_by, is_published, review_remarks } = req.body || {};
+    const safeApprovedBy = resolvePositiveInt(approved_by);
 
     let targetStatus = status ? normalizeEventStatus(status) : 'APPROVED';
     if (is_published || status === 'PUBLISHED') {
@@ -472,9 +525,10 @@ router.put('/:id/status', async (req, res) => {
       `UPDATE events
           SET status = $2::event_status,
               approved_by = COALESCE($3, approved_by),
-              approved_at = CASE WHEN $2::text IN ('APPROVED', 'PUBLISHED') THEN COALESCE(approved_at, now()) ELSE approved_at END
+              approved_at = CASE WHEN $2::text IN ('APPROVED', 'PUBLISHED') THEN COALESCE(approved_at, now()) ELSE approved_at END,
+              review_remarks = CASE WHEN $4::text IS NOT NULL AND $4::text != '' THEN $4 ELSE review_remarks END
         WHERE id = $1`,
-      [id, targetStatus, approved_by || null]
+      [id, targetStatus, safeApprovedBy, review_remarks ? String(review_remarks).trim() : null]
     );
 
     const fullEvent = await db.query(`${EVENT_SELECT_QUERY} WHERE e.id = $1`, [id]);
@@ -497,7 +551,7 @@ router.put('/:id/status', async (req, res) => {
         message: `Event "${eventRow.title}" for ${orgDisplayName} is now published on the portal.`,
       });
       await recordAuditLog({
-        userId: approved_by || null,
+        userId: safeApprovedBy,
         action: 'PUBLISH_EVENT',
         entity: 'events',
         entityId: eventRow.id,
@@ -509,7 +563,6 @@ router.put('/:id/status', async (req, res) => {
         req,
       });
     } else if (targetStatus === 'APPROVED' && current.status !== 'APPROVED') {
-      await notifyStudentsForEvent(eventRow);
       // 1. Notify officer that adviser endorsed the event proposal
       if (eventRow.created_by) {
         await notifyUser(eventRow.created_by, {
@@ -525,7 +578,7 @@ router.put('/:id/status', async (req, res) => {
         message: `Faculty adviser endorsed event proposal "${eventRow.title}" for ${orgDisplayName}. Awaiting admin review.`,
       });
       await recordAuditLog({
-        userId: approved_by || null,
+        userId: safeApprovedBy || null,
         action: 'ENDORSE_EVENT',
         entity: 'events',
         entityId: eventRow.id,
@@ -546,7 +599,7 @@ router.put('/:id/status', async (req, res) => {
         });
       }
       await recordAuditLog({
-        userId: approved_by || null,
+        userId: safeApprovedBy || null,
         action: 'RETURN_EVENT',
         entity: 'events',
         entityId: eventRow.id,
@@ -564,14 +617,17 @@ router.put('/:id/status', async (req, res) => {
     res.json(eventRow);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // PUT /api/events/:id — Update event information, approval metadata, or status
 router.put('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid event ID is required.' });
+    }
     const {
       title,
       description,
@@ -584,6 +640,11 @@ router.put('/:id', async (req, res) => {
       end_datetime,
       max_participants,
       capacity,
+      target_audience,
+      targetAudience,
+      registration_deadline,
+      registrationDeadline,
+      budget,
       compliance_file_name,
       complianceFileName,
       compliance_file_data,
@@ -607,15 +668,31 @@ router.put('/:id', async (req, res) => {
     const inputMax = max_participants !== undefined ? max_participants : capacity;
 
     const nextStart = inputStart ? new Date(inputStart) : new Date(current.start_date);
-    let nextEnd = inputEnd ? new Date(inputEnd) : new Date(current.end_date);
+    if (Number.isNaN(nextStart.getTime())) {
+      return res.status(400).json({ error: 'Invalid event start date or time.' });
+    }
+    const nextEnd = inputEnd ? new Date(inputEnd) : new Date(current.end_date);
+    if (Number.isNaN(nextEnd.getTime())) {
+      return res.status(400).json({ error: 'Invalid event end date or time.' });
+    }
     if (nextEnd < nextStart) {
-      nextEnd = new Date(nextStart.getTime() + 60 * 60 * 1000);
+      return res.status(400).json({ error: 'Event end date and time must be on or after the start date and time.' });
     }
 
     const nextStatus = status ? normalizeEventStatus(status) : current.status;
     const nextMaxPart = inputMax !== undefined
       ? (inputMax && Number(inputMax) > 0 ? Number(inputMax) : null)
       : current.max_participants;
+    const rawAud = target_audience !== undefined ? target_audience : targetAudience;
+    const nextAudience = rawAud !== undefined ? (rawAud ? String(rawAud).trim() : null) : current.target_audience;
+    const rawDeadline = registration_deadline !== undefined ? registration_deadline : registrationDeadline;
+    const nextDeadline = rawDeadline !== undefined
+      ? (rawDeadline && !Number.isNaN(new Date(rawDeadline).getTime()) ? String(rawDeadline).slice(0, 10) : null)
+      : current.registration_deadline;
+    const nextBudget = budget !== undefined
+      ? (budget !== null && budget !== '' && Number.isFinite(Number(budget)) ? Number(budget) : null)
+      : current.budget;
+    const nextRemarks = nextStatus === 'SUBMITTED' && current.status === 'DRAFT' ? null : current.review_remarks;
 
     const rawComplianceName = compliance_file_name !== undefined ? compliance_file_name : complianceFileName;
     const rawComplianceData = compliance_file_data !== undefined ? compliance_file_data : complianceFileData;
@@ -624,14 +701,17 @@ router.put('/:id', async (req, res) => {
     const nextComplianceName = rawComplianceName !== undefined
       ? (rawComplianceName ? String(rawComplianceName).trim() : null)
       : current.compliance_file_name;
-    const nextComplianceData = rawComplianceData !== undefined
-      ? (rawComplianceData || null)
-      : current.compliance_file_data;
+    // Preserve stored file bytes on metadata edits unless replaced or cleared
+    const nextComplianceData = rawComplianceData
+      ? rawComplianceData
+      : (!nextComplianceName || nextComplianceName !== current.compliance_file_name
+        ? null
+        : current.compliance_file_data);
     const nextSupportingDocs = (rawSupporting !== undefined || rawComplianceName !== undefined)
       ? normalizeSupportingDocs(rawSupporting !== undefined ? rawSupporting : current.supporting_documents, nextComplianceName)
       : (Array.isArray(current.supporting_documents) ? current.supporting_documents : []);
 
-    const nextApprovedBy = approved_by !== undefined ? approved_by : current.approved_by;
+    const nextApprovedBy = approved_by !== undefined ? resolvePositiveInt(approved_by) : current.approved_by;
     const nextApprovedAt = approved_at !== undefined
       ? approved_at
       : (['APPROVED', 'PUBLISHED'].includes(nextStatus) && !current.approved_at ? new Date().toISOString() : current.approved_at);
@@ -645,12 +725,16 @@ router.put('/:id', async (req, res) => {
               start_date = $6,
               end_date = $7,
               max_participants = $8,
-              compliance_file_name = $9,
-              compliance_file_data = $10,
-              supporting_documents = $11::jsonb,
-              status = $12::event_status,
-              approved_by = $13,
-              approved_at = $14,
+              target_audience = $9,
+              registration_deadline = $10,
+              budget = $11,
+              review_remarks = $12,
+              compliance_file_name = $13,
+              compliance_file_data = $14,
+              supporting_documents = $15::jsonb,
+              status = $16::event_status,
+              approved_by = $17,
+              approved_at = $18,
               updated_at = now()
         WHERE id = $1`,
       [
@@ -662,6 +746,10 @@ router.put('/:id', async (req, res) => {
         nextStart.toISOString(),
         nextEnd.toISOString(),
         nextMaxPart,
+        nextAudience,
+        nextDeadline,
+        nextBudget,
+        nextRemarks,
         nextComplianceName,
         nextComplianceData,
         JSON.stringify(nextSupportingDocs),
@@ -675,7 +763,7 @@ router.put('/:id', async (req, res) => {
     const eventRow = fullEvent.rows[0];
 
     // If transitioned to PUBLISHED, notify students, officer, adviser
-    if (['PUBLISHED', 'APPROVED'].includes(nextStatus) && !['PUBLISHED', 'APPROVED'].includes(current.status)) {
+    if (nextStatus === 'PUBLISHED' && current.status !== 'PUBLISHED') {
       await notifyStudentsForEvent(eventRow);
       if (eventRow.created_by) {
         await notifyUser(eventRow.created_by, {
@@ -706,7 +794,7 @@ router.put('/:id', async (req, res) => {
     }
 
     await recordAuditLog({
-      userId: approved_by || req.body?.user_id || req.body?.updated_by || eventRow.created_by || null,
+      userId: resolvePositiveInt(approved_by || req.body?.user_id || req.body?.updated_by) || eventRow.created_by || null,
       action: nextStatus !== current.status ? 'UPDATE_EVENT_STATUS' : 'UPDATE_EVENT',
       entity: 'events',
       entityId: eventRow.id,
@@ -725,33 +813,37 @@ router.put('/:id', async (req, res) => {
     res.json(eventRow);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // DELETE /api/events/:id — Delete an event
 router.delete('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid event ID is required.' });
+    }
     const existing = await db.query('SELECT title, organization_id, created_by FROM events WHERE id = $1', [id]);
     const eventData = existing.rows[0];
+    if (!eventData) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
 
     await db.query('DELETE FROM events WHERE id = $1', [id]);
 
-    if (eventData) {
-      await recordAuditLog({
-        userId: req.body?.user_id || req.query?.user_id || null,
-        action: 'DELETE_EVENT',
-        entity: 'events',
-        entityId: id,
-        metadata: {
-          title: eventData.title,
-          organization_id: eventData.organization_id,
-          description: `Deleted event "${eventData.title}"`,
-        },
-        req,
-      });
-    }
+    await recordAuditLog({
+      userId: resolvePositiveInt(req.body?.user_id || req.query?.user_id),
+      action: 'DELETE_EVENT',
+      entity: 'events',
+      entityId: id,
+      metadata: {
+        title: eventData.title,
+        organization_id: eventData.organization_id,
+        description: `Deleted event "${eventData.title}"`,
+      },
+      req,
+    });
 
     res.json({ deleted: true });
   } catch (err) {

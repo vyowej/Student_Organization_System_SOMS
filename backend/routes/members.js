@@ -8,6 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { resolvePositiveInt } = require('../utils');
 const {
   notifyUser,
   notifyAdvisersForOrg,
@@ -147,6 +148,7 @@ const MEMBER_SELECT_QUERY = `
          s.program_id,
          s.year_level,
          s.cor_file_name,
+         (s.cor_file_data IS NOT NULL AND s.cor_file_data != '') AS has_cor,
          u.first_name,
          u.middle_name,
          u.last_name,
@@ -216,10 +218,13 @@ router.get('/', async (req, res) => {
 // GET /api/members/org/:organization_id — List members and officers for an organization ordered by position hierarchy
 router.get('/org/:organization_id', async (req, res) => {
   try {
-    const { organization_id } = req.params;
+    const organizationId = resolvePositiveInt(req.params.organization_id);
+    if (!organizationId) {
+      return res.status(400).json({ error: 'Valid organization_id is required' });
+    }
     const { status } = req.query;
     let queryText = `${MEMBER_SELECT_QUERY} WHERE om.organization_id = $1`;
-    const params = [organization_id];
+    const params = [organizationId];
 
     if (status) {
       params.push(String(status).toUpperCase());
@@ -274,8 +279,9 @@ router.post('/', async (req, res) => {
     const { organization_id, student_id, user_id, position, custom_title, committee } = req.body;
     const resolvedStudentId = await resolveStudentDbId(student_id || user_id);
 
-    if (!organization_id || !resolvedStudentId) {
-      return res.status(400).json({ error: 'organization_id and a valid student_id are required' });
+    const orgIdNum = resolvePositiveInt(organization_id);
+    if (!orgIdNum || !resolvedStudentId) {
+      return res.status(400).json({ error: 'Valid organization_id and student_id are required' });
     }
 
     const { position: memberPosition, custom_title: customTitle } = normalizePositionAndTitle(position, custom_title);
@@ -293,7 +299,7 @@ router.post('/', async (req, res) => {
                      status = 'ACTIVE',
                      left_at = NULL
        RETURNING id`,
-      [organization_id, resolvedStudentId, memberPosition, customTitle, resolvedCommittee]
+      [orgIdNum, resolvedStudentId, memberPosition, customTitle, resolvedCommittee]
     );
 
     const fullRow = await db.query(`${MEMBER_SELECT_QUERY} WHERE om.id = $1`, [insertRes.rows[0].id]);
@@ -329,21 +335,31 @@ router.post('/', async (req, res) => {
     if (err.message && err.message.includes('Student is not eligible')) {
       return res.status(403).json({ error: err.message });
     }
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // PUT /api/members/:id/position — Update an officer's position, committee, custom title, or status (including Demote)
 router.put('/:id/position', async (req, res) => {
+  const id = resolvePositiveInt(req.params.id);
+  if (!id) {
+    return res.status(400).json({ error: 'Valid membership ID is required.' });
+  }
+  const client = await db.pool.connect();
   try {
-    const { id } = req.params;
-    const { position, custom_title, committee, status, action_type } = req.body;
+    const { position, custom_title, committee, status, action_type } = req.body || {};
 
-    const existingRes = await db.query('SELECT * FROM organization_members WHERE id = $1', [id]);
+    await client.query('BEGIN');
+
+    const existingRes = await client.query('SELECT * FROM organization_members WHERE id = $1 FOR UPDATE', [id]);
     if (existingRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Membership record not found' });
     }
     const current = existingRes.rows[0];
+
+    // Lock parent organization row so concurrent single-seat promotions serialize cleanly
+    await client.query('SELECT id FROM organizations WHERE id = $1 FOR UPDATE', [current.organization_id]);
 
     let nextPosition = current.position;
     let nextCustomTitle = current.custom_title;
@@ -370,34 +386,21 @@ router.put('/:id/position', async (req, res) => {
 
     // If assigning a single-seat officer position, reassign previous active holder to Committee Member
     if (nextStatus === 'ACTIVE' && SINGLE_SEAT_ROLES.includes(nextPosition)) {
-      const prevHolders = await db.query(
-        `SELECT om.id, om.student_id, s.user_id
-           FROM organization_members om
-           JOIN students s ON s.id = om.student_id
-          WHERE om.organization_id = $1
-            AND om.position = $2
-            AND om.status = 'ACTIVE'
-            AND om.id != $3`,
+      await client.query(
+        `UPDATE organization_members
+            SET position = 'MEMBER',
+                custom_title = NULL
+          WHERE organization_id = $1
+            AND position = $2
+            AND id != $3
+            AND status = 'ACTIVE'`,
         [current.organization_id, nextPosition, id]
       );
-
-      if (prevHolders.rows.length > 0) {
-        await db.query(
-          `UPDATE organization_members
-              SET position = 'MEMBER',
-                  custom_title = NULL
-            WHERE organization_id = $1
-              AND position = $2
-              AND id != $3
-              AND status = 'ACTIVE'`,
-          [current.organization_id, nextPosition, id]
-        );
-      }
     }
 
     const nextLeftAt = nextStatus === 'INACTIVE' ? new Date() : (nextStatus === 'ACTIVE' ? null : current.left_at);
 
-    await db.query(
+    await client.query(
       `UPDATE organization_members
           SET position = $2,
               custom_title = $3,
@@ -408,16 +411,18 @@ router.put('/:id/position', async (req, res) => {
       [id, nextPosition, nextCustomTitle, nextCommittee, nextStatus, nextLeftAt]
     );
 
-    const stdRes = await db.query('SELECT user_id FROM students WHERE id = $1', [current.student_id]);
+    const stdRes = await client.query('SELECT user_id FROM students WHERE id = $1', [current.student_id]);
     if (stdRes.rows.length > 0) {
-      await db.query(
+      await client.query(
         `UPDATE users SET role = 'OFFICER'::user_role WHERE id = $1 AND role = 'STUDENT'`,
         [stdRes.rows[0].user_id]
       );
     }
 
-    const fullRow = await db.query(`${MEMBER_SELECT_QUERY} WHERE om.id = $1`, [id]);
+    const fullRow = await client.query(`${MEMBER_SELECT_QUERY} WHERE om.id = $1`, [id]);
     const memRow = fullRow.rows[0];
+
+    await client.query('COMMIT');
 
     const isDemotion = action_type === 'DEMOTE' || (current.position !== 'MEMBER' && nextPosition === 'MEMBER');
     if (memRow) {
@@ -427,7 +432,7 @@ router.put('/:id/position', async (req, res) => {
         message: `Officer role for "${memRow.name}" in ${memRow.organization_name || 'organization'} was updated to ${nextCustomTitle || nextPosition}${nextCommittee ? ` (${nextCommittee})` : ''} [${nextStatus}].`,
       });
       await recordAuditLog({
-        userId: req.body?.user_id || req.body?.updated_by || null,
+        userId: resolvePositiveInt(req.body?.user_id || req.body?.updated_by),
         action: isDemotion ? 'DEMOTE_OFFICER' : 'UPDATE_MEMBER_ROLE',
         entity: 'organization_members',
         entityId: id,
@@ -446,15 +451,21 @@ router.put('/:id/position', async (req, res) => {
 
     res.json(memRow);
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
   }
 });
 
 // DELETE /api/members/:id — Remove an officer/member from the organization and set left_at timestamp
 router.delete('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid membership ID is required.' });
+    }
     const fullBefore = await db.query(`${MEMBER_SELECT_QUERY} WHERE om.id = $1`, [id]);
     const memRow = fullBefore.rows[0];
 
@@ -474,7 +485,7 @@ router.delete('/:id', async (req, res) => {
     }
 
     await recordAuditLog({
-      userId: req.body?.user_id || req.body?.removed_by || req.query?.user_id || null,
+      userId: resolvePositiveInt(req.body?.user_id || req.body?.removed_by || req.query?.user_id),
       action: 'REMOVE_OFFICER',
       entity: 'organization_members',
       entityId: id,
@@ -548,8 +559,12 @@ router.get('/applications', async (req, res) => {
       params.push(resolvedId || -1);
       queryText += ` AND oa.applicant_id = $${params.length}`;
     }
-    if (organization_id) {
-      params.push(organization_id);
+    if (organization_id !== undefined && organization_id !== '') {
+      const orgId = resolvePositiveInt(organization_id);
+      if (!orgId) {
+        return res.status(400).json({ error: 'Valid organization ID is required.' });
+      }
+      params.push(orgId);
       queryText += ` AND oa.organization_id = $${params.length}`;
     }
 
@@ -566,12 +581,15 @@ router.get('/applications', async (req, res) => {
 // GET /api/members/applications/org/:organization_id — List membership applications for an organization
 router.get('/applications/org/:organization_id', async (req, res) => {
   try {
-    const { organization_id } = req.params;
+    const organizationId = resolvePositiveInt(req.params.organization_id);
+    if (!organizationId) {
+      return res.status(400).json({ error: 'Valid organization ID is required.' });
+    }
     const result = await db.query(
       `${APPLICATION_SELECT_QUERY}
         WHERE oa.organization_id = $1
         ORDER BY oa.created_at DESC`,
-      [organization_id]
+      [organizationId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -587,7 +605,7 @@ router.post('/applications', async (req, res) => {
     const rawOrgId = typeof organization_id === 'object' && organization_id !== null
       ? (organization_id.id || organization_id.organization_id || organization_id.organizationId)
       : organization_id;
-    const orgIdNum = Number(rawOrgId);
+    const orgIdNum = resolvePositiveInt(rawOrgId);
 
     const resolvedApplicantId = await resolveStudentDbId(applicant_id || student_id || user_id);
 
@@ -669,32 +687,38 @@ router.post('/applications', async (req, res) => {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'You already have a pending application for this organization' });
     }
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // PUT /api/members/applications/:id/review — Approve, reject, or cancel a membership application
 router.put('/applications/:id/review', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, reviewed_by, review_remarks, reason, position, custom_title } = req.body;
-    const normalizedStatus = String(status || '').toUpperCase();
+  const id = resolvePositiveInt(req.params.id);
+  if (!id) {
+    return res.status(400).json({ error: 'Valid application ID is required.' });
+  }
+  const { status, reviewed_by, review_remarks, reason, position, custom_title } = req.body || {};
+  const normalizedStatus = String(status || '').toUpperCase();
 
-    if (!['APPROVED', 'REJECTED', 'CANCELLED'].includes(normalizedStatus)) {
-      return res.status(400).json({ error: "status must be 'APPROVED', 'REJECTED', or 'CANCELLED'" });
-    }
+  if (!['APPROVED', 'REJECTED', 'CANCELLED'].includes(normalizedStatus)) {
+    return res.status(400).json({ error: "status must be 'APPROVED', 'REJECTED', or 'CANCELLED'" });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
 
     let reviewerId = null;
     if (reviewed_by) {
       const numId = Number(reviewed_by);
       if (Number.isInteger(numId) && numId > 0) {
-        const u = await db.query('SELECT id FROM users WHERE id = $1', [numId]);
+        const u = await client.query('SELECT id FROM users WHERE id = $1', [numId]);
         if (u.rows.length > 0) reviewerId = numId;
       }
     }
     const remarks = review_remarks || reason || null;
 
-    const appResult = await db.query(
+    const appResult = await client.query(
       `UPDATE organization_applications
           SET status = $2,
               reviewed_by = $3,
@@ -706,10 +730,12 @@ router.put('/applications/:id/review', async (req, res) => {
     );
 
     if (appResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Application not found' });
     }
 
     const app = appResult.rows[0];
+    await client.query('SELECT id FROM organizations WHERE id = $1 FOR UPDATE', [app.organization_id]);
 
     let memberRecord = null;
     if (normalizedStatus === 'APPROVED') {
@@ -719,7 +745,7 @@ router.put('/applications/:id/review', async (req, res) => {
         : (DEFAULT_POSITION_COMMITTEES[assignedPos.position] || null);
 
       if (SINGLE_SEAT_ROLES.includes(assignedPos.position)) {
-        await db.query(
+        await client.query(
           `UPDATE organization_members
               SET position = 'MEMBER',
                   custom_title = NULL
@@ -731,7 +757,7 @@ router.put('/applications/:id/review', async (req, res) => {
         );
       }
 
-      const memRes = await db.query(
+      const memRes = await client.query(
         `INSERT INTO organization_members (organization_id, student_id, position, custom_title, committee, status)
          VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
          ON CONFLICT (organization_id, student_id)
@@ -743,20 +769,22 @@ router.put('/applications/:id/review', async (req, res) => {
          RETURNING id`,
         [app.organization_id, app.applicant_id, assignedPos.position, assignedPos.custom_title, assignedCommittee]
       );
-      const fullMem = await db.query(`${MEMBER_SELECT_QUERY} WHERE om.id = $1`, [memRes.rows[0].id]);
+      const fullMem = await client.query(`${MEMBER_SELECT_QUERY} WHERE om.id = $1`, [memRes.rows[0].id]);
       memberRecord = fullMem.rows[0] || null;
 
-      const stdRes = await db.query('SELECT user_id FROM students WHERE id = $1', [app.applicant_id]);
+      const stdRes = await client.query('SELECT user_id FROM students WHERE id = $1', [app.applicant_id]);
       if (stdRes.rows.length > 0) {
-        await db.query(
+        await client.query(
           `UPDATE users SET role = 'OFFICER'::user_role WHERE id = $1 AND role = 'STUDENT'`,
           [stdRes.rows[0].user_id]
         );
       }
     }
 
-    const fullApp = await db.query(`${APPLICATION_SELECT_QUERY} WHERE oa.id = $1`, [id]);
+    const fullApp = await client.query(`${APPLICATION_SELECT_QUERY} WHERE oa.id = $1`, [id]);
     const reviewedApp = fullApp.rows[0];
+
+    await client.query('COMMIT');
 
     // 1. Dispatch notification to the applicant regarding application decision
     if (reviewedApp?.user_id) {
@@ -812,11 +840,66 @@ router.put('/applications/:id/review', async (req, res) => {
       member: memberRecord,
     });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error(err);
     if (err.message && err.message.includes('Student is not eligible')) {
       return res.status(403).json({ error: err.message });
     }
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/members/applications/:id/cor — Retrieve uploaded COR file for a membership application
+router.get('/applications/:id/cor', async (req, res) => {
+  try {
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid application ID is required.' });
+    }
+    const result = await db.query(
+      `SELECT oa.id,
+              COALESCE(oa.cor_file_name, s.cor_file_name) AS cor_file_name,
+              COALESCE(oa.cor_file_data, s.cor_file_data) AS cor_file_data
+         FROM organization_applications oa
+         JOIN students s ON s.id = oa.applicant_id
+        WHERE oa.id = $1`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/members/:id/cor — Retrieve stored COR file for an organization member
+router.get('/:id/cor', async (req, res) => {
+  try {
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid membership ID is required.' });
+    }
+    const result = await db.query(
+      `SELECT om.id, s.cor_file_name, s.cor_file_data
+         FROM organization_members om
+         JOIN students s ON s.id = om.student_id
+        WHERE om.id = $1 OR om.student_id = $1
+        ORDER BY CASE WHEN om.id = $1 THEN 0 ELSE 1 END
+        LIMIT 1`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Member record not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

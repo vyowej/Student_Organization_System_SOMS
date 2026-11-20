@@ -382,7 +382,7 @@ export function CalendarOfEvents({ events = [], organizationName = 'Organization
               <div><dt>Date</dt><dd>{selectedEvent.date}</dd></div>
               <div><dt>Time</dt><dd>{selectedEvent.time || selectedEvent.startTime || 'Not provided'}</dd></div>
               <div><dt>Venue</dt><dd>{selectedEvent.location || selectedEvent.venue || 'Not provided'}</dd></div>
-              <div><dt>Participant Limit</dt><dd>{selectedEvent.registrations ?? 0} / {selectedEvent.capacity ?? 100}</dd></div>
+              <div><dt>Participant Limit</dt><dd>{selectedEvent.capacity ? `${selectedEvent.registrations ?? 0} / ${selectedEvent.capacity}` : `${selectedEvent.registrations ?? 0} registered · Open capacity`}</dd></div>
               <div><dt>Compliance File</dt><dd>{selectedEvent.complianceFileName || selectedEvent.supportingDocuments?.[0] || 'None attached'}</dd></div>
               <div><dt>Approval Status</dt><dd>{(selectedEvent.status || 'SUBMITTED').replaceAll('_', ' ')}</dd></div>
             </dl>
@@ -517,6 +517,10 @@ export function AdviserOrganizationsPage() {
             </div>
           ) : null
         }
+        breadcrumbs={[
+          { label: 'Adviser Dashboard', to: '/adviser/dashboard' },
+          { label: showAllCampus && canManageAdvisers ? 'Campus Organizations & Advisers' : 'My Organizations' },
+        ]}
         description={
           canManageAdvisers
             ? 'Coordinator & Admin Access: View organizations and prepare faculty adviser accounts beforehand.'
@@ -576,13 +580,13 @@ export function AdviserOrganizationsPage() {
         title="Prepare Faculty Adviser Account"
       >
         <form className="admin-settings-form" onSubmit={handlePrepareAdviser}>
-          <p style={{ margin: 0, fontSize: '13px', color: '#5c5560' }}>
+          <p className="modal-lead-copy">
             Pre-generate a Faculty Adviser account and optionally link it directly to an organization so the adviser can sign in immediately.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
+          <div className="admin-modal-two-col">
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="adv-prep-first">
-                First Name <span className="required-asterisk">*</span>
+                First Name <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <input
                 className="input"
@@ -594,9 +598,9 @@ export function AdviserOrganizationsPage() {
                 value={prepareForm.firstName}
               />
             </div>
-            <div>
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="adv-prep-last">
-                Last Name <span className="required-asterisk">*</span>
+                Last Name <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <input
                 className="input"
@@ -610,10 +614,10 @@ export function AdviserOrganizationsPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '12px' }}>
-            <div>
+          <div className="admin-modal-two-col">
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="adv-prep-email">
-                Official WMSU Email <span className="required-asterisk">*</span>
+                Official WMSU Email <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <input
                 className="input"
@@ -625,7 +629,7 @@ export function AdviserOrganizationsPage() {
                 value={prepareForm.email}
               />
             </div>
-            <div>
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="adv-prep-emp">
                 Employee Number
               </label>
@@ -640,8 +644,8 @@ export function AdviserOrganizationsPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
+          <div className="admin-modal-two-col">
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="adv-prep-dept">
                 Department (optional)
               </label>
@@ -657,9 +661,9 @@ export function AdviserOrganizationsPage() {
                 ))}
               </select>
             </div>
-            <div>
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="adv-prep-pwd">
-                Initial Password <span className="required-asterisk">*</span>
+                Initial Password <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <input
                 className="input"
@@ -736,7 +740,15 @@ export function AdviserOrganizationDetailsPage() {
   if (!organization) {
     return (
       <div className="adviser-page">
-        <PageHeader eyebrow="UNIDOS · FACULTY ADVISER" title="Organization not found" />
+        <PageHeader
+          breadcrumbs={[
+            { label: 'Adviser Dashboard', to: '/adviser/dashboard' },
+            { label: 'My Organizations', to: '/adviser/organizations' },
+            { label: 'Organization not found' },
+          ]}
+          eyebrow="UNIDOS · FACULTY ADVISER"
+          title="Organization not found"
+        />
         <EmptyState description="This organization could not be located." title="No access to organization" />
       </div>
     )
@@ -759,6 +771,11 @@ export function AdviserOrganizationDetailsPage() {
   return (
     <div className="adviser-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Adviser Dashboard', to: '/adviser/dashboard' },
+          { label: 'My Organizations', to: '/adviser/organizations' },
+          { label: organization.name },
+        ]}
         description={`${organization.acronym} · ${organization.category} · ${organization.status}`}
         eyebrow="ORGANIZATION GOVERNANCE"
         title={organization.name}

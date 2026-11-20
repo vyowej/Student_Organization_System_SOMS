@@ -13,6 +13,7 @@ try {
   bcrypt = require('bcryptjs');
 }
 const db = require('../db');
+const { resolvePositiveInt } = require('../utils');
 const {
   notifyUser,
   notifyAdmins,
@@ -160,6 +161,8 @@ router.post('/', async (req, res) => {
       employeeNumber,
       college_id,
       collegeId,
+      department_id,
+      departmentId,
       organization_id,
       organizationId,
       is_coordinator,
@@ -180,8 +183,14 @@ router.post('/', async (req, res) => {
 
     const rawPassword = String(password || 'adviser123').trim() || 'adviser123';
     const passwordHash = await bcrypt.hash(rawPassword, 10);
-    const targetCollegeId = (college_id || collegeId) ? Number(college_id || collegeId) : null;
-    const targetOrgId = (organization_id || organizationId) ? Number(organization_id || organizationId) : null;
+    let targetCollegeId = resolvePositiveInt(college_id || collegeId);
+    const targetDeptId = resolvePositiveInt(department_id || departmentId);
+    if (!targetCollegeId && targetDeptId) {
+      const deptRes = await client.query('SELECT college_id FROM departments WHERE id = $1', [targetDeptId]);
+      targetCollegeId = deptRes.rows[0]?.college_id || null;
+    }
+    const targetOrgId = resolvePositiveInt(organization_id || organizationId);
+    const safeCreatedBy = resolvePositiveInt(created_by);
     const coordinatorFlag = Boolean(is_coordinator ?? isCoordinator ?? false);
 
     await client.query('BEGIN');
@@ -224,7 +233,7 @@ router.post('/', async (req, res) => {
       await client.query(
         `INSERT INTO organization_advisers (organization_id, adviser_id, assigned_by, assigned_at)
          VALUES ($1, $2, $3, now())`,
-        [targetOrgId, adviserId, created_by || null]
+        [targetOrgId, adviserId, safeCreatedBy]
       );
       const oRes = await client.query('SELECT name FROM organizations WHERE id = $1', [targetOrgId]);
       assignedOrgName = oRes.rows[0]?.name || null;
@@ -233,7 +242,7 @@ router.post('/', async (req, res) => {
     await client.query('COMMIT');
 
     await recordAuditLog({
-      userId: created_by || null,
+      userId: safeCreatedBy,
       action: 'PREGENERATE_ADVISER_ACCOUNT',
       entity: 'advisers',
       entityId: adviserId,
@@ -264,7 +273,7 @@ router.post('/', async (req, res) => {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'An adviser account with that email or employee number already exists.' });
     }
-    res.status(500).json({ error: err.message || 'Server error creating adviser account' });
+    res.status(500).json({ error: 'Server error creating adviser account' });
   } finally {
     client.release();
   }
@@ -338,7 +347,7 @@ router.post('/pregenerate-missing', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error pre-generating adviser accounts' });
+    res.status(500).json({ error: 'Server error pre-generating adviser accounts' });
   } finally {
     client.release();
   }
@@ -346,58 +355,78 @@ router.post('/pregenerate-missing', async (req, res) => {
 
 // POST /api/advisers/assign — End any current adviser assignment (uq_one_current_adviser) and assign a new one
 router.post('/assign', async (req, res) => {
-  try {
-    const { organization_id, adviser_id, assigned_by } = req.body;
+  const { organization_id, adviser_id, assigned_by } = req.body;
+  const orgIdNum = Number(organization_id);
+  const advIdNum = Number(adviser_id);
+  const assignedByNum = Number(assigned_by);
+  const safeAssignedBy = Number.isInteger(assignedByNum) && assignedByNum > 0 ? assignedByNum : null;
 
-    if (!organization_id || !adviser_id) {
-      return res.status(400).json({ error: 'organization_id and adviser_id are required' });
+  if (!Number.isInteger(orgIdNum) || orgIdNum <= 0 || !Number.isInteger(advIdNum) || advIdNum <= 0) {
+    return res.status(400).json({ error: 'Valid organization_id and adviser_id are required' });
+  }
+
+  let client;
+  try {
+    const infoRes = await db.query(
+      `SELECT a.user_id, o.name AS organization_name
+         FROM advisers a
+         JOIN organizations o ON o.id = $2
+        WHERE a.id = $1`,
+      [advIdNum, orgIdNum]
+    );
+    if (infoRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Organization or adviser not found' });
     }
+    const { user_id, organization_name } = infoRes.rows[0];
+
+    client = await db.pool.connect();
+    await client.query('BEGIN');
 
     // Close existing active adviser assignment so uq_one_current_adviser is satisfied
-    await db.query(
+    await client.query(
       `UPDATE organization_advisers
           SET ended_at = now()
         WHERE organization_id = $1 AND ended_at IS NULL`,
-      [organization_id]
+      [orgIdNum]
     );
 
-    const result = await db.query(
+    const result = await client.query(
       `INSERT INTO organization_advisers (organization_id, adviser_id, assigned_by, assigned_at)
        VALUES ($1, $2, $3, now())
        RETURNING *`,
-      [organization_id, adviser_id, assigned_by || null]
+      [orgIdNum, advIdNum, safeAssignedBy]
     );
 
-    // Look up adviser user_id and organization name
-    const infoRes = await db.query(
-      `SELECT a.user_id, o.name AS organization_name
-         FROM advisers a, organizations o
-        WHERE a.id = $1 AND o.id = $2`,
-      [adviser_id, organization_id]
-    );
-    if (infoRes.rows.length > 0) {
-      const { user_id, organization_name } = infoRes.rows[0];
+    await client.query('COMMIT');
+    client.release();
+    client = null;
+
+    if (user_id) {
       await notifyUser(user_id, {
         type: 'ADVISER',
         title: `Assigned as Faculty Adviser: ${organization_name}`,
         message: `You have been officially assigned as faculty adviser for "${organization_name}".`,
       });
-      await recordAuditLog({
-        userId: assigned_by || null,
-        action: 'ASSIGN_ADVISER',
-        entity: 'organization_advisers',
-        entityId: result.rows[0].id,
-        metadata: {
-          organization_id,
-          adviser_id,
-          description: `Assigned faculty adviser #${adviser_id} to ${organization_name || 'organization'}`,
-        },
-        req,
-      });
     }
+    await recordAuditLog({
+      userId: safeAssignedBy,
+      action: 'ASSIGN_ADVISER',
+      entity: 'organization_advisers',
+      entityId: result.rows[0].id,
+      metadata: {
+        organization_id: orgIdNum,
+        adviser_id: advIdNum,
+        description: `Assigned faculty adviser #${advIdNum} to ${organization_name || 'organization'}`,
+      },
+      req,
+    });
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+      client.release();
+    }
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
@@ -459,24 +488,26 @@ router.get('/requests', async (req, res) => {
 // POST /api/advisers/requests — Submit a new adviser change request (uq_one_pending_change_request)
 router.post('/requests', async (req, res) => {
   try {
-    const { organization_id, requested_by, reason } = req.body;
-    const proposed_adviser_id = req.body.proposed_adviser_id || req.body.requested_adviser_id;
+    const { organization_id, requested_by, reason } = req.body || {};
+    const orgIdNum = resolvePositiveInt(organization_id);
+    const proposedAdviserIdNum = resolvePositiveInt(req.body?.proposed_adviser_id || req.body?.requested_adviser_id);
+    const safeRequestedBy = resolvePositiveInt(requested_by);
 
-    if (!organization_id || !proposed_adviser_id || !reason) {
+    if (!orgIdNum || !proposedAdviserIdNum || !reason || !String(reason).trim()) {
       return res.status(400).json({
-        error: 'organization_id, proposed_adviser_id, and reason are required',
+        error: 'Valid organization_id, proposed_adviser_id, and reason are required',
       });
     }
 
     // Look up the active adviser for the organization to populate current_adviser_id
     const currentAdvRes = await db.query(
       'SELECT adviser_id FROM organization_advisers WHERE organization_id = $1 AND ended_at IS NULL',
-      [organization_id]
+      [orgIdNum]
     );
     const currentAdviserId = currentAdvRes.rows.length > 0 ? currentAdvRes.rows[0].adviser_id : null;
 
     // Enforce CHECK (current_adviser_id IS DISTINCT FROM proposed_adviser_id)
-    if (currentAdviserId !== null && Number(currentAdviserId) === Number(proposed_adviser_id)) {
+    if (currentAdviserId !== null && Number(currentAdviserId) === proposedAdviserIdNum) {
       return res.status(400).json({ error: 'Proposed adviser is already the current adviser' });
     }
 
@@ -485,19 +516,19 @@ router.post('/requests', async (req, res) => {
         organization_id, current_adviser_id, proposed_adviser_id, requested_by, reason, status
       ) VALUES ($1, $2, $3, $4, $5, 'PENDING')
       RETURNING *`,
-      [organization_id, currentAdviserId, proposed_adviser_id, requested_by || null, reason.trim()]
+      [orgIdNum, currentAdviserId, proposedAdviserIdNum, safeRequestedBy, String(reason).trim()]
     );
 
-    const orgInfo = await db.query('SELECT name FROM organizations WHERE id = $1', [organization_id]);
+    const orgInfo = await db.query('SELECT name FROM organizations WHERE id = $1', [orgIdNum]);
     const orgName = orgInfo.rows[0]?.name || 'Organization';
 
     // 1. Look up proposed adviser's user_id and notify them
-    const proposedAdv = await db.query('SELECT user_id FROM advisers WHERE id = $1', [proposed_adviser_id]);
+    const proposedAdv = await db.query('SELECT user_id FROM advisers WHERE id = $1', [proposedAdviserIdNum]);
     if (proposedAdv.rows.length > 0 && proposedAdv.rows[0].user_id) {
       await notifyUser(proposedAdv.rows[0].user_id, {
         type: 'APPROVAL',
         title: `Faculty Adviser Nomination: ${orgName}`,
-        message: `You have been nominated as faculty adviser for "${orgName}". Reason: "${reason.trim()}". Pending administration review.`,
+        message: `You have been nominated as faculty adviser for "${orgName}". Reason: "${String(reason).trim()}". Pending administration review.`,
       });
     }
 
@@ -514,8 +545,8 @@ router.post('/requests', async (req, res) => {
     }
 
     // 3. Confirm submission to the requesting officer
-    if (requested_by) {
-      await notifyUser(requested_by, {
+    if (safeRequestedBy) {
+      await notifyUser(safeRequestedBy, {
         type: 'CONFIRMATION',
         title: `Adviser Request Submitted: ${orgName}`,
         message: `Your request to assign a new faculty adviser for "${orgName}" has been submitted for administrative review.`,
@@ -531,15 +562,15 @@ router.post('/requests', async (req, res) => {
 
     // 5. Record in audit logs
     await recordAuditLog({
-      userId: requested_by || null,
+      userId: safeRequestedBy,
       action: 'REQUEST_ADVISER_CHANGE',
       entity: 'adviser_change_requests',
       entityId: result.rows[0].id,
       metadata: {
-        organization_id,
-        proposed_adviser_id,
+        organization_id: orgIdNum,
+        proposed_adviser_id: proposedAdviserIdNum,
         current_adviser_id: currentAdviserId,
-        reason: reason.trim(),
+        reason: String(reason).trim(),
         description: `Submitted adviser change request for "${orgName}"`,
       },
       req,
@@ -557,16 +588,27 @@ router.post('/requests', async (req, res) => {
 
 // PUT /api/advisers/requests/:id/review — Approve, reject, or cancel a pending adviser change request
 router.put('/requests/:id/review', async (req, res) => {
+  const { id } = req.params;
+  const reqIdNum = Number(id);
+  if (!Number.isInteger(reqIdNum) || reqIdNum <= 0) {
+    return res.status(400).json({ error: 'Valid adviser change request ID is required' });
+  }
+
+  const { status, reviewed_by, review_remarks } = req.body;
+  const reviewedByNum = Number(reviewed_by);
+  const safeReviewedBy = Number.isInteger(reviewedByNum) && reviewedByNum > 0 ? reviewedByNum : null;
+
+  const normalizedStatus = String(status || '').toUpperCase();
+  if (!['APPROVED', 'REJECTED', 'CANCELLED'].includes(normalizedStatus)) {
+    return res.status(400).json({ error: "status must be 'APPROVED', 'REJECTED', or 'CANCELLED'" });
+  }
+
+  let client;
   try {
-    const { id } = req.params;
-    const { status, reviewed_by, review_remarks } = req.body;
+    client = await db.pool.connect();
+    await client.query('BEGIN');
 
-    const normalizedStatus = String(status || '').toUpperCase();
-    if (!['APPROVED', 'REJECTED', 'CANCELLED'].includes(normalizedStatus)) {
-      return res.status(400).json({ error: "status must be 'APPROVED', 'REJECTED', or 'CANCELLED'" });
-    }
-
-    const reqResult = await db.query(
+    const reqResult = await client.query(
       `UPDATE adviser_change_requests
           SET status = $2,
               reviewed_by = $3,
@@ -574,10 +616,13 @@ router.put('/requests/:id/review', async (req, res) => {
               reviewed_at = now()
         WHERE id = $1 AND status = 'PENDING'
         RETURNING *`,
-      [id, normalizedStatus, reviewed_by || null, review_remarks || null]
+      [reqIdNum, normalizedStatus, safeReviewedBy, review_remarks || null]
     );
 
     if (reqResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      client = null;
       return res.status(404).json({ error: 'Request not found or already reviewed' });
     }
 
@@ -585,19 +630,23 @@ router.put('/requests/:id/review', async (req, res) => {
 
     // When approved, automatically transition the organization's active adviser
     if (normalizedStatus === 'APPROVED' && changeRequest.proposed_adviser_id) {
-      await db.query(
+      await client.query(
         `UPDATE organization_advisers
             SET ended_at = now()
           WHERE organization_id = $1 AND ended_at IS NULL`,
         [changeRequest.organization_id]
       );
 
-      await db.query(
+      await client.query(
         `INSERT INTO organization_advisers (organization_id, adviser_id, assigned_by, assigned_at)
          VALUES ($1, $2, $3, now())`,
-        [changeRequest.organization_id, changeRequest.proposed_adviser_id, reviewed_by || null]
+        [changeRequest.organization_id, changeRequest.proposed_adviser_id, safeReviewedBy]
       );
     }
+
+    await client.query('COMMIT');
+    client.release();
+    client = null;
 
     // Look up organization name and users to notify
     const orgRes = await db.query('SELECT name FROM organizations WHERE id = $1', [changeRequest.organization_id]);
@@ -626,7 +675,7 @@ router.put('/requests/:id/review', async (req, res) => {
 
     // 3. Record in audit logs
     await recordAuditLog({
-      userId: reviewed_by || null,
+      userId: safeReviewedBy,
       action: `REVIEW_ADVISER_CHANGE_${normalizedStatus}`,
       entity: 'adviser_change_requests',
       entityId: changeRequest.id,
@@ -641,6 +690,10 @@ router.put('/requests/:id/review', async (req, res) => {
 
     res.json({ message: `Request ${normalizedStatus.toLowerCase()} successfully`, request: changeRequest });
   } catch (err) {
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+      client.release();
+    }
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }

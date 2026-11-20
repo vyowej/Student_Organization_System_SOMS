@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
+import Breadcrumb from '../components/ui/Breadcrumb.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
@@ -9,6 +10,8 @@ import ProfileCover from '../components/layout/ProfileCover.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
 import Icon from '../components/ui/Icon.jsx'
 import { formatDisplayName } from '../data/displayName.js'
+import { readFileAsDataUrl } from '../data/officerHierarchy.js'
+import { downloadFileFromEndpoint, validateUploadFile } from '../data/fileDownload.js'
 import { organizationCategories } from '../data/studentEvents.js'
 
 const editableFields = ['name', 'acronym', 'category', 'mission', 'vision']
@@ -129,23 +132,26 @@ export default function OfficerOrganizationProfilePage() {
       setFormError('Enter a document name, choose a type, and select a file.')
       return
     }
+    const validation = validateUploadFile(documentForm.file)
+    if (!validation.ok) {
+      setFormError(validation.error)
+      return
+    }
+    let fileData = null
+    try {
+      fileData = await readFileAsDataUrl(documentForm.file)
+    } catch {
+      setFormError('Unable to read the selected document file.')
+      return
+    }
     const undo = captureUndo()
-
-    // =========================================================================
-    // [GOOGLE DRIVE API PLACEHOLDER - ORGANIZATION PROFILE DOCUMENT / IMAGE]
-    // Insert Google Drive API upload logic here to upload `documentForm.file`
-    // to your Google Drive folder and pass the resulting `webViewLink` to
-    // `addOfficerDocument({ ..., fileUrl: driveResponse.webViewLink })`.
-    //
-    //   ...
-    //
-    // =========================================================================
 
     const saved = await addOfficerDocument({
       organizationId: organization.id,
       title: documentForm.title,
       type: documentForm.type,
       fileName: documentForm.file.name,
+      fileData,
     })
     if (!saved) {
       setFormError('The document could not be added to the shared organization records.')
@@ -190,7 +196,27 @@ export default function OfficerOrganizationProfilePage() {
         <div className="officer-org-document" key={document.id}>
           <span aria-hidden="true" className="officer-org-document-icon"><Icon name="document" /></span>
           <div><strong>{document.title}</strong><small>{document.type} · Submitted {document.submittedDate}</small></div>
-          <Badge tone={statusTone(document.status)}>{document.status}</Badge>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Badge tone={statusTone(document.status)}>{document.status}</Badge>
+            {(document.hasFileData || (document.fileUrl && /^https?:\/\//i.test(document.fileUrl))) && (
+              <Button
+                onClick={async () => {
+                  const res = await downloadFileFromEndpoint({
+                    endpoint: `/api/documents/${document.id}/file`,
+                    dataField: 'file_data',
+                    nameField: 'file_name',
+                    fallbackUrlField: 'drive_view_link',
+                    fallbackName: document.fileName || document.title || 'document',
+                  })
+                  if (!res.ok) showToast(res.error || 'Unable to download document.', 'error')
+                }}
+                size="sm"
+                variant="secondary"
+              >
+                Download
+              </Button>
+            )}
+          </div>
         </div>
       ))}
     </div>
@@ -221,6 +247,13 @@ export default function OfficerOrganizationProfilePage() {
 
   return (
     <div className="officer-organization-profile fb-page">
+      <Breadcrumb
+        items={[
+          { label: 'Officer Dashboard', to: '/officer/dashboard' },
+          { label: 'Organization Profile' },
+        ]}
+        standalone
+      />
       <ProfileCover
         actions={(
           <>
@@ -286,7 +319,7 @@ export default function OfficerOrganizationProfilePage() {
             <>
               <Card className="fb-card fb-composer">
                 <div className="fb-composer-row">
-                  <span aria-hidden="true" className="fb-mini-avatar">{(organization.acronym || 'ORG').slice(0, 3)}</span>
+                  <span aria-hidden="true" className="fb-mini-avatar">{(organization.acronym || 'ORG').slice(0, 5)}</span>
                   <Link className="fb-composer-input" to="/officer/announcements">Share an update with your members…</Link>
                 </div>
                 <div className="fb-composer-actions">
@@ -299,7 +332,7 @@ export default function OfficerOrganizationProfilePage() {
               {announcements.length ? announcements.slice(0, 4).map((announcement, index) => (
                 <Card className="fb-card fb-post" key={`${announcement.title}-${index}`}>
                   <div className="fb-post-head">
-                    <span aria-hidden="true" className="fb-mini-avatar">{(organization.acronym || 'ORG').slice(0, 3)}</span>
+                    <span aria-hidden="true" className="fb-mini-avatar">{(organization.acronym || 'ORG').slice(0, 5)}</span>
                     <div><strong>{organization.name}</strong><small>{announcement.date} · Announcement</small></div>
                   </div>
                   <h3>{announcement.title}</h3>
@@ -373,7 +406,7 @@ export default function OfficerOrganizationProfilePage() {
           <label>Document Name<input onChange={(event) => setDocumentForm((current) => ({ ...current, title: event.target.value }))} required value={documentForm.title} /></label>
           <label>Document Type<select onChange={(event) => setDocumentForm((current) => ({ ...current, type: event.target.value }))} value={documentForm.type}>{documentTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
           <label>Choose File<input accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={(event) => setDocumentForm((current) => ({ ...current, file: event.target.files?.[0] ?? null }))} required type="file" /></label>
-          <p className="officer-org-upload-note">Saves document metadata to PostgreSQL (`documents` table) and reserves a Google Drive API upload hook for `file_url`.</p>
+          <p className="officer-org-upload-note">Files up to 5 MB (PDF, DOC, DOCX, JPG, PNG) are submitted to your organization records for adviser review.</p>
           {formError && <p className="auth-error" role="alert">{formError}</p>}
           <div className="officer-org-modal-actions"><Button onClick={() => setUploadOpen(false)} variant="secondary">Cancel</Button><Button type="submit">Submit Document</Button></div>
         </form>

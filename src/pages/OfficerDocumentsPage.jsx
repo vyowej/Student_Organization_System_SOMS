@@ -9,6 +9,8 @@ import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import { undoAction, useToast } from '../components/ui/useToast.js'
+import { readFileAsDataUrl } from '../data/officerHierarchy.js'
+import { downloadFileFromEndpoint, validateUploadFile } from '../data/fileDownload.js'
 
 const documentTypes = [
   'Constitution & By-Laws',
@@ -70,22 +72,26 @@ export default function OfficerDocumentsPage() {
       setFormError('Enter a document name, choose a type, and select a file.')
       return
     }
+    const validation = validateUploadFile(documentForm.file)
+    if (!validation.ok) {
+      setFormError(validation.error)
+      return
+    }
+    let fileData = null
+    try {
+      fileData = await readFileAsDataUrl(documentForm.file)
+    } catch {
+      setFormError('Unable to read the selected document file.')
+      return
+    }
     const undo = captureUndo()
-
-    // =========================================================================
-    // [GOOGLE DRIVE API PLACEHOLDER - OFFICER DOCUMENT / IMAGE UPLOAD]
-    // Insert Google Drive API upload integration here for `documentForm.file`
-    // and store the returned Google Drive `webViewLink` in `fileUrl` below.
-    //
-    //   ...
-    //
-    // =========================================================================
 
     const saved = await addOfficerDocument({
       organizationId: organization.id,
       title: documentForm.title,
       type: documentForm.type,
       fileName: documentForm.file.name,
+      fileData,
     })
     if (!saved) {
       setFormError('The document could not be added to the shared organization records.')
@@ -100,6 +106,10 @@ export default function OfficerDocumentsPage() {
   return (
     <div className="officer-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Officer Dashboard', to: '/officer/dashboard' },
+          { label: 'Organization Documents' },
+        ]}
         description={`Track and upload compliance and official documents for ${organization.name}.`}
         eyebrow={organization.name}
         title="Organization Documents"
@@ -195,10 +205,33 @@ export default function OfficerDocumentsPage() {
                     <Badge tone={statusTone[document.status] ?? 'neutral'}>{document.status}</Badge>
                   </div>
                   <h3>{document.title}</h3>
-                  <p>Submitted on {document.submittedDate} · {document.processedBy ? `Reviewed by ${document.processedBy}` : 'Awaiting adviser review'}</p>
+                  <p>
+                    Submitted on {document.submittedDate} · {document.processedBy ? `Reviewed by ${document.processedBy}` : 'Awaiting adviser review'}
+                    {document.fileName ? ` · File: ${document.fileName}` : ''}
+                  </p>
                   {document.decisionReason && (
                     <div className="officer-doc-feedback">
                       <strong>Adviser Feedback:</strong> {document.decisionReason}
+                    </div>
+                  )}
+                  {(document.hasFileData || (document.fileUrl && /^https?:\/\//i.test(document.fileUrl))) && (
+                    <div style={{ marginTop: '10px' }}>
+                      <Button
+                        onClick={async () => {
+                          const res = await downloadFileFromEndpoint({
+                            endpoint: `/api/documents/${document.id}/file`,
+                            dataField: 'file_data',
+                            nameField: 'file_name',
+                            fallbackUrlField: 'drive_view_link',
+                            fallbackName: document.fileName || document.title || 'document',
+                          })
+                          if (!res.ok) showToast(res.error || 'Unable to download document.', 'error')
+                        }}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        <Icon name="document" size={14} /> Download File
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -215,7 +248,7 @@ export default function OfficerDocumentsPage() {
           <label>Document Name<input onChange={(event) => setDocumentForm((current) => ({ ...current, title: event.target.value }))} required value={documentForm.title} /></label>
           <label>Document Type<select onChange={(event) => setDocumentForm((current) => ({ ...current, type: event.target.value }))} value={documentForm.type}>{documentTypes.map((type) => <option key={type}>{type}</option>)}</select></label>
           <label>Choose File<input accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={(event) => setDocumentForm((current) => ({ ...current, file: event.target.files?.[0] ?? null }))} required type="file" /></label>
-          <p className="officer-org-upload-note">Records the document in the PostgreSQL `documents` table and reserves a Google Drive API upload hook for `file_url`.</p>
+          <p className="officer-org-upload-note">Files up to 5 MB (PDF, DOC, DOCX, JPG, PNG) are stored securely in your organization records for adviser review.</p>
           {formError && <p className="auth-error" role="alert">{formError}</p>}
           <div className="officer-org-modal-actions">
             <Button onClick={() => setUploadOpen(false)} variant="secondary">Cancel</Button>

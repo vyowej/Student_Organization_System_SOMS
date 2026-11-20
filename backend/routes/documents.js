@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { resolvePositiveInt } = require('../utils');
 const {
   notifyUser,
   notifyAdvisersForOrg,
@@ -38,7 +39,23 @@ function normalizeDocStatus(input) {
 }
 
 const DOCUMENT_SELECT_QUERY = `
-  SELECT d.*,
+  SELECT d.id,
+         d.organization_id,
+         d.uploaded_by,
+         d.title,
+         d.doc_type,
+         d.doc_type AS type,
+         d.drive_file_id,
+         d.drive_view_link,
+         d.file_name,
+         (d.file_data IS NOT NULL AND d.file_data != '') AS has_file_data,
+         d.status,
+         d.reviewed_by,
+         d.reviewed_at,
+         d.review_remarks,
+         d.version,
+         d.created_at,
+         COALESCE(d.drive_view_link, d.drive_file_id) AS file_url,
          o.name AS organization_name,
          o.acronym AS organization_acronym,
          uploader.first_name AS uploader_first_name,
@@ -56,6 +73,27 @@ const DOCUMENT_SELECT_QUERY = `
     LEFT JOIN users reviewer ON reviewer.id = d.reviewed_by
 `;
 
+// GET /api/documents/:id/file — Retrieve stored document file name and base64/data-URL bytes
+router.get('/:id/file', async (req, res) => {
+  try {
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid document ID is required' });
+    }
+    const result = await db.query(
+      'SELECT id, title, doc_type, file_name, file_data, drive_view_link, drive_file_id FROM documents WHERE id = $1',
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // GET /api/documents — List all documents with optional organization_id, type, and status filters
 router.get('/', async (req, res) => {
   try {
@@ -64,12 +102,16 @@ router.get('/', async (req, res) => {
     const params = [];
 
     if (organization_id) {
-      params.push(organization_id);
+      const orgIdNum = resolvePositiveInt(organization_id);
+      if (!orgIdNum) {
+        return res.status(400).json({ error: 'Valid organization_id is required' });
+      }
+      params.push(orgIdNum);
       queryText += ` AND d.organization_id = $${params.length}`;
     }
     if (type) {
       params.push(normalizeDocType(type));
-      queryText += ` AND d.type = $${params.length}`;
+      queryText += ` AND d.doc_type = $${params.length}::document_type`;
     }
     if (status) {
       params.push(normalizeDocStatus(status));
@@ -88,15 +130,18 @@ router.get('/', async (req, res) => {
 // GET /api/documents/org/:organization_id — List documents for an organization with optional type/status filters
 router.get('/org/:organization_id', async (req, res) => {
   try {
-    const { organization_id } = req.params;
+    const organizationId = resolvePositiveInt(req.params.organization_id);
+    if (!organizationId) {
+      return res.status(400).json({ error: 'Valid organization_id is required' });
+    }
     const { type, status } = req.query;
 
     let queryText = `${DOCUMENT_SELECT_QUERY} WHERE d.organization_id = $1`;
-    const params = [organization_id];
+    const params = [organizationId];
 
     if (type) {
       params.push(normalizeDocType(type));
-      queryText += ` AND d.type = $${params.length}`;
+      queryText += ` AND d.doc_type = $${params.length}::document_type`;
     }
     if (status) {
       params.push(normalizeDocStatus(status));
@@ -119,8 +164,13 @@ router.post('/', async (req, res) => {
     const {
       organization_id,
       type,
+      doc_type,
       title,
       file_url,
+      file_name,
+      fileName,
+      file_data,
+      fileData,
       uploaded_by,
       review_remarks,
       objectives,
@@ -136,13 +186,25 @@ router.post('/', async (req, res) => {
       summary,
     } = req.body;
 
-    if (!organization_id || !title) {
+    const orgIdNum = resolvePositiveInt(organization_id);
+    const trimmedTitle = title ? String(title).trim() : '';
+    if (!orgIdNum || !trimmedTitle) {
       return res.status(400).json({
-        error: 'organization_id and title are required',
+        error: 'Valid organization_id and title are required',
       });
     }
 
-    const docType = normalizeDocType(type);
+    const orgCheck = await db.query('SELECT id FROM organizations WHERE id = $1', [orgIdNum]);
+    if (orgCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
+    const safeUploadedBy = resolvePositiveInt(uploaded_by);
+    const docType = normalizeDocType(type || doc_type);
+    const resolvedFileName = (file_name || fileName || '').trim() || null;
+    const resolvedFileData = typeof (file_data ?? fileData) === 'string' && (file_data ?? fileData).trim()
+      ? (file_data ?? fileData).trim()
+      : null;
 
     // ============================================================
     // [GOOGLE DRIVE API PLACEHOLDER — DOCUMENT & IMAGE FILE UPLOAD]
@@ -150,7 +212,7 @@ router.post('/', async (req, res) => {
     // files or event photos are stored in Google Drive and their
     // shareable link is saved into `resolvedFileUrl`.
     // ============================================================
-    const resolvedFileUrl = (file_url || `/files/${encodeURIComponent(title.trim())}`).trim();
+    const resolvedFileUrl = (file_url || resolvedFileName || `/files/${encodeURIComponent(trimmedTitle)}`).trim();
 
     let finalRemarks = review_remarks || null;
     const hasAccomplishmentFields = objectives !== undefined ||
@@ -180,56 +242,57 @@ router.post('/', async (req, res) => {
       finalRemarks = JSON.stringify(metaObj);
     }
 
+    const resolvedDriveId = String(req.body?.drive_file_id || resolvedFileName || resolvedFileUrl).trim();
     const insertRes = await db.query(
-      `INSERT INTO documents (organization_id, type, title, file_url, uploaded_by, review_remarks, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'PENDING')
+      `INSERT INTO documents (organization_id, doc_type, title, drive_file_id, drive_view_link, file_name, file_data, uploaded_by, review_remarks, status)
+       VALUES ($1, $2::document_type, $3, $4, $5, $6, $7, $8, $9, 'PENDING')
        RETURNING id`,
-      [organization_id, docType, title.trim(), resolvedFileUrl, uploaded_by || null, finalRemarks]
+      [orgIdNum, docType, trimmedTitle, resolvedDriveId, resolvedFileUrl, resolvedFileName, resolvedFileData, safeUploadedBy, finalRemarks]
     );
 
     const fullDoc = await db.query(`${DOCUMENT_SELECT_QUERY} WHERE d.id = $1`, [insertRes.rows[0].id]);
     const docRow = fullDoc.rows[0];
     const orgName = docRow.organization_name || docRow.organization_acronym || 'Student Organization';
-    const isAccomplishment = docType === 'REPORT' || title.toLowerCase().includes('accomplishment') || title.toLowerCase().includes('report');
+    const isAccomplishment = docType === 'REPORT' || trimmedTitle.toLowerCase().includes('accomplishment') || trimmedTitle.toLowerCase().includes('report');
 
     // 1. Notify assigned faculty adviser(s) that an officer submitted a document or accomplishment report
-    await notifyAdvisersForOrg(organization_id, {
+    await notifyAdvisersForOrg(orgIdNum, {
       type: 'APPROVAL',
-      title: isAccomplishment ? `Accomplishment Report Submitted: ${title.trim()}` : `Document Submitted: ${title.trim()}`,
+      title: isAccomplishment ? `Accomplishment Report Submitted: ${trimmedTitle}` : `Document Submitted: ${trimmedTitle}`,
       message: isAccomplishment
-        ? `An officer from ${orgName} submitted an Accomplishment Report "${title.trim()}" for your verification.`
-        : `An officer from ${orgName} submitted ${docType} "${title.trim()}" for your review and endorsement.`,
+        ? `An officer from ${orgName} submitted an Accomplishment Report "${trimmedTitle}" for your verification.`
+        : `An officer from ${orgName} submitted ${docType} "${trimmedTitle}" for your review and endorsement.`,
     });
 
     // 2. Dispatch submission confirmation to the submitting officer
-    if (uploaded_by) {
-      await notifyUser(uploaded_by, {
+    if (safeUploadedBy) {
+      await notifyUser(safeUploadedBy, {
         type: 'CONFIRMATION',
-        title: isAccomplishment ? `Report Submitted: ${title.trim()}` : `Submission Confirmed: ${title.trim()}`,
+        title: isAccomplishment ? `Report Submitted: ${trimmedTitle}` : `Submission Confirmed: ${trimmedTitle}`,
         message: isAccomplishment
-          ? `Your Accomplishment Report "${title.trim()}" for ${orgName} was submitted successfully and is queued for faculty adviser verification.`
-          : `Your document "${title.trim()}" (${docType}) for ${orgName} was submitted successfully and is queued for faculty adviser review.`,
+          ? `Your Accomplishment Report "${trimmedTitle}" for ${orgName} was submitted successfully and is queued for faculty adviser verification.`
+          : `Your document "${trimmedTitle}" (${docType}) for ${orgName} was submitted successfully and is queued for faculty adviser review.`,
       });
     }
 
     // 3. Notify administrators for institutional oversight
     await notifyAdmins({
       type: 'APPROVAL',
-      title: isAccomplishment ? `Accomplishment Report Submitted: ${title.trim()}` : `Document Submitted: ${title.trim()}`,
-      message: `A ${isAccomplishment ? 'compliance accomplishment report' : docType + ' document'} "${title.trim()}" for ${orgName} has been submitted for review.`,
+      title: isAccomplishment ? `Accomplishment Report Submitted: ${trimmedTitle}` : `Document Submitted: ${trimmedTitle}`,
+      message: `A ${isAccomplishment ? 'compliance accomplishment report' : docType + ' document'} "${trimmedTitle}" for ${orgName} has been submitted for review.`,
     });
 
     // 4. Record submission in audit logs
     await recordAuditLog({
-      userId: uploaded_by || null,
+      userId: safeUploadedBy,
       action: isAccomplishment ? 'SUBMIT_ACCOMPLISHMENT_REPORT' : 'SUBMIT_DOCUMENT',
       entity: 'documents',
       entityId: docRow.id,
       metadata: {
-        title: title.trim(),
-        organization_id,
+        title: trimmedTitle,
+        organization_id: orgIdNum,
         doc_type: docType,
-        description: `Submitted ${isAccomplishment ? 'Accomplishment Report' : `${docType} document`} "${title.trim()}" for ${orgName}`,
+        description: `Submitted ${isAccomplishment ? 'Accomplishment Report' : `${docType} document`} "${trimmedTitle}" for ${orgName}`,
       },
       req,
     });
@@ -237,15 +300,19 @@ router.post('/', async (req, res) => {
     res.status(201).json(docRow);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // PUT /api/documents/:id/review — Approve or reject a document and record reviewer remarks
 router.put('/:id/review', async (req, res) => {
   try {
-    const { id } = req.params;
-    const { status, reviewed_by, review_remarks } = req.body;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid document ID is required.' });
+    }
+    const { status, reviewed_by, review_remarks } = req.body || {};
+    const safeReviewedBy = resolvePositiveInt(reviewed_by);
 
     const normalizedStatus = normalizeDocStatus(status);
 
@@ -291,7 +358,7 @@ router.put('/:id/review', async (req, res) => {
               reviewed_at = now()
         WHERE id = $1
         RETURNING id`,
-      [id, normalizedStatus, reviewed_by || null, finalReviewRemarks]
+      [id, normalizedStatus, safeReviewedBy, finalReviewRemarks]
     );
 
     if (result.rows.length === 0) {
@@ -300,7 +367,7 @@ router.put('/:id/review', async (req, res) => {
 
     const fullDoc = await db.query(`${DOCUMENT_SELECT_QUERY} WHERE d.id = $1`, [id]);
     const docRow = fullDoc.rows[0];
-    const isAccomplishment = docRow.type === 'REPORT' || docRow.title.toLowerCase().includes('accomplishment') || docRow.title.toLowerCase().includes('report');
+    const isAccomplishment = (docRow.doc_type || docRow.type) === 'REPORT' || docRow.title.toLowerCase().includes('accomplishment') || docRow.title.toLowerCase().includes('report');
 
     // Notify the uploading officer about the review outcome
     if (docRow.uploaded_by) {
@@ -332,7 +399,7 @@ router.put('/:id/review', async (req, res) => {
 
     // Record review in audit logs
     await recordAuditLog({
-      userId: reviewed_by || null,
+      userId: safeReviewedBy,
       action: `REVIEW_DOCUMENT_${normalizedStatus}`,
       entity: 'documents',
       entityId: docRow.id,
@@ -349,14 +416,17 @@ router.put('/:id/review', async (req, res) => {
     res.json(docRow);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // DELETE /api/documents/:id — Delete a document record by ID
 router.delete('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid document ID is required.' });
+    }
     const result = await db.query('DELETE FROM documents WHERE id = $1 RETURNING *', [id]);
 
     if (result.rows.length === 0) {
@@ -365,7 +435,7 @@ router.delete('/:id', async (req, res) => {
 
     const deletedDoc = result.rows[0];
     await recordAuditLog({
-      userId: req.body?.user_id || req.query?.user_id || null,
+      userId: resolvePositiveInt(req.body?.user_id || req.query?.user_id),
       action: 'DELETE_DOCUMENT',
       entity: 'documents',
       entityId: id,

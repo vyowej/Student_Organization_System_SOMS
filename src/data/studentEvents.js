@@ -57,7 +57,7 @@ export function getOrganizationEvents(organization, officerEvents = []) {
       date: ev.date,
       endDatetime: ev.endDatetime || ev.end_date,
       registrationClosed: ev.registrationClosed,
-      capacity: ev.capacity ?? ev.max_participants ?? 100,
+      capacity: ev.capacity ?? ev.max_participants ?? null,
       registeredCount: ev.registeredCount ?? ev.registered_count ?? 0,
       time: ev.startTime && ev.endTime ? `${ev.startTime} - ${ev.endTime}` : ev.startTime || 'TBA',
       location: ev.location || 'TBA',
@@ -81,6 +81,20 @@ export function isEventAlmostFull(event) {
   const registered = Number(event.registeredCount ?? event.registered_count ?? 0)
   if (capacity <= 0) return false
   return registered / capacity >= 0.8 && registered < capacity
+}
+
+export function findUserEventRegistration(registrations, eventId, currentUser) {
+  if (!currentUser || !Array.isArray(registrations)) return null
+  const userIds = [currentUser.dbUserId, currentUser.id].filter(Boolean).map(String)
+  return registrations.find((item) => (
+    String(item.eventId) === String(eventId) &&
+    item.status !== 'CANCELLED' &&
+    (
+      (currentUser.studentRecordId && String(item.studentRecordId) === String(currentUser.studentRecordId)) ||
+      (userIds.length > 0 && item.userId != null && userIds.includes(String(item.userId))) ||
+      (currentUser.studentNumber && String(item.studentId) === String(currentUser.studentNumber))
+    )
+  )) || null
 }
 
 export function getEventRegistrationState(event, registration) {
@@ -123,7 +137,9 @@ export function officerEventToStudentEvent(event) {
   const startTime = event.startTime || ''
   const endTime = event.endTime || ''
   const timeRange = startTime && endTime ? `${startTime} - ${endTime}` : startTime || event.time || 'Schedule TBA'
-  const capacity = Number(event.capacity ?? event.max_participants ?? 100)
+  const rawCapacity = event.capacity ?? event.max_participants
+  const capacity =
+    rawCapacity !== null && rawCapacity !== undefined && rawCapacity !== '' ? Number(rawCapacity) : null
   const registeredCount = Number(event.registeredCount ?? event.registered_count ?? 0)
   const ended = isEventEnded(event)
 

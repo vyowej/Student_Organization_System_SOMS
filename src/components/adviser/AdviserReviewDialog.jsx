@@ -2,13 +2,14 @@ import { useState } from 'react'
 import Badge from '../ui/Badge.jsx'
 import Button from '../ui/Button.jsx'
 import ConfirmDialog from '../ui/ConfirmDialog.jsx'
-import Modal from '../ui/Modal.jsx'
+import Modal, { resolveModalTone } from '../ui/Modal.jsx'
 import Icon from '../ui/Icon.jsx'
 import {
   OFFICER_HIERARCHY,
   ORGANIZATION_COMMITTEES,
   getHierarchyEntry,
 } from '../../data/officerHierarchy.js'
+import { downloadFileFromEndpoint } from '../../data/fileDownload.js'
 
 const statusTone = {
   PENDING: 'warning',
@@ -24,7 +25,14 @@ const statusTone = {
   PENDING_VERIFICATION: 'warning',
 }
 
-export default function AdviserReviewDialog({
+export default function AdviserReviewDialog(props) {
+  if (!props.item) return null
+  const { item, initialDecision = '', report = false } = props
+  const dialogKey = `${item.id ?? item.eventId ?? item.applicationId ?? item.studentNumber ?? item.title ?? item.name ?? 'review'}:${initialDecision}:${Boolean(report)}`
+  return <AdviserReviewDialogContent key={dialogKey} {...props} />
+}
+
+function AdviserReviewDialogContent({
   item,
   onClose,
   onDecision,
@@ -80,22 +88,38 @@ export default function AdviserReviewDialog({
   async function handleOpenComplianceFile() {
     const rawId = String(item?.eventId || item?.id || '').replace(/^EVT-|^APR-EVT-/i, '')
     if (!rawId) return
-    try {
-      const apiBase = import.meta.env.VITE_API_URL || '/api'
-      const res = await fetch(`${apiBase}/events/${rawId}/compliance-file`)
-      if (!res.ok) return
-      const payload = await res.json()
-      if (payload?.compliance_file_data) {
-        const link = document.createElement('a')
-        link.href = payload.compliance_file_data
-        link.download = payload.compliance_file_name || 'compliance-document'
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-      }
-    } catch {
-      // Ignore if file bytes are not stored
-    }
+    const res = await downloadFileFromEndpoint({
+      endpoint: `/api/events/${rawId}/compliance-file`,
+      dataField: 'compliance_file_data',
+      nameField: 'compliance_file_name',
+      fallbackName: item?.complianceFileName || 'compliance-document',
+    })
+    if (!res.ok) setError(res.error)
+  }
+
+  async function handleOpenDocumentFile() {
+    const docId = item?.documentId || item?.id
+    if (!docId) return
+    const res = await downloadFileFromEndpoint({
+      endpoint: `/api/documents/${docId}/file`,
+      dataField: 'file_data',
+      nameField: 'file_name',
+      fallbackUrlField: 'drive_view_link',
+      fallbackName: item?.fileName || item?.title || 'document',
+    })
+    if (!res.ok) setError(res.error)
+  }
+
+  async function handleOpenCorFile() {
+    const appId = item?.applicationId || item?.id
+    if (!appId) return
+    const res = await downloadFileFromEndpoint({
+      endpoint: `/api/members/applications/${appId}/cor`,
+      dataField: 'cor_file_data',
+      nameField: 'cor_file_name',
+      fallbackName: item?.corFileName || 'COR-document',
+    })
+    if (!res.ok) setError(res.error)
   }
 
   function confirmationCopy() {
@@ -164,6 +188,8 @@ export default function AdviserReviewDialog({
     const list = []
     if (item.complianceFileName) {
       list.push(item.complianceFileName)
+    } else if (item.fileName && item.type !== 'EVENT') {
+      list.push(item.fileName)
     }
     if (Array.isArray(item.supportingDocuments)) {
       for (const doc of item.supportingDocuments) {
@@ -192,8 +218,14 @@ export default function AdviserReviewDialog({
               <span className="adviser-muted-label">{item.organizationName}</span>
               <h3>{item.title ?? item.eventTitle}</h3>
             </div>
-            <Badge tone={statusTone[item.status] ?? 'neutral'}>{item.status.replaceAll('_', ' ')}</Badge>
+            <Badge tone={statusTone[item.status] ?? 'neutral'}>{String(item.status || 'PENDING').replaceAll('_', ' ')}</Badge>
           </div>
+          {item.status && resolveModalTone('', item.status) && (
+            <div className={`status-callout status-callout--row status-callout--${resolveModalTone('', item.status)}`}>
+              <strong>Current status</strong>
+              <Badge tone={statusTone[item.status] ?? 'neutral'}>{String(item.status).replaceAll('_', ' ')}</Badge>
+            </div>
+          )}
           {report ? (
             <>
               <section className="adviser-report-detail-section">
@@ -240,10 +272,15 @@ export default function AdviserReviewDialog({
                     {complianceDocuments.map((fileName, index) => (
                       <div className="adviser-report-file-card" key={`${fileName}-${index}`}>
                         <Icon name="document" size={16} />
-                        <span>
-                          <strong>{fileName}</strong>
+                        <span style={{ flex: 1 }}>
+                          <strong>{item.fileName || fileName}</strong>
                           <small>{index === 0 && item.complianceFileName ? 'Uploaded compliance document' : 'Supporting document'}</small>
                         </span>
+                        {index === 0 && (item.hasFileData || (item.fileUrl && /^https?:\/\//i.test(item.fileUrl))) && (
+                          <Button onClick={handleOpenDocumentFile} size="sm" variant="secondary">
+                            Download
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -267,7 +304,17 @@ export default function AdviserReviewDialog({
                 <div><dt>Program</dt><dd>{item.program ?? 'Not recorded'}</dd></div>
                 {item.yearLevel && <div><dt>Year Level</dt><dd>{item.yearLevel}</dd></div>}
                 <div><dt>Organization</dt><dd>{item.organizationName ?? 'Campus Organization'}</dd></div>
-                <div><dt>COR Document</dt><dd>{item.corFileName || 'Verified on profile'}</dd></div>
+                <div>
+                  <dt>COR Document</dt>
+                  <dd style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>{item.corFileName || 'Verified on profile'}</span>
+                    {item.hasCor && (
+                      <Button onClick={handleOpenCorFile} size="sm" variant="secondary">
+                        Download COR
+                      </Button>
+                    )}
+                  </dd>
+                </div>
                 <div><dt>Date Applied</dt><dd>{item.submittedDate ?? item.applicationDate ?? 'Not recorded'}</dd></div>
                 {item.decisionDate && <div><dt>Decision Date</dt><dd>{item.decisionDate}</dd></div>}
               </dl>
@@ -276,19 +323,19 @@ export default function AdviserReviewDialog({
                 <p>{item.reason || item.message || 'No additional message was provided with this application.'}</p>
               </section>
               {item.status === 'PENDING' && (
-                <section style={{ marginTop: '16px', padding: '14px', borderRadius: '10px', background: '#faf8f9', border: '1px solid #ebdbe2' }}>
-                  <h4 style={{ margin: '0 0 10px', fontSize: '14px', color: '#74102d' }}>Assign Officer Role & Committee</h4>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
-                    <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#49434a' }}>
-                      Officer Hierarchy Position *
+                <section className="adviser-assign-box">
+                  <h4>Assign Officer Role &amp; Committee</h4>
+                  <div className="modal-form-grid">
+                    <label className="modal-field-compact">
+                      <span>Officer Hierarchy Position <span aria-hidden="true" className="required-asterisk">*</span></span>
                       <select
-                        value={assignedPosition}
+                        className="input"
                         onChange={(e) => {
                           const nextCode = e.target.value
                           setAssignedPosition(nextCode)
                           setAssignedCommittee(getHierarchyEntry(nextCode).defaultCommittee)
                         }}
-                        style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid #d9d2d7', background: 'white' }}
+                        value={assignedPosition}
                       >
                         {OFFICER_HIERARCHY.map((entry) => (
                           <option key={entry.code} value={entry.code}>
@@ -297,12 +344,12 @@ export default function AdviserReviewDialog({
                         ))}
                       </select>
                     </label>
-                    <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#49434a' }}>
-                      Assigned Committee *
+                    <label className="modal-field-compact">
+                      <span>Assigned Committee <span aria-hidden="true" className="required-asterisk">*</span></span>
                       <select
-                        value={assignedCommittee}
+                        className="input"
                         onChange={(e) => setAssignedCommittee(e.target.value)}
-                        style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid #d9d2d7', background: 'white' }}
+                        value={assignedCommittee}
                       >
                         {ORGANIZATION_COMMITTEES.map((comm) => (
                           <option key={comm} value={comm}>{comm}</option>
@@ -311,14 +358,14 @@ export default function AdviserReviewDialog({
                     </label>
                   </div>
                   {assignedPosition === 'OTHER_OFFICER' && (
-                    <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600, color: '#49434a', marginTop: '10px' }}>
-                      Specific Officer / Chairperson Title
+                    <label className="modal-field-compact adviser-assign-custom-title">
+                      <span>Specific Officer / Chairperson Title</span>
                       <input
-                        type="text"
-                        placeholder="e.g. Programs & Events Chairperson"
-                        value={customTitle}
+                        className="input"
                         onChange={(e) => setCustomTitle(e.target.value)}
-                        style={{ minHeight: '38px', padding: '7px 11px', borderRadius: '8px', border: '1px solid #d9d2d7', background: 'white' }}
+                        placeholder="e.g. Programs & Events Chairperson"
+                        type="text"
+                        value={customTitle}
                       />
                     </label>
                   )}
@@ -336,7 +383,8 @@ export default function AdviserReviewDialog({
                 {(item.venue || item.location) && <div><dt>Venue</dt><dd>{item.venue ?? item.location}</dd></div>}
                 {item.targetAudience && <div><dt>Target audience</dt><dd>{item.targetAudience}</dd></div>}
                 {item.attendance !== undefined && <div><dt>Attendance</dt><dd>{item.attendance}</dd></div>}
-                {item.capacity !== undefined && <div><dt>Max Participants</dt><dd>{item.capacity || 'Open capacity'}</dd></div>}
+                {item.capacity !== undefined && <div><dt>Max Participants</dt><dd>{Number(item.capacity) > 0 ? item.capacity : 'Open capacity'}</dd></div>}
+                {item.complianceFileName && <div><dt>Compliance document</dt><dd><strong>{item.complianceFileName}</strong></dd></div>}
                 {item.registrationDeadline && <div><dt>Registration deadline</dt><dd>{item.registrationDeadline}</dd></div>}
                 {item.budget && <div><dt>Budget</dt><dd>{item.budget}</dd></div>}
                 {item.adviserDecisionDate && <div><dt>Decision date</dt><dd>{item.adviserDecisionDate}</dd></div>}
@@ -355,6 +403,11 @@ export default function AdviserReviewDialog({
                         </span>
                         {idx === 0 && item.hasComplianceFile && (
                           <Button onClick={handleOpenComplianceFile} size="sm" variant="secondary">
+                            Download
+                          </Button>
+                        )}
+                        {idx === 0 && !item.hasComplianceFile && item.type !== 'EVENT' && (item.hasFileData || (item.fileUrl && /^https?:\/\//i.test(item.fileUrl))) && (
+                          <Button onClick={handleOpenDocumentFile} size="sm" variant="secondary">
                             Download
                           </Button>
                         )}

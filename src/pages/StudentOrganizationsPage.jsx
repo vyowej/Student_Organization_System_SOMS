@@ -62,6 +62,10 @@ export default function StudentOrganizationsPage() {
   return (
     <div className="student-organizations-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Home', to: '/' },
+          { label: 'Organizations Directory' },
+        ]}
         description="Browse all accredited university, college, and departmental organizations across WMSU."
         eyebrow="UNIDOS CAMPUS DIRECTORY"
         title="Campus Organizations Directory"

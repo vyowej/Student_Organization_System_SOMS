@@ -1,16 +1,21 @@
 import { useMemo, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import Badge from '../components/ui/Badge.jsx'
+import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
+import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar, { matchesQuery } from '../components/ui/SearchBar.jsx'
 import Table from '../components/ui/Table.jsx'
+import { useToast } from '../components/ui/useToast.js'
 import { officerEventStatuses } from '../data/navigation.js'
 
 export default function OfficerEventsPage() {
-  const { adminOrganizations = [], currentUser, officerEvents = [] } = useOutletContext()
+  const { adminOrganizations = [], currentUser, officerEvents = [], deleteOfficerEvent } = useOutletContext()
+  const { showToast } = useToast()
+  const [deleteTarget, setDeleteTarget] = useState(null)
   const orgId = currentUser?.organizationId || adminOrganizations[0]?.id
   const organization = adminOrganizations?.find((item) => String(item.id) === String(orgId)) || adminOrganizations[0] || { name: 'Your Organization', acronym: 'ORG' }
   const [search, setSearch] = useState('')
@@ -25,8 +30,9 @@ export default function OfficerEventsPage() {
     const total = orgEvents.length
     const published = orgEvents.filter((e) => ['PUBLISHED', 'APPROVED', 'ONGOING'].includes(e.status)).length
     const inReview = orgEvents.filter((e) => ['SUBMITTED', 'PENDING', 'UNDER_REVIEW'].includes(e.status)).length
-    const returned = orgEvents.filter((e) => ['RETURNED', 'RETURNED_FOR_REVISION', 'CANCELLED'].includes(e.status)).length
-    return { total, published, inReview, returned }
+    const returned = orgEvents.filter((e) => ['RETURNED', 'RETURNED_FOR_REVISION'].includes(e.status)).length
+    const draft = orgEvents.filter((e) => e.status === 'DRAFT').length
+    return { total, published, inReview, returned, draft }
   }, [orgEvents])
 
   const visibleEvents = useMemo(() => {
@@ -34,7 +40,7 @@ export default function OfficerEventsPage() {
       .filter((event) => {
         if (statusFilter === 'PUBLISHED') return ['PUBLISHED', 'APPROVED', 'ONGOING'].includes(event.status)
         if (statusFilter === 'IN_REVIEW') return ['SUBMITTED', 'PENDING', 'UNDER_REVIEW'].includes(event.status)
-        if (statusFilter === 'RETURNED') return ['RETURNED', 'RETURNED_FOR_REVISION', 'CANCELLED'].includes(event.status)
+        if (statusFilter === 'RETURNED') return ['RETURNED', 'RETURNED_FOR_REVISION'].includes(event.status)
         if (statusFilter === 'DRAFT') return event.status === 'DRAFT'
         return true
       })
@@ -75,19 +81,47 @@ export default function OfficerEventsPage() {
     {
       key: 'actions',
       label: 'Officer actions',
-      render: (_, event) => ['RETURNED_FOR_REVISION', 'CANCELLED', 'DRAFT'].includes(event.status) ? (
-        <Link className="button button-secondary" to={`/officer/events/create?edit=${encodeURIComponent(event.id)}`}>
-          Edit and resubmit
-        </Link>
-      ) : (
-        <span className="officer-readonly-label">Adviser reviewed</span>
-      ),
+      render: (_, event) => {
+        const canDelete = ['DRAFT', 'CANCELLED', 'REJECTED', 'RETURNED', 'RETURNED_FOR_REVISION'].includes(event.status)
+        if (['RETURNED', 'RETURNED_FOR_REVISION', 'DRAFT'].includes(event.status)) {
+          return (
+            <div className="officer-event-action-group">
+              <Link className="button button-secondary" to={`/officer/events/create?edit=${encodeURIComponent(event.id)}`}>
+                {event.status === 'DRAFT' ? 'Edit draft' : 'Edit and resubmit'}
+              </Link>
+              {canDelete && (
+                <Button onClick={() => setDeleteTarget(event)} size="sm" type="button" variant="danger">
+                  Delete
+                </Button>
+              )}
+            </div>
+          )
+        }
+        if (['SUBMITTED', 'PENDING', 'UNDER_REVIEW'].includes(event.status)) {
+          return <span className="officer-readonly-label">Awaiting review</span>
+        }
+        if (canDelete) {
+          return (
+            <div className="officer-event-action-group">
+              <span className="officer-readonly-label">{event.status === 'REJECTED' ? 'Rejected' : 'Cancelled'}</span>
+              <Button onClick={() => setDeleteTarget(event)} size="sm" type="button" variant="danger">
+                Delete
+              </Button>
+            </div>
+          )
+        }
+        return <span className="officer-readonly-label">Adviser reviewed</span>
+      },
     },
   ]
 
   return (
     <div className="officer-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Officer Dashboard', to: '/officer/dashboard' },
+          { label: 'Organization Events' },
+        ]}
         description={`Create proposals, submit them for review, and update proposals returned by your adviser for ${organization.name}.`}
         eyebrow={organization.name}
         title="Organization Events"
@@ -142,6 +176,7 @@ export default function OfficerEventsPage() {
             { key: 'PUBLISHED', label: 'Approved', count: counts.published },
             { key: 'IN_REVIEW', label: 'In Review', count: counts.inReview },
             { key: 'RETURNED', label: 'Returned', count: counts.returned },
+            { key: 'DRAFT', label: 'Drafts', count: counts.draft },
           ].map((tab) => (
             <button
               aria-pressed={statusFilter === tab.key}
@@ -180,6 +215,25 @@ export default function OfficerEventsPage() {
         )}
         <p className="officer-permission-note">Event proposals cannot be approved by an organization officer. Approval is reserved for the Organization Adviser and Student Affairs Admin.</p>
       </Card>
+      <ConfirmDialog
+        confirmLabel="Delete event"
+        message={deleteTarget ? `Permanently delete "${deleteTarget.title}"? This action cannot be undone.` : ''}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (!deleteTarget) return
+          const res = await deleteOfficerEvent?.(deleteTarget.id)
+          const title = deleteTarget.title
+          setDeleteTarget(null)
+          if (res?.ok) {
+            showToast(`Deleted "${title}".`, 'success')
+          } else {
+            showToast(res?.error || 'Unable to delete event.', 'error')
+          }
+        }}
+        open={Boolean(deleteTarget)}
+        title="Delete event"
+        tone="danger"
+      />
     </div>
   )
 }

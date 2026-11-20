@@ -233,7 +233,7 @@ export function EventCard({ event }) {
         <div className="event-card-topline">
           <Badge tone={badgeTone}>{badgeLabel}</Badge>
           {event.capacity > 0 && (
-            <small style={{ color: 'var(--muted)', fontSize: '12px', fontWeight: 600 }}>
+            <small className="event-card-slots">
               {event.registeredCount || 0}/{event.capacity} slots
             </small>
           )}

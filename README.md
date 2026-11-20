@@ -2,41 +2,25 @@
 
 Welcome to the **Student Organization Management System (SOMS)**, Western Mindanao State University's unified portal for managing student organizations, accreditation, member rosters, event proposals, compliance documents, and attendance tracking.
 
-### Step 1: Install All Dependencies
-Clone the repository and install all frontend and backend dependencies in one command from the project root:
-
-```bash
-npm install
-```
-*(A built-in `postinstall` script automatically installs the backend dependencies as well.)*
-
----
-
-### Step 2: Configure & Initialize Database
-1. Open PostgreSQL (`psql` or pgAdmin) and create the database if you haven't yet:
-   ```sql
-   CREATE DATABASE student_org_db;
-   ```
-2. Verify your database credentials in `backend/.env` (defaults to `postgres`/`postgres` on `localhost:5432`). If needed, create `backend/.env` from `backend/.env.example`.
-3. Run the automated database initializer and schema link runner:
-   ```bash
-   npm run db:init
-   ```
-   *This automatically sets up all PostgreSQL tables, ENUM types, single-president constraints, eligibility triggers, audit logs, and seeds the default administrative account.*
-
----
-
-### Step 3: Start the Application (One Command)
-Run both the Express backend API and the Vite React frontend concurrently with unified logging:
+### Quick Start (Automatic Setup)
+Clone the repository, ensure PostgreSQL is running locally, and run one command from the project root:
 
 ```bash
 npm start
 ```
 *(Or alternatively: `npm run dev:all`)*
 
+Running `npm install` installs both frontend and backend dependencies (`node_modules` + `backend/node_modules`) and initializes `backend/.env` from `backend/.env.example` if missing. Running `npm start` automatically handles:
+1. Checking and installing any missing or major-outdated frontend/backend dependencies (`node_modules` and `backend/node_modules`).
+2. Creating `backend/.env` from `backend/.env.example` if missing.
+3. Creating PostgreSQL database `student_org_db`, applying `database/student_org_db.sql`, running incremental schema updates, and seeding canonical WMSU data + default accounts when needed.
+4. Starting both the Express backend API ([http://localhost:5000](http://localhost:5000)) and Vite React frontend ([http://localhost:5173](http://localhost:5173)).
+
 - **Frontend App**: Open your browser at [http://localhost:5173](http://localhost:5173)
 - **Backend API**: Running on [http://localhost:5000](http://localhost:5000)
 - **Health & Schema Status**: [http://localhost:5000/api/health](http://localhost:5000/api/health)
+
+> **Different PostgreSQL password or user?** Edit `DB_USER` and `DB_PASSWORD` in `backend/.env` (default: `postgres` / `postgres` on `localhost:5432`), then re-run `npm start`. You can also manually install or re-sync the database anytime via `npm install` and `npm run db:init`.
 
 ---
 
@@ -89,8 +73,8 @@ Student_Organization_System_SOMS/
 
 | Command | Action |
 | :--- | :--- |
-| `npm start` or `npm run dev:all` | **Starts both Backend API and Frontend Vite simultaneously** |
-| `npm run dev` | Runs the Vite frontend development server only (port 5173) |
+| `npm start`, `npm run dev`, or `npm run dev:all` | **Starts both Backend API and Frontend Vite simultaneously** |
+| `npm run dev:vite` | Runs the Vite frontend development server only (port 5173) |
 | `npm run backend` | Runs the Node.js Express backend API only (port 5000) |
 | `npm run db:init` | Applies PostgreSQL schema, constraints, and seeds default admin |
 | `npm run test:system` | Runs comprehensive system health & diagnostic checks |

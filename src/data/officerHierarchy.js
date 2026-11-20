@@ -117,6 +117,16 @@ export function sanitizeNumericStudentId(value) {
   return String(value ?? '').replace(/\D+/g, '')
 }
 
+export function applyNumericStudentIdPaste(event, currentValue = '') {
+  event.preventDefault()
+  const input = event.target
+  const pastedDigits = sanitizeNumericStudentId(event.clipboardData?.getData('text') || '')
+  const existing = String(currentValue ?? '')
+  const start = typeof input?.selectionStart === 'number' ? input.selectionStart : existing.length
+  const end = typeof input?.selectionEnd === 'number' ? input.selectionEnd : existing.length
+  return sanitizeNumericStudentId(`${existing.slice(0, start)}${pastedDigits}${existing.slice(end)}`)
+}
+
 export function normalizeYearLevelOption(value) {
   if (!value) return '1st Year'
   const str = String(value).trim()

@@ -17,7 +17,7 @@ export default function FilterSelect({ label, value, onChange, options, classNam
             return <option key={item.value} value={item.value}>{item.label}</option>
           })}
         </select>
-        <svg aria-hidden="true" className="filter-select-caret" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg>
+        <svg aria-hidden="true" className="filter-select-caret" height="16" viewBox="0 0 24 24" width="16"><path d="m6 9 6 6 6-6" /></svg>
       </div>
     </div>
   )

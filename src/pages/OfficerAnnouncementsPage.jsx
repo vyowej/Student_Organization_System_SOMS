@@ -129,6 +129,10 @@ export default function OfficerAnnouncementsPage() {
   return (
     <div className="officer-announcements-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Officer Dashboard', to: '/officer/dashboard' },
+          { label: 'Announcements' },
+        ]}
         description={`Create and manage announcements for ${organization?.name || 'your organization'}'s members.`}
         eyebrow={organization?.name || 'ORGANIZATION COMMUNICATIONS'}
         title="Announcements"

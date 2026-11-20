@@ -70,10 +70,6 @@ export default function AdviserApprovalsPage() {
       }
     })
 
-  const documents = adviserDocuments
-    .filter((document) => isGlobalViewer || !document.organizationId || assignedOrgIds.has(String(document.organizationId)))
-    .map((document) => ({ ...document, type: document.type || 'DOCUMENT' }))
-
   const reports = adviserReports
     .filter((report) => isGlobalViewer || !report.organizationId || assignedOrgIds.has(String(report.organizationId)))
     .map((report) => ({
@@ -82,6 +78,16 @@ export default function AdviserApprovalsPage() {
       title: report.eventTitle,
       submittedDate: report.submittedDate,
     }))
+
+  const reportIds = new Set(reports.map((report) => String(report.id)))
+
+  const documents = adviserDocuments
+    .filter(
+      (document) =>
+        !reportIds.has(String(document.id)) &&
+        (isGlobalViewer || !document.organizationId || assignedOrgIds.has(String(document.organizationId)))
+    )
+    .map((document) => ({ ...document, type: document.type || 'DOCUMENT' }))
 
   const applications = officerMembershipRequests
     .filter((app) => isGlobalViewer || !app.organizationId || assignedOrgIds.has(String(app.organizationId)))
@@ -163,6 +169,10 @@ export default function AdviserApprovalsPage() {
   return (
     <div className="adviser-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Adviser Dashboard', to: '/adviser/dashboard' },
+          { label: 'Approvals' },
+        ]}
         description="Review event proposals, compliance documents, accomplishment reports, and officer applications."
         eyebrow="UNIDOS · FACULTY ADVISER"
         title="Adviser Approvals"
@@ -230,7 +240,7 @@ export default function AdviserApprovalsPage() {
         approvalConfirmationMessage="Are you sure you want to approve this request? Please review the compliance file and details before proceeding."
         approvalConfirmationTitle="Confirm Approval"
         item={selected}
-        key={selected?.id ?? 'closed'}
+        key={selected ? `${selected.type}-${selected.id}` : 'closed'}
         onClose={() => setSelected(null)}
         onDecision={decide}
         report={selected?.type === 'ACCOMPLISHMENT_REPORT'}

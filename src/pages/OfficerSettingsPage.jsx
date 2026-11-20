@@ -4,6 +4,7 @@ import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
+import ChangePasswordModal from '../components/auth/ChangePasswordModal.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import Modal from '../components/ui/Modal.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
@@ -40,14 +41,17 @@ export default function OfficerSettingsPage() {
     captureUndo,
     currentUser,
     adminSettings,
+    organizationRequests = [],
     officerNotificationPreferences,
     updateOfficerOrganizationProfile,
     updateOfficerOrganizationContact,
     updateOfficerOrganizationLogo,
     saveOfficerNotificationPreferences,
     submitOfficerOrganizationRequest,
+    changeOwnPassword,
   } = useOutletContext()
   const { showToast } = useToast()
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false)
   const organization = adminOrganizations.find((item) => String(item.id) === String(currentUser?.organizationId)) || adminOrganizations[0]
 
   const organizationCategories = useMemo(() => {
@@ -71,10 +75,32 @@ export default function OfficerSettingsPage() {
   const [saveConfirm, setSaveConfirm] = useState('')
   const [discardConfirm, setDiscardConfirm] = useState('')
 
+  const orgDeactivationRequests = useMemo(
+    () =>
+      organization
+        ? (organizationRequests || []).filter((r) => String(r.organization_id) === String(organization.id))
+        : [],
+    [organizationRequests, organization]
+  )
+  const availableReplacementAdvisers = useMemo(
+    () => (advisers || []).filter((adv) => String(adv.adviser_id ?? adv.id) !== String(organization?.adviserId ?? '')),
+    [advisers, organization?.adviserId]
+  )
+  const pendingDeactivationRequest = orgDeactivationRequests.find((r) => r.status === 'PENDING') || null
+  const latestDeactivationRequest = orgDeactivationRequests[0] || null
+
   if (!organization) {
     return (
       <div className="officer-page">
-        <PageHeader title="Organization Settings" description="Manage your organization's information, preferences, and account settings." eyebrow="ORGANIZATION MANAGEMENT" />
+        <PageHeader
+          breadcrumbs={[
+            { label: 'Officer Dashboard', to: '/officer/dashboard' },
+            { label: 'Organization Settings' },
+          ]}
+          description="Manage your organization's information, preferences, and account settings."
+          eyebrow="ORGANIZATION MANAGEMENT"
+          title="Organization Settings"
+        />
         <Card className="officer-settings-card"><p>Your officer account does not have an assigned organization to configure.</p></Card>
       </div>
     )
@@ -226,14 +252,22 @@ export default function OfficerSettingsPage() {
       setRequestError('A reason is required to submit this request.')
       return
     }
+    const defaultAdv = availableReplacementAdvisers[0]
+    const resolvedAdviserId = requestType === 'ADVISER_CHANGE'
+      ? (requestedAdviserId || (defaultAdv?.adviser_id ?? defaultAdv?.id))
+      : undefined
+    if (requestType === 'ADVISER_CHANGE' && !resolvedAdviserId) {
+      setRequestError('Select a different faculty adviser before submitting your change request.')
+      return
+    }
     const undo = captureUndo()
     const ok = await submitOfficerOrganizationRequest(
       requestType,
       requestReason,
-      requestedAdviserId || advisers[0]?.adviser_id
+      resolvedAdviserId
     )
     if (!ok) {
-      setRequestError('Unable to submit the request. Ensure at least one faculty adviser exists in the database and no pending request is already active.')
+      setRequestError('Unable to submit the request. Ensure a different faculty adviser is available and no pending request is already active.')
       return
     }
     setRequestType('')
@@ -252,6 +286,10 @@ export default function OfficerSettingsPage() {
   return (
     <div className="officer-settings-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Officer Dashboard', to: '/officer/dashboard' },
+          { label: 'Organization Settings' },
+        ]}
         description="Manage your organization's information, preferences, and account settings."
         eyebrow={organization.name}
         title="Organization Settings"
@@ -312,7 +350,7 @@ export default function OfficerSettingsPage() {
             <div><strong>{organization.adviser || 'No adviser assigned'}</strong><span>Assigned Faculty Adviser</span></div>
             <Badge tone={organization.adviser && organization.adviser !== 'Unassigned' ? 'success' : 'warning'}>{organization.adviser && organization.adviser !== 'Unassigned' ? organization.adviserStatus ?? 'ACTIVE' : 'UNASSIGNED'}</Badge>
           </div>
-          <Button onClick={() => { setRequestType('ADVISER_CHANGE'); setRequestedAdviserId(advisers[0]?.adviser_id || ''); setRequestReason(''); setRequestError('') }} variant="secondary">Request Adviser Change</Button>
+          <Button onClick={() => { const defaultAdv = availableReplacementAdvisers[0]; setRequestType('ADVISER_CHANGE'); setRequestedAdviserId(String(defaultAdv?.adviser_id ?? defaultAdv?.id ?? '')); setRequestReason(''); setRequestError('') }} variant="secondary">Request Adviser Change</Button>
         </SettingsSection>
       </div>
 
@@ -381,15 +419,61 @@ export default function OfficerSettingsPage() {
         <p className="officer-settings-help">System roles and official organization permissions are managed by Student Affairs.</p>
       </SettingsSection>
 
+      <SettingsSection title="Account Security" description="Keep your signed-in UNIDOS officer account protected with a strong password.">
+        <div className="officer-settings-danger-row">
+          <div>
+            <strong>Account Password</strong>
+            <span>Signed in as {currentUser?.email || 'Officer Account'}. Update your personal login password anytime.</span>
+          </div>
+          <Button onClick={() => setPasswordModalOpen(true)} type="button" variant="secondary">
+            Change Password
+          </Button>
+        </div>
+      </SettingsSection>
+
       <SettingsSection title="Danger Zone" description="Organization deactivation requires an approval decision from Student Affairs." variant="officer-settings-danger">
-        <div className="officer-settings-danger-row"><div><strong>Request Organization Deactivation</strong><span>This submits a request for review. Your organization will not be deactivated immediately.</span></div><Button onClick={() => { setRequestType('DEACTIVATION'); setRequestReason(''); setRequestError('') }} variant="danger">Request Deactivation</Button></div>
+        <div className="officer-settings-danger-row">
+          <div>
+            <strong>Request Organization Deactivation</strong>
+            <span>This submits a request for review. Your organization will not be deactivated immediately.</span>
+          </div>
+          <Button
+            disabled={Boolean(pendingDeactivationRequest)}
+            onClick={() => { setRequestType('DEACTIVATION'); setRequestReason(''); setRequestError('') }}
+            variant="danger"
+          >
+            {pendingDeactivationRequest ? 'Deactivation Pending' : 'Request Deactivation'}
+          </Button>
+        </div>
+        {latestDeactivationRequest && (
+          <div className="status-callout status-callout--row" style={{ marginTop: '12px' }}>
+            <div>
+              <strong>Deactivation Request (#REQ-{latestDeactivationRequest.id})</strong>
+              <p style={{ margin: '4px 0 0', fontSize: '13px' }}>
+                Reason: {latestDeactivationRequest.reason}
+                {latestDeactivationRequest.review_remarks ? ` · Admin remarks: ${latestDeactivationRequest.review_remarks}` : ''}
+              </p>
+            </div>
+            <Badge
+              tone={
+                latestDeactivationRequest.status === 'APPROVED'
+                  ? 'success'
+                  : latestDeactivationRequest.status === 'REJECTED'
+                    ? 'danger'
+                    : 'warning'
+              }
+            >
+              {latestDeactivationRequest.status}
+            </Badge>
+          </div>
+        )}
       </SettingsSection>
 
       <Modal onClose={() => { setLogoOpen(false); setPendingLogo(''); setLogoError('') }} open={logoOpen} size="md" title="Upload Organization Logo">
         <div className="officer-settings-logo-upload">
           <div className="officer-settings-logo-frame"><OrganizationLogo acronym={organization.acronym} image={pendingLogo || organization.logo} /></div>
           <label className="officer-settings-file-label">Choose image<input accept="image/*" onChange={chooseLogo} type="file" /></label>
-          <small>Select an image file up to 1.5 MB. Saves to `organizations.logo` (supports Google Drive API URL or image data).</small>
+          <small>Select a PNG, JPG, SVG, or WebP image up to 1.5 MB.</small>
         </div>
         {logoError && <p className="auth-error" role="alert">{logoError}</p>}
         <div className="officer-settings-actions"><Button onClick={() => { setLogoOpen(false); setPendingLogo(''); setLogoError('') }} variant="secondary">Cancel</Button><Button disabled={!pendingLogo} onClick={commitLogo}>Save Logo</Button></div>
@@ -398,19 +482,26 @@ export default function OfficerSettingsPage() {
       <Modal onClose={() => { setRequestType(''); setRequestReason(''); setRequestError('') }} open={Boolean(requestType)} size="md" title={requestType === 'ADVISER_CHANGE' ? 'Request Adviser Change' : 'Request Organization Deactivation'}>
         <form className="officer-settings-request-form" onSubmit={submitRequest}>
           <p>{requestType === 'ADVISER_CHANGE'
-            ? 'Changing the assigned faculty adviser requires Student Affairs/Admin approval (`adviser_change_requests` table).'
-            : 'Organization deactivation requires Student Affairs/Admin approval. Submitting this request will not immediately deactivate or delete your organization.'}</p>
-          {requestType === 'ADVISER_CHANGE' && advisers.length > 0 && (
+            ? 'Changing the assigned faculty adviser requires Student Affairs / Admin approval.'
+            : 'Organization deactivation requires Student Affairs / Admin approval. Submitting this request will not immediately deactivate or delete your organization.'}</p>
+          {requestType === 'ADVISER_CHANGE' && availableReplacementAdvisers.length > 0 && (
             <label>
               <span>Requested Faculty Adviser</span>
               <select onChange={(event) => setRequestedAdviserId(event.target.value)} value={requestedAdviserId}>
-                {advisers.map((adv) => (
-                  <option key={adv.adviser_id} value={adv.adviser_id}>
-                    {adv.last_name}, {adv.first_name} ({adv.department_name || 'Faculty'})
-                  </option>
-                ))}
+                {availableReplacementAdvisers.map((adv) => {
+                  const advId = adv.adviser_id ?? adv.id
+                  const unitLabel = adv.college_acronym || adv.college_name || adv.department_name || 'Faculty'
+                  return (
+                    <option key={advId} value={String(advId)}>
+                      {adv.last_name}, {adv.first_name} ({unitLabel})
+                    </option>
+                  )
+                })}
               </select>
             </label>
+          )}
+          {requestType === 'ADVISER_CHANGE' && availableReplacementAdvisers.length === 0 && (
+            <p className="auth-error" role="alert">No alternative faculty advisers are currently available for reassignment.</p>
           )}
           <label>
             <span>Reason for request</span>
@@ -454,6 +545,18 @@ export default function OfficerSettingsPage() {
         open={removeLogoOpen}
         title="Remove organization logo"
         tone="danger"
+      />
+      <ChangePasswordModal
+        onClose={() => setPasswordModalOpen(false)}
+        onSubmit={async (payload) => {
+          const res = await changeOwnPassword?.(payload)
+          if (res?.ok) {
+            showToast(res.message || 'Account password updated.', 'success')
+          }
+          return res
+        }}
+        open={passwordModalOpen}
+        userEmail={currentUser?.email || ''}
       />
     </div>
   )

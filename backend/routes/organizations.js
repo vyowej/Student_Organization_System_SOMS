@@ -32,6 +32,56 @@ const VALID_ORG_TYPES = [
 
 const VALID_ORG_SCOPES = ['UNIVERSITY', 'COLLEGE', 'DEPARTMENT'];
 const VALID_ORG_STATUSES = ['PENDING', 'ACTIVE', 'INACTIVE', 'SUSPENDED'];
+const VALID_EDUCATION_LEVELS = ['UNDERGRADUATE', 'GRADUATE'];
+
+function resolvePositiveInt(val) {
+  if (val === undefined || val === null || String(val).trim() === '') return null;
+  const num = Number(val);
+  return Number.isInteger(num) && num > 0 ? num : null;
+}
+
+function parseYearLevel(raw, fallback) {
+  if (raw === undefined) return fallback ?? null;
+  if (raw === null || String(raw).trim() === '') return null;
+  const num = Number(raw);
+  if (!Number.isInteger(num) || num < 1 || num > 6) return NaN;
+  return num;
+}
+
+function normalizeEligibility(body = {}, fallback = {}) {
+  let eligibleLevel = fallback.eligible_level ?? 'UNDERGRADUATE';
+  if (body.eligible_level !== undefined) {
+    if (body.eligible_level === null || String(body.eligible_level).trim() === '') {
+      eligibleLevel = null;
+    } else {
+      const upper = String(body.eligible_level).trim().toUpperCase();
+      if (!VALID_EDUCATION_LEVELS.includes(upper)) {
+        return { error: 'eligible_level must be UNDERGRADUATE or GRADUATE.' };
+      }
+      eligibleLevel = upper;
+    }
+  }
+
+  const minYearLevel = parseYearLevel(body.min_year_level, fallback.min_year_level);
+  const maxYearLevel = parseYearLevel(body.max_year_level, fallback.max_year_level);
+  if (Number.isNaN(minYearLevel) || Number.isNaN(maxYearLevel)) {
+    return { error: 'Year level eligibility bounds must be integers between 1 and 6.' };
+  }
+  if (minYearLevel !== null && maxYearLevel !== null && minYearLevel > maxYearLevel) {
+    return { error: 'Minimum year level cannot exceed maximum year level.' };
+  }
+
+  const eligibilityNotes = body.eligibility_notes !== undefined
+    ? (body.eligibility_notes ? String(body.eligibility_notes).trim() : null)
+    : (fallback.eligibility_notes ?? null);
+
+  return {
+    eligible_level: eligibleLevel,
+    min_year_level: minYearLevel,
+    max_year_level: maxYearLevel,
+    eligibility_notes: eligibilityNotes,
+  };
+}
 
 function normalizeOrgType(input) {
   if (!input) return 'OTHER';
@@ -128,11 +178,199 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/organizations/requests — List organization governance / deactivation requests
+router.get('/requests', async (req, res) => {
+  try {
+    const { organization_id, status } = req.query;
+    let queryText = `
+      SELECT r.*,
+             o.name AS organization_name,
+             o.acronym AS organization_acronym,
+             req_user.first_name AS requester_first_name,
+             req_user.last_name  AS requester_last_name,
+             CASE WHEN req_user.id IS NOT NULL THEN (req_user.last_name || ', ' || req_user.first_name || COALESCE(' ' || req_user.suffix, '')) ELSE NULL END AS requester_name,
+             rev_user.first_name AS reviewer_first_name,
+             rev_user.last_name  AS reviewer_last_name,
+             CASE WHEN rev_user.id IS NOT NULL THEN (rev_user.last_name || ', ' || rev_user.first_name || COALESCE(' ' || rev_user.suffix, '')) ELSE NULL END AS reviewer_name
+        FROM organization_requests r
+        JOIN organizations o ON o.id = r.organization_id
+   LEFT JOIN users req_user ON req_user.id = r.requested_by
+   LEFT JOIN users rev_user ON rev_user.id = r.reviewed_by
+       WHERE 1=1
+    `;
+    const params = [];
+    if (organization_id) {
+      params.push(organization_id);
+      queryText += ` AND r.organization_id = $${params.length}`;
+    }
+    if (status) {
+      params.push(String(status).toUpperCase());
+      queryText += ` AND r.status = $${params.length}`;
+    }
+    queryText += ' ORDER BY r.created_at DESC';
+    const result = await db.query(queryText, params);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/organizations/:id/requests — Submit a governance / deactivation request for approval
+router.post('/:id/requests', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { request_type, requested_by, reason } = req.body || {};
+    const cleanReason = String(reason || '').trim();
+    const normalizedType = String(request_type || 'DEACTIVATION').trim().toUpperCase();
+
+    if (!cleanReason) {
+      return res.status(400).json({ error: 'A detailed reason is required.' });
+    }
+
+    const orgRes = await db.query('SELECT id, name FROM organizations WHERE id = $1', [id]);
+    if (orgRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Organization not found.' });
+    }
+    const orgName = orgRes.rows[0].name;
+
+    const result = await db.query(
+      `INSERT INTO organization_requests (organization_id, request_type, requested_by, reason, status)
+       VALUES ($1, $2, $3, $4, 'PENDING')
+       RETURNING *`,
+      [id, normalizedType, requested_by || null, cleanReason]
+    );
+    const created = result.rows[0];
+
+    await notifyAdmins({
+      type: 'APPROVAL',
+      title: `Organization ${normalizedType === 'DEACTIVATION' ? 'Deactivation' : normalizedType} Request: ${orgName}`,
+      message: `An officer of "${orgName}" requested organization ${normalizedType.toLowerCase()}. Reason: "${cleanReason}"`,
+    });
+    await notifyAdvisersForOrg(id, {
+      type: 'ORGANIZATION_UPDATE',
+      title: `Deactivation Requested: ${orgName}`,
+      message: `An officer submitted an organization ${normalizedType.toLowerCase()} request for "${orgName}". Pending Student Affairs review.`,
+    });
+    if (requested_by) {
+      await notifyUser(requested_by, {
+        type: 'CONFIRMATION',
+        title: `Request Submitted: ${orgName}`,
+        message: `Your organization ${normalizedType.toLowerCase()} request for "${orgName}" (#REQ-${created.id}) is pending Student Affairs review.`,
+      });
+    }
+    await recordAuditLog({
+      userId: requested_by || null,
+      action: `REQUEST_${normalizedType}`,
+      entity: 'organization_requests',
+      entityId: created.id,
+      metadata: {
+        organization_id: Number(id),
+        request_type: normalizedType,
+        reason: cleanReason,
+        description: `Submitted ${normalizedType.toLowerCase()} request #${created.id} for "${orgName}"`,
+      },
+      req,
+    });
+
+    res.status(201).json(created);
+  } catch (err) {
+    console.error(err);
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A pending request of this type already exists for this organization.' });
+    }
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PUT /api/organizations/requests/:requestId/review — Approve or reject a deactivation/governance request
+router.put('/requests/:requestId/review', async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+    const { requestId } = req.params;
+    const { status, reviewed_by, review_remarks } = req.body || {};
+    const normalizedStatus = String(status || '').trim().toUpperCase();
+
+    if (!['APPROVED', 'REJECTED', 'CANCELLED'].includes(normalizedStatus)) {
+      return res.status(400).json({ error: "status must be 'APPROVED', 'REJECTED', or 'CANCELLED'" });
+    }
+
+    await client.query('BEGIN');
+    const reqRes = await client.query(
+      `UPDATE organization_requests
+          SET status = $2,
+              reviewed_by = $3,
+              review_remarks = $4,
+              reviewed_at = now()
+        WHERE id = $1 AND status = 'PENDING'
+        RETURNING *`,
+      [requestId, normalizedStatus, reviewed_by || null, review_remarks ? String(review_remarks).trim() : null]
+    );
+    if (reqRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Pending organization request not found.' });
+    }
+    const requestRow = reqRes.rows[0];
+
+    if (normalizedStatus === 'APPROVED' && requestRow.request_type === 'DEACTIVATION') {
+      await client.query(
+        `UPDATE organizations
+            SET status = 'INACTIVE'::org_status,
+                approved_by = COALESCE($2, approved_by),
+                updated_at = now()
+          WHERE id = $1`,
+        [requestRow.organization_id, reviewed_by || null]
+      );
+    }
+    await client.query('COMMIT');
+
+    const orgRes = await db.query('SELECT name FROM organizations WHERE id = $1', [requestRow.organization_id]);
+    const orgName = orgRes.rows[0]?.name || 'Organization';
+
+    if (requestRow.requested_by) {
+      await notifyUser(requestRow.requested_by, {
+        type: 'ORGANIZATION_UPDATE',
+        title: `Deactivation Request ${normalizedStatus}: ${orgName}`,
+        message: `Your organization deactivation request for "${orgName}" was ${normalizedStatus.toLowerCase()} by Student Affairs.${review_remarks ? ` Remarks: ${review_remarks}` : ''}`,
+      });
+    }
+    await notifyAdvisersForOrg(requestRow.organization_id, {
+      type: 'ORGANIZATION_UPDATE',
+      title: `Deactivation Request ${normalizedStatus}: ${orgName}`,
+      message: `Organization "${orgName}" deactivation request was ${normalizedStatus.toLowerCase()}.`,
+    });
+    await recordAuditLog({
+      userId: reviewed_by || null,
+      action: `REVIEW_DEACTIVATION_${normalizedStatus}`,
+      entity: 'organization_requests',
+      entityId: requestRow.id,
+      metadata: {
+        organization_id: requestRow.organization_id,
+        status: normalizedStatus,
+        review_remarks,
+        description: `Reviewed deactivation request #${requestRow.id} for "${orgName}": ${normalizedStatus}`,
+      },
+      req,
+    });
+
+    res.json({ ok: true, request: requestRow });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
 // GET /api/organizations/:id — Fetch a single organization by ID
 router.get('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const result = await db.query(`${ORG_SELECT_QUERY} WHERE o.id = $1`, [id]);
+    const orgId = resolvePositiveInt(req.params.id);
+    if (!orgId) {
+      return res.status(400).json({ error: 'Valid organization ID is required' });
+    }
+    const result = await db.query(`${ORG_SELECT_QUERY} WHERE o.id = $1`, [orgId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Organization not found' });
@@ -151,6 +389,11 @@ router.post('/', async (req, res) => {
       name,
       acronym,
       description,
+      mission,
+      vision,
+      official_email,
+      contact_number,
+      social_media,
       logo,
       org_type,
       category,
@@ -168,8 +411,25 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Organization name is required' });
     }
 
-    let collegeIdVal = college_id ? Number(college_id) : null;
-    let departmentIdVal = department_id ? Number(department_id) : null;
+    const eligibility = normalizeEligibility(req.body);
+    if (eligibility.error) {
+      return res.status(400).json({ error: eligibility.error });
+    }
+
+    let collegeIdVal = null;
+    if (college_id !== undefined && college_id !== null && String(college_id).trim() !== '') {
+      collegeIdVal = resolvePositiveInt(college_id);
+      if (!collegeIdVal) {
+        return res.status(400).json({ error: 'Valid college_id is required' });
+      }
+    }
+    let departmentIdVal = null;
+    if (department_id !== undefined && department_id !== null && String(department_id).trim() !== '') {
+      departmentIdVal = resolvePositiveInt(department_id);
+      if (!departmentIdVal) {
+        return res.status(400).json({ error: 'Valid department_id is required' });
+      }
+    }
 
     if (!collegeIdVal && college && college !== 'University-Wide') {
       const colLookup = await db.query(
@@ -246,21 +506,31 @@ router.post('/', async (req, res) => {
 
     const insertRes = await db.query(
       `INSERT INTO organizations (
-        name, acronym, description, logo, org_type, category, scope,
-        college_id, department_id, created_by, status,
-        approved_by, approved_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        name, acronym, description, mission, vision, official_email, contact_number, social_media,
+        logo, org_type, category, scope,
+        college_id, department_id, eligible_level, min_year_level, max_year_level, eligibility_notes,
+        created_by, status, approved_by, approved_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       RETURNING id`,
       [
         name.trim(),
         acronym ? acronym.trim() : null,
         description || null,
+        mission || null,
+        vision || null,
+        official_email || null,
+        contact_number || null,
+        social_media || null,
         logoUrl,
         orgTypeVal,
         category ? String(category).trim() : null,
         orgScope,
         collegeIdVal,
         departmentIdVal,
+        eligibility.eligible_level,
+        eligibility.min_year_level,
+        eligibility.max_year_level,
+        eligibility.eligibility_notes,
         created_by || null,
         orgStatusVal,
         isApproved ? (created_by || null) : null,
@@ -332,28 +602,33 @@ router.post('/', async (req, res) => {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'An organization with this name/acronym already exists in that scope' });
     }
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // PUT /api/organizations/:id/approve — Approve or change status of an organization
 router.put(['/:id/approve', '/:id/status'], async (req, res) => {
   try {
-    const { id } = req.params;
-    const { approved_by, status } = req.body || {};
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid organization ID is required' });
+    }
+    const { approved_by, status, reason, review_remarks } = req.body || {};
+    const safeApprovedBy = resolvePositiveInt(approved_by);
+    const decisionReason = String(reason || review_remarks || '').trim();
     const targetStatus = VALID_ORG_STATUSES.includes(String(status || '').toUpperCase())
       ? String(status).toUpperCase()
       : 'ACTIVE';
 
     const result = await db.query(
       `UPDATE organizations
-          SET status = $2,
+          SET status = $2::org_status,
               approved_by = COALESCE($3, approved_by),
-              approved_at = CASE WHEN $2 = 'ACTIVE' THEN now() ELSE approved_at END,
+              approved_at = CASE WHEN $2::text = 'ACTIVE' THEN now() ELSE approved_at END,
               updated_at = now()
         WHERE id = $1
         RETURNING id`,
-      [id, targetStatus, approved_by || null]
+      [id, targetStatus, safeApprovedBy]
     );
 
     if (result.rows.length === 0) {
@@ -362,31 +637,33 @@ router.put(['/:id/approve', '/:id/status'], async (req, res) => {
 
     const fullOrg = await db.query(`${ORG_SELECT_QUERY} WHERE o.id = $1`, [id]);
     const orgRow = fullOrg.rows[0];
+    const reasonSuffix = decisionReason ? ` (${decisionReason})` : '';
 
     // Notify active advisers
     await notifyAdvisersForOrg(id, {
       type: 'MEMBERSHIP',
       title: `Organization Accreditation ${targetStatus === 'ACTIVE' ? 'Approved' : 'Updated'}: ${orgRow.name}`,
-      message: `Accreditation status for "${orgRow.name}" was updated to ${targetStatus}.`,
+      message: `Accreditation status for "${orgRow.name}" was updated to ${targetStatus}${reasonSuffix}.`,
     });
 
     if (orgRow?.created_by) {
       await notifyUser(orgRow.created_by, {
         type: 'MEMBERSHIP',
         title: `Organization Accreditation ${targetStatus === 'ACTIVE' ? 'Approved' : 'Updated'}: ${orgRow.name}`,
-        message: `Your organization accreditation application for "${orgRow.name}" has been ${targetStatus === 'ACTIVE' ? 'approved' : targetStatus.toLowerCase()}.`,
+        message: `Your organization accreditation application for "${orgRow.name}" has been ${targetStatus === 'ACTIVE' ? 'approved' : targetStatus.toLowerCase()}${reasonSuffix}.`,
       });
     }
 
     await recordAuditLog({
-      userId: approved_by || null,
+      userId: safeApprovedBy || resolvePositiveInt(req.body?.user_id),
       action: `APPROVE_ORGANIZATION_${targetStatus}`,
       entity: 'organizations',
       entityId: orgRow.id,
       metadata: {
         name: orgRow.name,
         status: targetStatus,
-        description: `Updated accreditation status for "${orgRow.name}" to ${targetStatus}`,
+        ...(decisionReason ? { reason: decisionReason } : {}),
+        description: `Updated accreditation status for "${orgRow.name}" to ${targetStatus}${reasonSuffix}`,
       },
       req,
     });
@@ -400,12 +677,22 @@ router.put(['/:id/approve', '/:id/status'], async (req, res) => {
 
 // PUT /api/organizations/:id — Update organization profile, academic scope, adviser, or logo
 router.put('/:id', async (req, res) => {
+  let client;
   try {
-    const { id } = req.params;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid organization ID is required' });
+    }
+
     const {
       name,
       acronym,
       description,
+      mission,
+      vision,
+      official_email,
+      contact_number,
+      social_media,
       logo,
       org_type,
       category,
@@ -417,17 +704,62 @@ router.put('/:id', async (req, res) => {
       adviser_id,
     } = req.body;
 
+    const safeApprovedBy = resolvePositiveInt(approved_by);
+
     const existingRes = await db.query('SELECT * FROM organizations WHERE id = $1', [id]);
     if (existingRes.rows.length === 0) {
       return res.status(404).json({ error: 'Organization not found' });
     }
     const current = existingRes.rows[0];
 
+    const eligibility = normalizeEligibility(req.body, current);
+    if (eligibility.error) {
+      return res.status(400).json({ error: eligibility.error });
+    }
+
+    let adviserMode = 'unchanged';
+    let targetAdviserId = null;
+    if (adviser_id !== undefined) {
+      if (adviser_id === null || adviser_id === '') {
+        adviserMode = 'clear';
+      } else {
+        targetAdviserId = resolvePositiveInt(adviser_id);
+        if (!targetAdviserId) {
+          return res.status(400).json({ error: 'Valid adviser_id is required' });
+        }
+        const advCheck = await db.query('SELECT id FROM advisers WHERE id = $1', [targetAdviserId]);
+        if (advCheck.rows.length === 0) {
+          return res.status(404).json({ error: 'Faculty adviser not found' });
+        }
+        adviserMode = 'assign';
+      }
+    }
+
     let nextScope = scope ? String(scope).toUpperCase() : current.scope;
     if (!VALID_ORG_SCOPES.includes(nextScope)) nextScope = current.scope;
 
-    let nextCollegeId = college_id !== undefined ? (college_id ? Number(college_id) : null) : current.college_id;
-    let nextDepartmentId = department_id !== undefined ? (department_id ? Number(department_id) : null) : current.department_id;
+    let nextCollegeId = current.college_id;
+    if (college_id !== undefined) {
+      if (college_id === null || String(college_id).trim() === '') {
+        nextCollegeId = null;
+      } else {
+        nextCollegeId = resolvePositiveInt(college_id);
+        if (!nextCollegeId) {
+          return res.status(400).json({ error: 'Valid college_id is required' });
+        }
+      }
+    }
+    let nextDepartmentId = current.department_id;
+    if (department_id !== undefined) {
+      if (department_id === null || String(department_id).trim() === '') {
+        nextDepartmentId = null;
+      } else {
+        nextDepartmentId = resolvePositiveInt(department_id);
+        if (!nextDepartmentId) {
+          return res.status(400).json({ error: 'Valid department_id is required' });
+        }
+      }
+    }
 
     if (nextScope === 'UNIVERSITY') {
       nextCollegeId = null;
@@ -462,20 +794,32 @@ router.put('/:id', async (req, res) => {
     // ============================================================
     const nextLogo = logo !== undefined ? logo : current.logo;
 
-    await db.query(
+    client = await db.pool.connect();
+    await client.query('BEGIN');
+
+    await client.query(
       `UPDATE organizations
           SET name = $2,
               acronym = $3,
               description = $4,
-              logo = $5,
-              org_type = $6,
-              category = $7,
-              scope = $8,
-              college_id = $9,
-              department_id = $10,
-              status = $11,
-              approved_by = COALESCE($12, approved_by),
-              approved_at = CASE WHEN $11 = 'ACTIVE' AND approved_at IS NULL THEN now() ELSE approved_at END,
+              mission = $5,
+              vision = $6,
+              official_email = $7,
+              contact_number = $8,
+              social_media = $9,
+              logo = $10,
+              org_type = $11,
+              category = $12,
+              scope = $13,
+              college_id = $14,
+              department_id = $15,
+              eligible_level = $16::education_level,
+              min_year_level = $17,
+              max_year_level = $18,
+              eligibility_notes = $19,
+              status = $20::org_status,
+              approved_by = COALESCE($21, approved_by),
+              approved_at = CASE WHEN $20::text = 'ACTIVE' AND approved_at IS NULL THEN now() ELSE approved_at END,
               updated_at = now()
         WHERE id = $1`,
       [
@@ -483,28 +827,46 @@ router.put('/:id', async (req, res) => {
         name ? name.trim() : current.name,
         acronym !== undefined ? (acronym ? acronym.trim() : null) : current.acronym,
         description !== undefined ? description : current.description,
+        mission !== undefined ? mission : current.mission,
+        vision !== undefined ? vision : current.vision,
+        official_email !== undefined ? official_email : current.official_email,
+        contact_number !== undefined ? contact_number : current.contact_number,
+        social_media !== undefined ? social_media : current.social_media,
         nextLogo,
         nextOrgType,
         nextCategory,
         nextScope,
         nextCollegeId,
         nextDepartmentId,
+        eligibility.eligible_level,
+        eligibility.min_year_level,
+        eligibility.max_year_level,
+        eligibility.eligibility_notes,
         nextStatus,
-        approved_by || null,
+        safeApprovedBy,
       ]
     );
 
-    if (adviser_id) {
-      await db.query(
+    if (adviserMode === 'clear') {
+      await client.query(
         'UPDATE organization_advisers SET ended_at = now() WHERE organization_id = $1 AND ended_at IS NULL',
         [id]
       );
-      await db.query(
+    } else if (adviserMode === 'assign') {
+      await client.query(
+        'UPDATE organization_advisers SET ended_at = now() WHERE organization_id = $1 AND ended_at IS NULL',
+        [id]
+      );
+      await client.query(
         `INSERT INTO organization_advisers (organization_id, adviser_id, assigned_by)
          VALUES ($1, $2, $3)`,
-        [id, adviser_id, approved_by || null]
+        [id, targetAdviserId, safeApprovedBy]
       );
     }
+
+    await client.query('COMMIT');
+    client.release();
+    client = null;
 
     const fullOrg = await db.query(`${ORG_SELECT_QUERY} WHERE o.id = $1`, [id]);
     const orgRow = fullOrg.rows[0];
@@ -517,8 +879,8 @@ router.put('/:id', async (req, res) => {
     });
 
     // 2. Dispatch confirmation to officer who performed update
-    if (approved_by) {
-      await notifyUser(approved_by, {
+    if (safeApprovedBy) {
+      await notifyUser(safeApprovedBy, {
         type: 'CONFIRMATION',
         title: `Profile Updated: ${orgRow.name}`,
         message: `Organization details and profile for "${orgRow.name}" were updated successfully.`,
@@ -527,7 +889,7 @@ router.put('/:id', async (req, res) => {
 
     // 3. Record audit log
     await recordAuditLog({
-      userId: approved_by || req.body?.user_id || null,
+      userId: safeApprovedBy || resolvePositiveInt(req.body?.updated_by) || resolvePositiveInt(req.body?.user_id),
       action: 'UPDATE_ORGANIZATION',
       entity: 'organizations',
       entityId: orgRow.id,
@@ -541,8 +903,15 @@ router.put('/:id', async (req, res) => {
 
     res.json(orgRow);
   } catch (err) {
+    if (client) {
+      await client.query('ROLLBACK').catch(() => {});
+      client.release();
+    }
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'An organization with this name/acronym already exists in that scope' });
+    }
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

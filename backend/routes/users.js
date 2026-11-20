@@ -15,7 +15,8 @@ try {
   bcrypt = require('bcryptjs');
 }
 const db = require('../db');
-const { recordAuditLog } = require('../notificationsHelper');
+const { resolvePositiveInt } = require('../utils');
+const { notifyAdmins, notifyUser, recordAuditLog } = require('../notificationsHelper');
 
 function formatYearLevelLabel(yearNum) {
   const n = Number(yearNum);
@@ -326,6 +327,7 @@ router.get('/', async (req, res) => {
               END AS role,
               u.status, u.created_at, u.updated_at,
               s.id AS student_db_id, s.student_number, s.program_id, s.year_level, s.cor_file_name,
+              (s.cor_file_data IS NOT NULL AND s.cor_file_data != '') AS has_cor,
               p.name AS program_name, p.acronym AS program_acronym,
               d.id AS department_id, d.name AS department_name, d.acronym AS department_acronym,
               c.id AS student_college_id, c.name AS student_college_name, c.acronym AS student_college_acronym,
@@ -383,6 +385,7 @@ router.get('/', async (req, res) => {
       studentId: r.student_number || null,
       student_number: r.student_number || null,
       corFileName: r.cor_file_name || null,
+      hasCor: Boolean(r.has_cor),
       adviserDbId: r.adviser_db_id || null,
       isCoordinator: Boolean(r.is_coordinator),
       employee_number: r.employee_number || null,
@@ -401,6 +404,383 @@ router.get('/', async (req, res) => {
     }));
 
     res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/users/password-reset-requests — List tracked password reset requests for Student Affairs Admin
+router.get('/password-reset-requests', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT prr.*,
+             u.first_name,
+             u.last_name,
+             u.role,
+             u.status AS user_status,
+             CASE WHEN u.id IS NOT NULL THEN (u.last_name || ', ' || u.first_name || COALESCE(' ' || u.suffix, '')) ELSE NULL END AS user_name,
+             CASE WHEN ru.id IS NOT NULL THEN (ru.last_name || ', ' || ru.first_name || COALESCE(' ' || ru.suffix, '')) ELSE NULL END AS resolved_by_name
+        FROM password_reset_requests prr
+   LEFT JOIN users u ON u.id = prr.user_id
+   LEFT JOIN users ru ON ru.id = prr.resolved_by
+       ORDER BY CASE WHEN prr.status = 'PENDING' THEN 0 ELSE 1 END, prr.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/users/forgot-password — Submit tracked reset ticket or perform ID-verified self-service reset
+router.post('/forgot-password', async (req, res) => {
+  const client = await db.pool.connect();
+  try {
+    const {
+      email,
+      identifier,
+      student_or_employee_id,
+      studentOrEmployeeId,
+      new_password,
+      newPassword,
+      mode,
+      reason,
+    } = req.body || {};
+
+    const cleanEmail = String(email || identifier || '').trim().toLowerCase();
+    const idCheck = String(student_or_employee_id || studentOrEmployeeId || '').trim();
+    const nextPassword = String(new_password || newPassword || '');
+
+    if (!cleanEmail || !cleanEmail.endsWith('@wmsu.edu.ph')) {
+      return res.status(400).json({ error: 'Enter your valid WMSU email address ending in @wmsu.edu.ph.' });
+    }
+
+    const userRes = await client.query(
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.status,
+              s.student_number, a.employee_number
+         FROM users u
+    LEFT JOIN students s ON s.user_id = u.id
+    LEFT JOIN advisers a ON a.user_id = u.id
+        WHERE lower(u.email) = $1
+        LIMIT 1`,
+      [cleanEmail]
+    );
+
+    const matchedUser = userRes.rows[0] || null;
+
+    if (mode === 'VERIFY_ID' || (idCheck && nextPassword)) {
+      if (!idCheck) {
+        return res.status(400).json({ error: 'Enter your Student Number or Employee Number to verify your identity.' });
+      }
+      if (!nextPassword || nextPassword.length < 6) {
+        return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+      }
+      const idMatches =
+        matchedUser &&
+        ((matchedUser.student_number && String(matchedUser.student_number).trim().toLowerCase() === idCheck.toLowerCase()) ||
+          (matchedUser.employee_number && String(matchedUser.employee_number).trim().toLowerCase() === idCheck.toLowerCase()));
+
+      if (!matchedUser || !idMatches) {
+        return res.status(400).json({ error: 'WMSU email and Student/Employee ID did not match an active account.' });
+      }
+
+      const passwordHash = await bcrypt.hash(nextPassword, 10);
+      await client.query('BEGIN');
+      await client.query('UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1', [
+        matchedUser.id,
+        passwordHash,
+      ]);
+      const ticketRes = await client.query(
+        `INSERT INTO password_reset_requests (user_id, email, requested_identifier, status, reason, resolved_by, review_remarks, resolved_at)
+         VALUES ($1, $2, $3, 'COMPLETED', $4, $1, 'Verified via Student/Employee ID self-reset', now())
+         RETURNING id`,
+        [matchedUser.id, matchedUser.email, idCheck, String(reason || 'Self-service password reset').trim()]
+      );
+      await client.query(
+        `UPDATE password_reset_requests
+            SET status = 'COMPLETED', resolved_by = $2, review_remarks = 'Superseded by self-service ID verification reset', resolved_at = now()
+          WHERE user_id = $1 AND status = 'PENDING'`,
+        [matchedUser.id, matchedUser.id]
+      );
+      await client.query('COMMIT');
+
+      await notifyUser(matchedUser.id, {
+        type: 'SECURITY',
+        title: 'Password Updated Successfully',
+        message: 'Your UNIDOS account password was reset using Student/Employee ID verification. You can now sign in with your new password.',
+      });
+      await notifyAdmins({
+        type: 'SECURITY',
+        title: `Password Reset Completed: ${matchedUser.email}`,
+        message: `${matchedUser.last_name}, ${matchedUser.first_name} completed an ID-verified self-service password reset.`,
+      });
+      await recordAuditLog({
+        userId: matchedUser.id,
+        action: 'PASSWORD_RESET_SELF',
+        entity: 'users',
+        entityId: matchedUser.id,
+        metadata: {
+          email: matchedUser.email,
+          request_id: ticketRes.rows[0]?.id,
+          description: `Completed ID-verified password reset for ${matchedUser.email}`,
+        },
+        req,
+      });
+
+      return res.json({
+        ok: true,
+        mode: 'RESET',
+        requestId: ticketRes.rows[0]?.id,
+        message: 'Password updated successfully. You may now sign in with your new password.',
+      });
+    }
+
+    if (!matchedUser) {
+      await recordAuditLog({
+        userId: null,
+        action: 'PASSWORD_RESET_UNMATCHED',
+        entity: 'users',
+        entityId: null,
+        metadata: {
+          email: cleanEmail,
+          description: `Password reset requested for unrecognized email ${cleanEmail}`,
+        },
+        req,
+      });
+      return res.json({
+        ok: true,
+        mode: 'REQUESTED',
+        requestId: null,
+        message: 'If this WMSU email matches an account, a password reset ticket has been forwarded to Student Affairs.',
+      });
+    }
+
+    const reqInsert = await client.query(
+      `INSERT INTO password_reset_requests (user_id, email, requested_identifier, status, reason)
+       VALUES ($1, $2, $3, 'PENDING', $4)
+       RETURNING id, created_at`,
+      [matchedUser.id, matchedUser.email, idCheck || null, String(reason || 'Forgot password assistance requested').trim()]
+    );
+    const ticket = reqInsert.rows[0];
+
+    await notifyAdmins({
+      type: 'SECURITY',
+      title: `Password Reset Requested: ${matchedUser.last_name}, ${matchedUser.first_name}`,
+      message: `${matchedUser.email} (${matchedUser.role}) submitted password reset ticket #${ticket.id}. Open Users & Advisers to reset their password.`,
+    });
+    await recordAuditLog({
+      userId: matchedUser.id,
+      action: 'PASSWORD_RESET_REQUESTED',
+      entity: 'password_reset_requests',
+      entityId: ticket.id,
+      metadata: {
+        email: matchedUser.email,
+        user_id: matchedUser.id,
+        description: `Submitted password reset ticket #${ticket.id} for ${matchedUser.email}`,
+      },
+      req,
+    });
+
+    res.status(201).json({
+      ok: true,
+      mode: 'REQUESTED',
+      requestId: ticket.id,
+      message: `Password reset ticket #PRR-${ticket.id} submitted to Student Affairs Admin for review.`,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[FORGOT PASSWORD ERROR]', err);
+    res.status(500).json({ error: 'Unable to process password reset request.' });
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/users/password-reset-requests/:reqId/reject — Reject/dismiss a pending password reset request
+router.put('/password-reset-requests/:reqId/reject', async (req, res) => {
+  try {
+    const reqId = resolvePositiveInt(req.params.reqId);
+    if (!reqId) {
+      return res.status(400).json({ error: 'Valid password reset request ID is required.' });
+    }
+    const { resolved_by, review_remarks } = req.body || {};
+    const safeResolvedBy = resolvePositiveInt(resolved_by);
+    const result = await db.query(
+      `UPDATE password_reset_requests
+          SET status = 'REJECTED',
+              resolved_by = $2,
+              review_remarks = $3,
+              resolved_at = now()
+        WHERE id = $1 AND status = 'PENDING'
+        RETURNING *`,
+      [reqId, safeResolvedBy, String(review_remarks || 'Closed by Student Affairs Admin').trim()]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Pending password reset request not found.' });
+    }
+    const row = result.rows[0];
+    if (row.user_id) {
+      await notifyUser(row.user_id, {
+        type: 'SECURITY',
+        title: `Password Reset Request #${row.id} Closed`,
+        message: `Your password reset request #${row.id} was closed by Student Affairs.${review_remarks ? ` Note: ${review_remarks}` : ''}`,
+      });
+    }
+    await recordAuditLog({
+      userId: safeResolvedBy,
+      action: 'REJECT_PASSWORD_RESET',
+      entity: 'password_reset_requests',
+      entityId: row.id,
+      metadata: {
+        email: row.email,
+        review_remarks,
+        description: `Rejected password reset request #${row.id} for ${row.email}`,
+      },
+      req,
+    });
+    res.json({ ok: true, request: row });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PUT /api/users/:id/password — Admin password reset or authenticated self-service password change
+router.put('/:id/password', async (req, res) => {
+  const id = resolvePositiveInt(req.params.id);
+  if (!id) {
+    return res.status(400).json({ error: 'Valid user ID is required.' });
+  }
+  const client = await db.pool.connect();
+  try {
+    const {
+      current_password,
+      currentPassword,
+      new_password,
+      newPassword,
+      updated_by,
+      request_id,
+      review_remarks,
+      self_service,
+    } = req.body || {};
+    const safeUpdatedBy = resolvePositiveInt(updated_by);
+    const safeRequestId = resolvePositiveInt(request_id);
+    const currentPasswordValue = String(current_password ?? currentPassword ?? '');
+    const isSelfService =
+      Boolean(self_service) ||
+      current_password !== undefined ||
+      currentPassword !== undefined;
+    const passwordValue = String(new_password || newPassword || '');
+    if (!passwordValue || passwordValue.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+    }
+
+    const userRes = await client.query(
+      'SELECT id, email, first_name, last_name, password_hash FROM users WHERE id = $1',
+      [id]
+    );
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const target = userRes.rows[0];
+
+    if (isSelfService) {
+      if (!currentPasswordValue) {
+        return res.status(400).json({ error: 'Current password is required.' });
+      }
+      const matchesCurrent = target.password_hash
+        ? await bcrypt.compare(currentPasswordValue, target.password_hash)
+        : false;
+      if (!matchesCurrent) {
+        return res.status(401).json({ error: 'Current password is incorrect.' });
+      }
+      if (passwordValue === currentPasswordValue) {
+        return res.status(400).json({ error: 'New password must be different from your current password.' });
+      }
+    }
+
+    const hashed = await bcrypt.hash(passwordValue, 10);
+
+    await client.query('BEGIN');
+    await client.query('UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1', [id, hashed]);
+    if (!isSelfService) {
+      if (safeRequestId) {
+        await client.query(
+          `UPDATE password_reset_requests
+              SET status = 'COMPLETED',
+                  resolved_by = $2,
+                  review_remarks = COALESCE($3, 'Password reset by Student Affairs Admin'),
+                  resolved_at = now()
+            WHERE id = $1`,
+          [safeRequestId, safeUpdatedBy, review_remarks || null]
+        );
+      } else {
+        await client.query(
+          `UPDATE password_reset_requests
+              SET status = 'COMPLETED',
+                  resolved_by = $2,
+                  review_remarks = COALESCE($3, 'Password reset by Student Affairs Admin'),
+                  resolved_at = now()
+            WHERE user_id = $1 AND status = 'PENDING'`,
+          [id, safeUpdatedBy, review_remarks || null]
+        );
+      }
+    }
+    await client.query('COMMIT');
+
+    await notifyUser(target.id, {
+      type: 'SECURITY',
+      title: isSelfService ? 'Account Password Updated' : 'Account Password Reset by Administration',
+      message: isSelfService
+        ? 'Your UNIDOS account password was changed. Contact Student Affairs immediately if you did not authorize this update.'
+        : 'Your UNIDOS password was reset by Student Affairs Admin. Sign in with your updated credentials and keep them secure.',
+    });
+    await recordAuditLog({
+      userId: safeUpdatedBy || target.id,
+      action: isSelfService ? 'USER_CHANGE_PASSWORD' : 'ADMIN_RESET_PASSWORD',
+      entity: 'users',
+      entityId: target.id,
+      metadata: {
+        email: target.email,
+        request_id: request_id || null,
+        description: isSelfService
+          ? `Changed account password for ${target.email}`
+          : `Reset password for ${target.last_name}, ${target.first_name} (${target.email})`,
+      },
+      req,
+    });
+
+    res.json({
+      ok: true,
+      message: isSelfService
+        ? 'Your account password has been updated.'
+        : `Password updated for ${target.email}.`,
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/users/:id/cor — Retrieve stored student COR file bytes & filename
+router.get('/:id/cor', async (req, res) => {
+  try {
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid user ID is required.' });
+    }
+    const result = await db.query(
+      'SELECT s.id AS student_id, u.id AS user_id, s.cor_file_name, s.cor_file_data FROM users u JOIN students s ON s.user_id = u.id WHERE u.id = $1 OR s.id = $1 LIMIT 1',
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'COR record not found.' });
+    }
+    res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -521,7 +901,7 @@ router.post('/register', async (req, res) => {
         [createdUserId, resolvedStdNum, progId, validYear, resolvedCorName, resolvedCorData]
       );
 
-      const targetOrgId = Number(organization_id || organizationId || 0);
+      const targetOrgId = resolvePositiveInt(organization_id || organizationId) || 0;
       if (targetOrgId > 0 && stdInsert.rows[0]?.id) {
         const studentDbId = stdInsert.rows[0].id;
         if (direct_enroll || directEnroll) {
@@ -568,7 +948,7 @@ router.post('/register', async (req, res) => {
          ON CONFLICT (user_id) DO UPDATE
            SET employee_number = EXCLUDED.employee_number,
                college_id = COALESCE(EXCLUDED.college_id, advisers.college_id)`,
-        [createdUserId, resolvedEmpNum, college_id || collegeId || null]
+        [createdUserId, resolvedEmpNum, resolvePositiveInt(college_id || collegeId)]
       );
     }
 
@@ -595,7 +975,7 @@ router.post('/register', async (req, res) => {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'An account with this email or student/employee number already exists.' });
     }
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -707,7 +1087,7 @@ router.post('/login', async (req, res) => {
     res.json(fullProfile);
   } catch (err) {
     console.error('[LOGIN ERROR]', err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -743,7 +1123,10 @@ router.post('/logout', async (req, res) => {
 // PUT /api/users/:id — Update user account details, role, status, and linked student/adviser profile
 router.put('/:id', async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = resolvePositiveInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: 'Valid user ID is required.' });
+    }
     const {
       email,
       first_name,
@@ -873,7 +1256,7 @@ router.put('/:id', async (req, res) => {
     if (validRole === 'ADVISER' || employee_number !== undefined || employeeNumber !== undefined || college_id !== undefined || collegeId !== undefined) {
       const advRes = await db.query('SELECT * FROM advisers WHERE user_id = $1', [id]);
       const resolvedEmpNum = (employee_number || employeeNumber || advRes.rows[0]?.employee_number || `ADV-${id}`).trim();
-      const resolvedColId = college_id ?? collegeId ?? advRes.rows[0]?.college_id ?? null;
+      const resolvedColId = resolvePositiveInt(college_id ?? collegeId) ?? advRes.rows[0]?.college_id ?? null;
 
       await db.query(
         `INSERT INTO advisers (user_id, employee_number, college_id)
@@ -899,7 +1282,7 @@ router.put('/:id', async (req, res) => {
     }
 
     await recordAuditLog({
-      userId: req.body.updated_by || req.body.admin_id || id,
+      userId: resolvePositiveInt(req.body.updated_by || req.body.admin_id) || id,
       action: changedRole ? 'UPDATE_USER_ROLE' : (changedStatus ? 'UPDATE_USER_STATUS' : 'UPDATE_USER_PROFILE'),
       entity: 'users',
       entityId: id,
@@ -917,8 +1300,11 @@ router.put('/:id', async (req, res) => {
 
     res.json(updatedProfile);
   } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'An account or student number with that value already exists.' });
+    }
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

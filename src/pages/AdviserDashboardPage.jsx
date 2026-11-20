@@ -4,11 +4,15 @@
  * Summarizes assigned student organizations, pending event proposals,
  * compliance documents, and accomplishment reports awaiting adviser review.
  */
+import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
+import ChangePasswordModal from '../components/auth/ChangePasswordModal.jsx'
 import Badge from '../components/ui/Badge.jsx'
+import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
+import { useToast } from '../components/ui/useToast.js'
 import { formatDisplayName } from '../data/displayName.js'
 
 function StatCard({ label, value, to }) {
@@ -29,10 +33,13 @@ export default function AdviserDashboardPage() {
     adviserActivity = [],
     adviserDocuments = [],
     adviserReports = [],
+    changeOwnPassword,
     currentUser,
     officerEvents = [],
     officerMembershipRequests = [],
   } = useOutletContext()
+  const { showToast } = useToast()
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false)
 
   const isGlobalViewer = Boolean(currentUser?.isGlobalAdmin || currentUser?.role === 'ADMIN')
   const assignedOrgs = isGlobalViewer
@@ -84,6 +91,11 @@ export default function AdviserDashboardPage() {
   return (
     <div className="adviser-page">
       <PageHeader
+        actions={(
+          <Button onClick={() => setPasswordModalOpen(true)} type="button" variant="secondary">
+            Change Password
+          </Button>
+        )}
         description="Review proposals, support assigned organizations, and keep activities on track."
         eyebrow="UNIDOS · FACULTY ADVISER"
         title={`Welcome, ${formatDisplayName(currentUser) || 'Faculty Adviser'}`}
@@ -118,7 +130,7 @@ export default function AdviserDashboardPage() {
           {upcomingEvents.length ? upcomingEvents.slice(0, 5).map((event) => (
             <article className="adviser-list-row" key={event.id}>
               <div><strong>{event.title}</strong><span>{event.organizationName ?? effectiveOrgs.find((organization) => String(organization.id) === String(event.organizationId))?.name}</span><small>{event.date} · {event.time || event.startTime || 'Time to be confirmed'} · {event.location || event.venue || 'Venue to be confirmed'}</small></div>
-              <Badge tone={event.status === 'PUBLISHED' ? 'success' : 'crimson'}>{event.status}</Badge>
+              <Badge tone={['PUBLISHED', 'APPROVED', 'ONGOING'].includes(event.status) ? 'success' : 'crimson'}>{event.status}</Badge>
               <Link className="button button-secondary" to="/adviser/events">View</Link>
             </article>
           )) : <p className="adviser-empty-note">No scheduled activities are available yet.</p>}
@@ -131,6 +143,18 @@ export default function AdviserDashboardPage() {
           <div className="adviser-activity-row" key={activity.id}><span aria-hidden="true">•</span><p>{activity.description || activity.message}</p><time>{activity.timestamp || activity.time}</time></div>
         )) : <p className="adviser-empty-note">No recent activity recorded yet.</p>}
       </Card>
+      <ChangePasswordModal
+        onClose={() => setPasswordModalOpen(false)}
+        onSubmit={async (payload) => {
+          const res = await changeOwnPassword?.(payload)
+          if (res?.ok) {
+            showToast(res.message || 'Account password updated.', 'success')
+          }
+          return res
+        }}
+        open={passwordModalOpen}
+        userEmail={currentUser?.email || ''}
+      />
     </div>
   )
 }

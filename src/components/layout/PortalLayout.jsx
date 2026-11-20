@@ -17,7 +17,7 @@ import ErrorBoundary from '../ui/ErrorBoundary.jsx'
 export default function PortalLayout({ role }) {
   const location = useLocation()
   const sharedPortalData = usePortalData()
-  const { currentUser } = useAuth()
+  const { currentUser, setActiveRole } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
   const previousLocation = useRef(location.pathname)
   const [readNotificationIds, setReadNotificationIds] = useState([])
@@ -201,6 +201,7 @@ export default function PortalLayout({ role }) {
   return (
     <div className={`app-shell portal-layout${menuOpen ? ' sidebar-open' : ''}`}>
       <Navbar
+        activeOrganizationId={currentUser?.organizationId || sharedPortalData.adminOrganizations?.[0]?.id || ''}
         isMenuOpen={menuOpen}
         notificationCount={unreadNotificationCount}
         notificationLink={navigation.notifications}
@@ -208,6 +209,8 @@ export default function PortalLayout({ role }) {
         onMarkAllNotificationsRead={() => sharedPortalData.markAllNotificationsRead?.()}
         onMarkNotificationRead={(item) => markNotificationRead(item.id)}
         onMenuClick={() => setMenuOpen((open) => !open)}
+        onSelectOrganization={(orgId) => setActiveRole('OFFICER', orgId)}
+        organizations={sharedPortalData.adminOrganizations || []}
         profileLink={navigation.profile}
         role={role}
       />

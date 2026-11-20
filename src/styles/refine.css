@@ -72,17 +72,25 @@
 
 .filter-select select {
   width: 100%;
+  height: 46px;
   min-height: 46px;
-  padding: 0 38px 0 14px;
+  padding: 10px 38px 10px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
   color: var(--text);
   background: #fff;
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.4;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   appearance: none;
   cursor: pointer;
   transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.filter-select select::picker-icon {
+  display: none;
 }
 
 .filter-select select:hover { border-color: #d9c3cb; }
@@ -248,7 +256,7 @@
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
   font-size: 13px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-text, #27252a);
 }
 .officer-settings-field-grid input,
 .officer-settings-field-grid select,
@@ -257,7 +265,7 @@
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
   font-size: 14px;
   font-weight: 400;
-  color: #0f172a;
+  color: var(--color-text, #27252a);
 }
 .student-profile-block dt,
 .student-profile-block dd { margin: 0; padding: 0; }

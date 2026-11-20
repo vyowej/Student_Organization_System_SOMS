@@ -372,6 +372,8 @@ table.dataTable.no-footer { border-bottom: 0; }
 .auth-registration-progress > span > b {
   width: 26px;
   height: 26px;
+  flex: 0 0 26px;
+  flex-shrink: 0;
   display: inline-grid;
   place-items: center;
   border: 1.5px solid #d9d2d6;
@@ -1736,7 +1738,7 @@ tbody tr:hover .cell-sticky { background: transparent; }
   gap: 5px;
   padding: 5px 12px;
   border-radius: 999px;
-  color: var(--crimson, #990000);
+  color: var(--color-primary, #8f1538);
   background: var(--crimson-soft, #fdf0f2);
   font-size: 12px;
   font-weight: 700;
@@ -1748,7 +1750,7 @@ tbody tr:hover .cell-sticky { background: transparent; }
 
 .adviser-panel-heading > a:hover {
   background: #f8dce2;
-  color: #800000;
+  color: var(--color-dark, #4a0b1f);
   transform: translateX(1px);
 }
 
@@ -1833,11 +1835,11 @@ tbody tr:hover .cell-sticky { background: transparent; }
   margin: 0;
   padding: 28px 16px;
   text-align: center;
-  color: var(--muted, #7c7582);
+  color: var(--color-muted, #5a5560);
   font-size: 13px;
-  border: 1px dashed var(--border, #e5e0e5);
-  border-radius: 10px;
-  background: #fdfbfc;
+  border: 1px dashed var(--color-border, #eadfe2);
+  border-radius: 12px;
+  background: var(--color-background, #fbf7f5);
 }
 
 /* Recent Activity Panel */
@@ -1863,7 +1865,7 @@ tbody tr:hover .cell-sticky { background: transparent; }
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background-color: var(--crimson, #990000);
+  background-color: var(--color-primary, #8f1538);
   color: transparent;
   overflow: hidden;
   font-size: 0;
@@ -2100,6 +2102,7 @@ tbody tr:hover .cell-sticky { background: transparent; }
   display: flex !important;
   flex-direction: column !important;
   justify-content: center !important;
+  min-width: 0 !important;
   gap: 2px !important;
   line-height: 1.15 !important;
 }
@@ -2159,6 +2162,11 @@ tbody tr:hover .cell-sticky { background: transparent; }
 @media (max-width: 480px) {
   .public-navbar .public-brand-copy span {
     display: none !important;
+  }
+  .auth-brand > div > span {
+    white-space: normal !important;
+    font-size: 9.5px !important;
+    letter-spacing: 0.05em !important;
   }
 }
 
@@ -2873,20 +2881,20 @@ tbody tr:hover .cell-sticky { background: transparent; }
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--crimson, #990000);
+  color: var(--color-primary, #8f1538);
 }
 
 .auth-adviser-seeds-pwd {
   font-size: var(--text-xs);
   color: #514b53;
   background: #fff;
-  border: 1px solid #e7dfe3;
+  border: 1px solid var(--color-border, #eadfe2);
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: 999px;
 }
 
 .auth-adviser-seeds-pwd strong {
-  color: var(--crimson, #990000);
+  color: var(--color-primary, #8f1538);
   font-family: monospace;
 }
 
@@ -2911,7 +2919,7 @@ tbody tr:hover .cell-sticky { background: transparent; }
   padding: 8px 10px;
   background: #ffffff;
   border: 1px solid #eedde1;
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.15s ease-in-out;
   text-align: left;
@@ -2919,10 +2927,10 @@ tbody tr:hover .cell-sticky { background: transparent; }
 }
 
 .auth-adviser-chip:hover {
-  border-color: var(--crimson, #990000);
+  border-color: var(--color-primary, #8f1538);
   background: #fffafa;
   transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(153, 0, 0, 0.08);
+  box-shadow: 0 2px 6px rgba(143, 21, 56, 0.08);
 }
 
 .auth-adviser-chip-top {
@@ -2942,9 +2950,9 @@ tbody tr:hover .cell-sticky { background: transparent; }
   font-size: 11px;
   font-weight: 700;
   background: #fbf1f3;
-  color: var(--crimson, #990000);
-  padding: 1px 6px;
-  border-radius: 4px;
+  color: var(--color-primary, #8f1538);
+  padding: 2px 8px;
+  border-radius: 999px;
 }
 
 .auth-adviser-chip-org {
@@ -2959,4 +2967,56 @@ tbody tr:hover .cell-sticky { background: transparent; }
   font-size: 11px;
   color: #8f858c;
   font-family: monospace;
+}
+
+/* Status Callouts (Modal & Review Dialogs) */
+.status-callout--success {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.status-callout--danger {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+/* Admin Modals & Toolbar Polish */
+.admin-modal-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 560px) {
+  .admin-modal-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-filter-bar select:disabled {
+  background: #f6f4f6;
+  color: #5c555d;
+  cursor: not-allowed;
+  opacity: 0.9;
+}
+
+.admin-month-interval-select {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.portal-org-switcher {
+  max-width: 170px;
+  padding-right: 22px;
+  text-overflow: ellipsis;
+}
+
+.portal-org-switcher:focus-visible {
+  outline: 2px solid var(--crimson, #8f1538);
+  outline-offset: 2px;
 }

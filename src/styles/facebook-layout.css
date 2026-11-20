@@ -163,30 +163,23 @@
 /* ---- Tabs ---------------------------------------------------------------- */
 .fb-tabs {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin: 0;
-  padding: 12px 20px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  padding: 10px 16px;
+  overflow: visible;
   border-top: 1px solid var(--border);
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.fb-tabs::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
 }
 
 .fb-tab {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex: 0 0 auto;
-  min-height: 44px;
-  padding: 6px 14px;
+  min-height: 40px;
+  padding: 6px 12px;
   border: 0;
   border-radius: var(--radius-control);
   color: var(--muted);
@@ -338,9 +331,9 @@
   transition: transform 160ms ease;
 }
 .fb-metric:hover .fb-metric-icon { transform: scale(1.05); }
-.fb-metric-blue .fb-metric-icon { color: #2563eb; background: #eff6ff; border-color: #bfdbfe; }
-.fb-metric-gold .fb-metric-icon { color: #d97706; background: #fffbeb; border-color: #fde68a; }
-.fb-metric-green .fb-metric-icon { color: #16a34a; background: #f0fdf4; border-color: #bbf7d0; }
+.fb-metric-blue .fb-metric-icon { color: var(--color-dark, #4a0b1f); background: #f6eaee; border-color: #e5ced6; }
+.fb-metric-gold .fb-metric-icon { color: var(--color-gold-ink, #765029); background: var(--color-gold-soft, #faf1dc); border-color: #e9d2a4; }
+.fb-metric-green .fb-metric-icon { color: var(--color-success, #18794e); background: #eaf7ef; border-color: #bce5cb; }
 .fb-metric > div { display: grid; min-width: 0; }
 .fb-metric .stat-value { color: var(--text); font-size: 22px; font-weight: 800; line-height: 1.15; }
 .fb-metric .stat-label { color: var(--muted); font-size: var(--text-sm, 13px); }
@@ -473,8 +466,9 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  color: #285fa5;
-  background: #e8f0fb;
+  color: var(--color-primary, #8f1538);
+  background: #f7e6eb;
+  border: 1px solid rgba(143, 21, 56, 0.14);
   font-size: 13px;
   font-weight: 800;
   flex-shrink: 0;
@@ -765,7 +759,7 @@
 }
 
 .student-vision-box {
-  border-left-color: #2563eb;
+  border-left-color: var(--color-gold, #c08346);
 }
 
 .student-mv-label {
@@ -1075,10 +1069,10 @@
 .student-doc-preview-callout {
   padding: 14px 16px;
   border-radius: var(--radius-control);
-  background: #f7f9fc;
-  border: 1px solid #dbe3ee;
+  background: var(--color-background, #fbf7f5);
+  border: 1px solid var(--color-border, #eadfe2);
   font-size: var(--text-sm, 13px);
-  color: #334155;
+  color: var(--color-text, #27252a);
   line-height: 1.5;
 }
 
@@ -1168,15 +1162,15 @@
 }
 
 .officer-stat-icon.tone-gold {
-  color: #d97706;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  color: var(--color-gold-ink, #765029);
+  background: var(--color-gold-soft, #faf1dc);
+  border: 1px solid #e9d2a4;
 }
 
 .officer-stat-icon.tone-blue {
-  color: #2563eb;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  color: var(--color-dark, #4a0b1f);
+  background: #f6eaee;
+  border: 1px solid #e5ced6;
 }
 
 .officer-stat-icon.tone-danger {

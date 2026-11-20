@@ -8,11 +8,21 @@ export default function AccessDeniedPage() {
   const hasOfficerWorkspace = (currentUser?.organizationRoles && currentUser.organizationRoles.length > 0) || Boolean(currentUser?.organizationId)
 
   let destination = '/login'
+  let buttonLabel = 'Sign In'
   if (currentUser) {
-    if (currentUser.role === 'ADMIN') destination = '/admin/dashboard'
-    else if (currentUser.role === 'ADVISER') destination = '/adviser/dashboard'
-    else if (currentUser.role === 'OFFICER' && hasOfficerWorkspace) destination = '/officer/dashboard'
-    else destination = '/student/dashboard'
+    if (currentUser.role === 'ADMIN') {
+      destination = '/admin/dashboard'
+      buttonLabel = 'Go to My Dashboard'
+    } else if (currentUser.role === 'ADVISER') {
+      destination = '/adviser/dashboard'
+      buttonLabel = 'Go to My Dashboard'
+    } else if (currentUser.role === 'OFFICER' && hasOfficerWorkspace) {
+      destination = '/officer/dashboard'
+      buttonLabel = 'Go to My Dashboard'
+    } else {
+      destination = '/organizations'
+      buttonLabel = 'Browse Organizations'
+    }
   }
 
   return (
@@ -21,7 +31,7 @@ export default function AccessDeniedPage() {
       <h1>Access Denied</h1>
       <p>You don't have permission to access this page.</p>
       <Link className="button button-primary" to={destination}>
-        {destination.includes('/student') ? 'Go to Student Portal' : 'Go to My Dashboard'}
+        {buttonLabel}
       </Link>
     </Card>
   )

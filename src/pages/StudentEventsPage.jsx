@@ -7,8 +7,10 @@ import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar from '../components/ui/SearchBar.jsx'
 import { usePortalData } from '../context/usePortalData.js'
+import { useAuth } from '../context/useAuth.js'
 import {
   eventCategories,
+  findUserEventRegistration,
   getEventRegistrationState,
   isEventAlmostFull,
   isEventEnded,
@@ -48,6 +50,7 @@ function EventDate({ date }) {
 export default function StudentEventsPage() {
   const outletCtx = useOutletContext() || {}
   const portalData = usePortalData()
+  const { currentUser } = useAuth()
 
   const officerEvents = useMemo(
     () => outletCtx.officerEvents || portalData?.officerEvents || [],
@@ -81,9 +84,7 @@ export default function StudentEventsPage() {
         registeredCount: eventRegisteredCounts[event.id] ?? event.registeredCount ?? 0,
       }))
       .filter((event) => {
-        const registration = studentRegistrations.find((item) => (
-          String(item.eventId) === String(event.id) && item.status !== 'CANCELLED'
-        ))
+        const registration = findUserEventRegistration(studentRegistrations, event.id, currentUser)
         const matchesCategory = category === 'All' || event.category === category
         const searchableText = `${event.title} ${event.organizationName} ${event.category} ${event.location} ${event.description}`.toLowerCase()
         const matchesSearch = !query || searchableText.includes(query)
@@ -94,11 +95,15 @@ export default function StudentEventsPage() {
           || (statusFilter === 'Registration Closed' && (isEventEnded(event) || registrationState === 'REGISTRATION CLOSED' || registrationState === 'EVENT FULL'))
         return matchesCategory && matchesSearch && matchesStatus
       })
-  }, [category, eventRegisteredCounts, officerEvents, search, statusFilter, studentRegistrations])
+  }, [category, currentUser, eventRegisteredCounts, officerEvents, search, statusFilter, studentRegistrations])
 
   return (
     <div className="student-events-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Home', to: '/' },
+          { label: 'Campus Events' },
+        ]}
         description="Discover upcoming activities, participant slot limits, and programs organized across WMSU."
         eyebrow="UNIDOS CAMPUS ACTIVITIES"
         title="Campus Events"
@@ -125,11 +130,10 @@ export default function StudentEventsPage() {
       {visibleEvents.length ? (
         <div className="campus-event-grid">
           {visibleEvents.map((event, index) => {
-            const registration = studentRegistrations.find((item) => (
-              String(item.eventId) === String(event.id) && item.status !== 'CANCELLED'
-            ))
+            const registration = findUserEventRegistration(studentRegistrations, event.id, currentUser)
             const ended = isEventEnded(event)
-            const remaining = Math.max((event.capacity || 0) - (event.registeredCount || 0), 0)
+            const hasLimit = Number(event.capacity) > 0
+            const remaining = hasLimit ? Math.max((event.capacity || 0) - (event.registeredCount || 0), 0) : null
             return (
               <article className="campus-event-card" key={event.id} style={{ '--event-index': index }}>
                 <Link aria-label={`View event: ${event.title}`} className={`campus-event-card-link event-${event.color || 'crimson'}`} to={`/events/${event.id}`}>
@@ -146,13 +150,15 @@ export default function StudentEventsPage() {
                       <span><Icon name="location" size={13} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: '4px' }} />{event.location}</span>
                     </div>
                     <div className="campus-event-availability">
-                      <span>Participant Limit ({event.capacity || 0} max)</span>
+                      <span>{hasLimit ? `Participant Limit (${event.capacity} max)` : 'Participant Capacity'}</span>
                       <strong>
                         {ended
                           ? 'Event ended · Registration closed'
-                          : remaining > 0
-                            ? `${remaining} of ${event.capacity} slots available`
-                            : 'Maximum limit reached'}
+                          : !hasLimit
+                            ? 'Open capacity'
+                            : remaining > 0
+                              ? `${remaining} of ${event.capacity} slots available`
+                              : 'Maximum limit reached'}
                       </strong>
                     </div>
                     <span className="button button-secondary campus-event-view-button">

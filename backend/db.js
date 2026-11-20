@@ -10,10 +10,35 @@ const { Pool } = require('pg');
 
 const envPath = path.join(__dirname, '.env');
 const envExamplePath = path.join(__dirname, '.env.example');
-if (!fs.existsSync(envPath) && fs.existsSync(envExamplePath)) {
-  fs.copyFileSync(envExamplePath, envPath);
+
+/**
+ * Ensures backend/.env exists by copying backend/.env.example when missing,
+ * then loads environment variables quietly so startup logs stay clean.
+ */
+function ensureEnvFile() {
+  let created = false;
+  if (!fs.existsSync(envPath) && fs.existsSync(envExamplePath)) {
+    fs.copyFileSync(envExamplePath, envPath);
+    created = true;
+  }
+  require('dotenv').config({ path: envPath, quiet: true });
+  return { envPath, created };
 }
-require('dotenv').config({ path: envPath });
+
+/**
+ * Returns normalized PostgreSQL connection settings resolved from process.env.
+ */
+function getDbConfig() {
+  return {
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres',
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT, 10) || 5432,
+    database: process.env.DB_NAME || 'student_org_db',
+  };
+}
+
+ensureEnvFile();
 
 // Primary database folder and SQL schema path (../database/student_org_db.sql)
 const DATABASE_DIR = path.resolve(__dirname, '../database');
@@ -21,13 +46,7 @@ const PRIMARY_SCHEMA_PATH = path.resolve(DATABASE_DIR, 'student_org_db.sql');
 const SCHEMA_PATH = PRIMARY_SCHEMA_PATH;
 
 // Configure PostgreSQL connection pool using environment variables from backend/.env
-const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT, 10) || 5432,
-  database: process.env.DB_NAME || 'student_org_db',
-});
+const pool = new Pool(getDbConfig());
 
 // Log when a client connects or encounters an unexpected idle error
 pool.on('connect', () => {
@@ -69,6 +88,8 @@ module.exports = {
   pool,
   query: (text, params) => pool.query(text, params),
   testConnection,
+  ensureEnvFile,
+  getDbConfig,
   DATABASE_DIR,
   SCHEMA_PATH,
 };

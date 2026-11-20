@@ -4,6 +4,7 @@ import AdviserReviewDialog from '../components/adviser/AdviserReviewDialog.jsx'
 import Badge from '../components/ui/Badge.jsx'
 import Button from '../components/ui/Button.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
+import FilterSelect from '../components/ui/FilterSelect.jsx'
 import Icon from '../components/ui/Icon.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import SearchBar from '../components/ui/SearchBar.jsx'
@@ -120,6 +121,10 @@ export default function AdviserReportsPage() {
   return (
     <div className="adviser-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Adviser Dashboard', to: '/adviser/dashboard' },
+          { label: 'Activity Reports' },
+        ]}
         description="Review, verify, and monitor activity reports submitted by your assigned organizations."
         eyebrow="UNIDOS · FACULTY ADVISER"
         title="Activity & Accomplishment Reports"
@@ -147,22 +152,25 @@ export default function AdviserReportsPage() {
             placeholder="Search reports by event title, date or status…"
             value={search}
           />
-          <label className="adviser-report-filter">
-            <span>Organization</span>
-            <select onChange={(event) => setOrganizationFilter(event.target.value)} value={organizationFilter}>
-              <option value="ALL">All organizations</option>
-              {organizations.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-            </select>
-          </label>
-          <label className="adviser-report-filter">
-            <span>Status</span>
-            <select onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
-              <option value="ALL">All statuses</option>
-              <option value="PENDING_VERIFICATION">Pending Verification</option>
-              <option value="VERIFIED">Verified</option>
-              <option value="RETURNED">Returned</option>
-            </select>
-          </label>
+          <FilterSelect
+            className="adviser-report-filter-select"
+            label="Organization"
+            onChange={setOrganizationFilter}
+            options={[{ value: 'ALL', label: 'All organizations' }, ...organizations.map(([id, name]) => ({ value: id, label: name }))]}
+            value={organizationFilter}
+          />
+          <FilterSelect
+            className="adviser-report-filter-select"
+            label="Status"
+            onChange={setStatusFilter}
+            options={[
+              { value: 'ALL', label: 'All statuses' },
+              { value: 'PENDING_VERIFICATION', label: 'Pending Verification' },
+              { value: 'VERIFIED', label: 'Verified' },
+              { value: 'RETURNED', label: 'Returned' },
+            ]}
+            value={statusFilter}
+          />
         </div>
         {visibleReports.length ? (
           <div className="adviser-report-grid">

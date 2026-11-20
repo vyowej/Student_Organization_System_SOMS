@@ -208,6 +208,9 @@ export default function Navbar({
   profileLink,
   onMenuClick,
   isMenuOpen,
+  organizations = [],
+  activeOrganizationId = '',
+  onSelectOrganization = () => {},
 }) {
   const { currentUser, logout, setActiveRole } = useAuth()
   const navigate = useNavigate()
@@ -255,75 +258,105 @@ export default function Navbar({
       </div>
       <div className="topbar-actions">
         <span className="topbar-user-name">{formatDisplayName(currentUser)}</span>
-        <Link className="portal-switcher" to="/organizations">
-          Directory
-        </Link>
-        {isGlobalAdmin && role !== 'Student Affairs Admin' && (
-          <button
-            className="portal-switcher"
-            onClick={() => {
-              setActiveRole('ADMIN')
-              navigate('/admin/dashboard')
-            }}
-            type="button"
-          >
-            Admin Portal
-          </button>
-        )}
-        {isGlobalAdmin && role !== 'Organization Adviser' && (
-          <button
-            className="portal-switcher"
-            onClick={() => {
-              setActiveRole('ADVISER')
-              navigate('/adviser/dashboard')
-            }}
-            type="button"
-          >
-            Adviser View
-          </button>
-        )}
-        {isGlobalAdmin && role !== 'Organization Officer' && (
-          <button
-            className="portal-switcher"
-            onClick={() => {
-              setActiveRole('OFFICER')
-              navigate('/officer/dashboard')
-            }}
-            type="button"
-          >
-            Officer View
-          </button>
-        )}
-        {isCoordinator && !isGlobalAdmin && role === 'Organization Adviser' && (
-          <button
-            className="portal-switcher"
-            onClick={() => navigate('/admin/users')}
-            type="button"
-          >
-            Manage Advisers
-          </button>
-        )}
-        {isCoordinator && !isGlobalAdmin && role === 'Student Affairs Admin' && (
-          <button
-            className="portal-switcher"
-            onClick={() => navigate('/adviser/dashboard')}
-            type="button"
-          >
-            Adviser Portal
-          </button>
-        )}
-        <NotificationPopover
-          notificationCount={notificationCount}
-          notificationLink={notificationLink}
-          notifications={notifications}
-          onMarkAllNotificationsRead={onMarkAllNotificationsRead}
-          onMarkNotificationRead={onMarkNotificationRead}
-          role={role}
-        />
-        <Link aria-label="Open profile or settings" className="icon-button profile-link" to={profileLink} title="Profile">
-          <Icon className="topbar-icon" name="user" size={20} />
-        </Link>
-        <Button className="topbar-logout" onClick={() => setLogoutOpen(true)} variant="secondary">Logout</Button>
+        <div className="topbar-switchers">
+          <Link className="portal-switcher" to="/organizations">
+            Directory
+          </Link>
+          {isGlobalAdmin && role !== 'Student Affairs Admin' && (
+            <button
+              className="portal-switcher"
+              onClick={() => {
+                setActiveRole('ADMIN')
+                navigate('/admin/dashboard')
+              }}
+              type="button"
+            >
+              Admin Portal
+            </button>
+          )}
+          {isGlobalAdmin && role !== 'Organization Adviser' && (
+            <button
+              className="portal-switcher"
+              onClick={() => {
+                setActiveRole('ADVISER')
+                navigate('/adviser/dashboard')
+              }}
+              type="button"
+            >
+              Adviser View
+            </button>
+          )}
+          {role === 'Organization Officer' && (() => {
+            const officerOrgIds = new Set(
+              (currentUser?.organizationRoles || []).map((item) =>
+                String(item.organizationId ?? item.organization_id)
+              )
+            )
+            const selectableOrgs = isGlobalAdmin
+              ? organizations
+              : organizations.filter((org) => officerOrgIds.has(String(org.id)))
+            const showSwitcher = isGlobalAdmin ? selectableOrgs.length > 0 : selectableOrgs.length > 1
+            if (!showSwitcher) return null
+            return (
+              <select
+                aria-label="Switch active organization"
+                className="portal-switcher portal-org-switcher"
+                onChange={(event) => onSelectOrganization(Number(event.target.value) || event.target.value)}
+                value={activeOrganizationId}
+              >
+                {selectableOrgs.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.acronym || org.name}
+                  </option>
+                ))}
+              </select>
+            )
+          })()}
+          {isGlobalAdmin && role !== 'Organization Officer' && (
+            <button
+              className="portal-switcher"
+              onClick={() => {
+                setActiveRole('OFFICER')
+                navigate('/officer/dashboard')
+              }}
+              type="button"
+            >
+              Officer View
+            </button>
+          )}
+          {isCoordinator && !isGlobalAdmin && role === 'Organization Adviser' && (
+            <button
+              className="portal-switcher"
+              onClick={() => navigate('/admin/users')}
+              type="button"
+            >
+              Manage Advisers
+            </button>
+          )}
+          {isCoordinator && !isGlobalAdmin && role === 'Student Affairs Admin' && (
+            <button
+              className="portal-switcher"
+              onClick={() => navigate('/adviser/dashboard')}
+              type="button"
+            >
+              Adviser Portal
+            </button>
+          )}
+        </div>
+        <div className="topbar-utilities">
+          <NotificationPopover
+            notificationCount={notificationCount}
+            notificationLink={notificationLink}
+            notifications={notifications}
+            onMarkAllNotificationsRead={onMarkAllNotificationsRead}
+            onMarkNotificationRead={onMarkNotificationRead}
+            role={role}
+          />
+          <Link aria-label="Open profile or settings" className="icon-button profile-link" to={profileLink} title="Profile">
+            <Icon className="topbar-icon" name="user" size={20} />
+          </Link>
+          <Button className="topbar-logout" onClick={() => setLogoutOpen(true)} variant="secondary">Logout</Button>
+        </div>
       </div>
       <Modal onClose={closeLogoutDialog} open={logoutOpen} size="sm" title="Log out of UNIDOS?">
         <div className="logout-dialog-content">

@@ -114,7 +114,7 @@ router.post('/', async (req, res) => {
     res.status(201).json(fullLog.rows[0] || logRecord);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message || 'Server error' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

@@ -8,6 +8,7 @@ import Input from '../components/ui/Input.jsx'
 import PageHeader from '../components/layout/PageHeader.jsx'
 import { useToast } from '../components/ui/useToast.js'
 import { readFileAsDataUrl } from '../data/officerHierarchy.js'
+import { validateUploadFile } from '../data/fileDownload.js'
 
 function toDateInputValue(value) {
   const parsed = value ? new Date(value) : null
@@ -17,13 +18,15 @@ function toDateInputValue(value) {
 
 function toTimeInputValue(value) {
   if (!value) return ''
-  const twelveHour = value.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  const trimmed = String(value).trim()
+  const twelveHour = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
   if (twelveHour) {
     let hours = Number(twelveHour[1]) % 12
     if (twelveHour[3].toUpperCase() === 'PM') hours += 12
     return `${String(hours).padStart(2, '0')}:${twelveHour[2]}`
   }
-  return /^\d{2}:\d{2}$/.test(value) ? value : ''
+  const twentyFour = trimmed.match(/^(\d{2}:\d{2})(?::\d{2})?$/)
+  return twentyFour ? twentyFour[1] : ''
 }
 
 function toDisplayTime(value) {
@@ -51,7 +54,9 @@ export default function OfficerEventFormPage() {
   const [date, setDate] = useState(initialDateValue)
   const [location, setLocation] = useState(existing?.location ?? '')
   const [description, setDescription] = useState(existing?.description ?? '')
-  const [capacity, setCapacity] = useState(String(existing?.capacity ?? 100))
+  const [capacity, setCapacity] = useState(
+    existing?.capacity !== undefined && existing?.capacity !== null ? String(existing.capacity) : ''
+  )
   const [category, setCategory] = useState(existing?.category ?? 'Academic')
   const [startTime, setStartTime] = useState(toTimeInputValue(existing?.startTime ?? existingTimes[0]))
   const [endTime, setEndTime] = useState(toTimeInputValue(existing?.endTime ?? existingTimes[1]))
@@ -71,6 +76,12 @@ export default function OfficerEventFormPage() {
     if (!file) {
       return
     }
+    const validation = validateUploadFile(file)
+    if (!validation.ok) {
+      setError(validation.error)
+      event.target.value = ''
+      return
+    }
     try {
       const dataUrl = await readFileAsDataUrl(file)
       setComplianceFileName(file.name)
@@ -82,13 +93,18 @@ export default function OfficerEventFormPage() {
   }
 
   async function submit(status, confirmed = false) {
-    const numericCapacity = parseInt(String(capacity), 10)
+    const trimmedCap = String(capacity).trim()
+    const numericCapacity = trimmedCap === '' ? null : parseInt(trimmedCap, 10)
     if (!title.trim() || !date || !location.trim() || !description.trim()) {
       setError('Complete the event title, date, location, and description before saving.')
       return
     }
-    if (!Number.isFinite(numericCapacity) || numericCapacity < 1) {
-      setError('Enter a valid maximum participant limit (minimum 1 participant).')
+    if (startTime && endTime && endTime <= startTime) {
+      setError('Event end time must be after the start time.')
+      return
+    }
+    if (numericCapacity !== null && (!Number.isFinite(numericCapacity) || numericCapacity < 1)) {
+      setError('Enter a valid maximum participant limit (minimum 1 participant) or leave blank if unrestricted.')
       return
     }
     if (status === 'SUBMITTED' && !complianceFileName.trim()) {
@@ -150,6 +166,11 @@ export default function OfficerEventFormPage() {
   return (
     <div className="officer-page">
       <PageHeader
+        breadcrumbs={[
+          { label: 'Officer Dashboard', to: '/officer/dashboard' },
+          { label: 'Organization Events', to: '/officer/events' },
+          { label: existing ? 'Edit Event Proposal' : 'Create Event Proposal' },
+        ]}
         description={
           existing
             ? 'Address the adviser’s feedback, verify your compliance document attachment, and resubmit for review.'
@@ -171,7 +192,7 @@ export default function OfficerEventFormPage() {
         <form className="officer-event-form" onSubmit={(event) => event.preventDefault()}>
           <Input
             id="officer-event-title"
-            label="Event title *"
+            label={<>Event title <span aria-hidden="true" className="required-asterisk">*</span></>}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="e.g. WMSU Hackathon 2026"
             required
@@ -185,7 +206,7 @@ export default function OfficerEventFormPage() {
           />
           <Input
             id="officer-event-date"
-            label="Event date *"
+            label={<>Event date <span aria-hidden="true" className="required-asterisk">*</span></>}
             onChange={(event) => setDate(event.target.value)}
             required
             type="date"
@@ -193,7 +214,7 @@ export default function OfficerEventFormPage() {
           />
           <Input
             id="officer-event-location"
-            label="Location / Venue *"
+            label={<>Location / Venue <span aria-hidden="true" className="required-asterisk">*</span></>}
             onChange={(event) => setLocation(event.target.value)}
             placeholder="Venue or campus location"
             required
@@ -215,10 +236,10 @@ export default function OfficerEventFormPage() {
           />
           <Input
             id="officer-event-capacity"
-            label="Maximum participant limit *"
+            label="Maximum participant limit"
             min="1"
             onChange={(event) => setCapacity(event.target.value.replace(/[^\d]/g, ''))}
-            required
+            placeholder="e.g. 100 (optional)"
             type="number"
             value={capacity}
           />
@@ -264,8 +285,8 @@ export default function OfficerEventFormPage() {
                 </span>
               </div>
             ) : (
-              <small style={{ color: '#6d6570', fontSize: '12px' }}>
-                Upload a single consolidated compliance document (PDF, DOCX, JPG, or PNG). The exact filename uploaded here will appear on your Faculty Adviser&apos;s review screen.
+              <small className="officer-field-hint">
+                Upload a single consolidated compliance document (PDF, DOCX, JPG, or PNG). Required when submitting for Faculty Adviser review (optional while saving a draft); the exact filename uploaded here will appear on your Faculty Adviser&apos;s review screen.
               </small>
             )}
           </div>
@@ -287,7 +308,7 @@ export default function OfficerEventFormPage() {
           {error && <p className="officer-form-error" role="alert">{error}</p>}
           <div className="officer-form-footer">
             <p>
-              Submission sends this proposal and compliance file (<strong>{complianceFileName || 'none attached'}</strong>) to your Faculty Adviser. Registration closes automatically once the event ends or reaches {capacity || 0} participants.
+              Submission sends this proposal and compliance file (<strong>{complianceFileName || 'none attached'}</strong>) to your Faculty Adviser. Registration closes automatically once the event ends{capacity ? ` or reaches ${capacity} participants` : ''}.
             </p>
             <div>
               <Button
@@ -321,7 +342,7 @@ export default function OfficerEventFormPage() {
       />
       <ConfirmDialog
         confirmLabel={existing ? 'Resubmit proposal' : 'Submit proposal'}
-        message={`Submit "${title.trim() || 'this event proposal'}" with compliance file "${complianceFileName}" and max participant limit of ${capacity}?`}
+        message={`Submit "${title.trim() || 'this event proposal'}" with compliance file "${complianceFileName}"${capacity ? ` and max participant limit of ${capacity}` : ''}?`}
         onCancel={() => setConfirmSubmitOpen(false)}
         onConfirm={() => submit('SUBMITTED', true)}
         open={confirmSubmitOpen}

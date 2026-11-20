@@ -15,12 +15,14 @@ import {
   OFFICER_HIERARCHY,
   ORGANIZATION_COMMITTEES,
   YEAR_LEVEL_OPTIONS,
+  applyNumericStudentIdPaste,
   getDemotionOptions,
   getHierarchyEntry,
   readFileAsDataUrl,
   sanitizeNumericStudentId,
 } from '../data/officerHierarchy.js'
 import { formatDisplayName, isValidEmail } from '../data/displayName.js'
+import { downloadFileFromEndpoint, validateUploadFile } from '../data/fileDownload.js'
 
 const statusTones = { ACTIVE: 'success', SUSPENDED: 'warning', INACTIVE: 'neutral' }
 const statusFilters = ['All', 'Active', 'Suspended', 'Inactive']
@@ -262,6 +264,12 @@ export default function OfficerMembersPage() {
       setEnrollForm((prev) => ({ ...prev, corFileName: '', corFileData: null }))
       return
     }
+    const validation = validateUploadFile(file)
+    if (!validation.ok) {
+      setEnrollError(validation.error)
+      event.target.value = ''
+      return
+    }
     try {
       const dataUrl = await readFileAsDataUrl(file)
       setEnrollForm((prev) => ({ ...prev, corFileName: file.name, corFileData: dataUrl }))
@@ -288,7 +296,7 @@ export default function OfficerMembersPage() {
       return
     }
     if (!enrollForm.corFileName) {
-      setEnrollError('Certificate of Registration (COR) file upload is required.')
+      setEnrollError('COR file upload is required.')
       return
     }
     setEnrollSaving(true)
@@ -349,6 +357,10 @@ export default function OfficerMembersPage() {
             <Icon name="plus" size={16} /> Enroll Officer
           </Button>
         }
+        breadcrumbs={[
+          { label: 'Officer Dashboard', to: '/officer/dashboard' },
+          { label: 'Officers & Committees' },
+        ]}
         description={`Manage the officer hierarchy, assigned committees, demotions, and roster of ${organization.name}.`}
         eyebrow={organization.name}
         title="Organization Officers & Committees"
@@ -505,6 +517,7 @@ export default function OfficerMembersPage() {
                         Demote
                       </Button>
                       <Button
+                        disabled={member.status !== 'ACTIVE'}
                         onClick={() => setRemoveTarget(member)}
                         variant="danger"
                       >
@@ -552,8 +565,27 @@ export default function OfficerMembersPage() {
                 <dd>{viewingMember.committee || getHierarchyEntry(viewingMember.rawPosition || viewingMember.position).defaultCommittee}</dd>
               </div>
               <div>
-                <dt>Certificate of Registration (COR)</dt>
-                <dd>{viewingMember.corFileName || 'Verified on institutional record'}</dd>
+                <dt>COR</dt>
+                <dd style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span>{viewingMember.corFileName || 'Verified on institutional record'}</span>
+                  {viewingMember.hasCor && (
+                    <Button
+                      onClick={async () => {
+                        const res = await downloadFileFromEndpoint({
+                          endpoint: `/api/members/${viewingMember.id}/cor`,
+                          dataField: 'cor_file_data',
+                          nameField: 'cor_file_name',
+                          fallbackName: viewingMember.corFileName || 'COR-document',
+                        })
+                        if (!res.ok) showToast(res.error || 'Unable to download COR file.', 'error')
+                      }}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      Download COR
+                    </Button>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt>Status</dt>
@@ -758,10 +790,10 @@ export default function OfficerMembersPage() {
         title={`Enroll Officer — ${organization.name}`}
       >
         <form className="admin-settings-form" onSubmit={handleEnrollOfficer}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-            <div>
+          <div className="modal-form-grid">
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="enroll-first-name">
-                First Name <span className="required-asterisk">*</span>
+                First Name <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <input
                 className="input"
@@ -772,9 +804,9 @@ export default function OfficerMembersPage() {
                 value={enrollForm.firstName}
               />
             </div>
-            <div>
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="enroll-last-name">
-                Last Name <span className="required-asterisk">*</span>
+                Last Name <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <input
                 className="input"
@@ -787,10 +819,10 @@ export default function OfficerMembersPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-            <div>
+          <div className="modal-form-grid">
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="enroll-student-id">
-                Student ID (Digits Only) <span className="required-asterisk">*</span>
+                Student ID (Digits Only) <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <input
                 className="input"
@@ -802,6 +834,12 @@ export default function OfficerMembersPage() {
                     studentNumber: sanitizeNumericStudentId(e.target.value),
                   }))
                 }
+                onPaste={(e) =>
+                  setEnrollForm((prev) => ({
+                    ...prev,
+                    studentNumber: applyNumericStudentIdPaste(e, prev.studentNumber),
+                  }))
+                }
                 pattern="[0-9]*"
                 placeholder="e.g., 202400189"
                 required
@@ -809,9 +847,9 @@ export default function OfficerMembersPage() {
                 value={enrollForm.studentNumber}
               />
             </div>
-            <div>
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="enroll-email">
-                WMSU Email <span className="required-asterisk">*</span>
+                WMSU Email <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <input
                 className="input"
@@ -825,10 +863,10 @@ export default function OfficerMembersPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
-            <div>
+          <div className="modal-form-grid">
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="enroll-program">
-                Course / Program <span className="required-asterisk">*</span>
+                Course / Program <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <SearchableSelect
                 id="enroll-program"
@@ -839,9 +877,9 @@ export default function OfficerMembersPage() {
                 value={enrollForm.program}
               />
             </div>
-            <div>
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="enroll-year-level">
-                Year Level <span className="required-asterisk">*</span>
+                Year Level <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <select
                 className="input"
@@ -856,10 +894,10 @@ export default function OfficerMembersPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-            <div>
+          <div className="modal-form-grid">
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="enroll-position">
-                Officer Hierarchy Role <span className="required-asterisk">*</span>
+                Officer Hierarchy Role <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <select
                 className="input"
@@ -881,9 +919,9 @@ export default function OfficerMembersPage() {
                 ))}
               </select>
             </div>
-            <div>
+            <div className="modal-field-compact">
               <label className="admin-field-label" htmlFor="enroll-committee">
-                Assigned Committee <span className="required-asterisk">*</span>
+                Assigned Committee <span aria-hidden="true" className="required-asterisk">*</span>
               </label>
               <select
                 className="input"
@@ -898,9 +936,9 @@ export default function OfficerMembersPage() {
             </div>
           </div>
 
-          <div>
+          <div className="modal-field-compact">
             <label className="admin-field-label" htmlFor="enroll-cor-file">
-              Certificate of Registration (COR) <span className="required-asterisk">*</span>
+              COR <span aria-hidden="true" className="required-asterisk">*</span>
             </label>
             <input
               accept=".pdf,.jpg,.jpeg,.png"
